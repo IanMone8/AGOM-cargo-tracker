@@ -1,0 +1,1 @@
+{% load tracker_tags %}<span id="box-status" {% if oob %}hx-swap-oob="true"{% endif %} class="{{ box.status|badge }}">{{ box.get_status_display }}</span>

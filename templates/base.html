@@ -1,0 +1,53 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#065f46">
+  <title>{% block title %}AGOM Cargo Tracker{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"></script>
+  <style>
+    .htmx-request.htmx-indicator, .htmx-request .htmx-indicator { opacity: 1 }
+    .htmx-indicator { opacity: 0; transition: opacity 150ms }
+    .htmx-request button { opacity: .6 }
+  </style>
+</head>
+<body class="min-h-screen bg-slate-50 text-slate-900" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+{% if user.is_authenticated %}
+  <header class="sticky top-0 z-20 bg-emerald-800 text-white shadow">
+    <div class="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
+      <a href="{% url 'dashboard' %}" class="text-lg font-bold tracking-tight">⛳ AGOM Cargo</a>
+      <div class="flex items-center gap-3 text-sm">
+        <span class="hidden sm:inline">{{ user.get_username }} · <span class="opacity-80">{{ role_name }}</span></span>
+        {% if user.is_staff %}<a href="{% url 'admin:index' %}" class="underline-offset-2 hover:underline">Admin</a>{% endif %}
+        <form method="post" action="{% url 'logout' %}">{% csrf_token %}
+          <button class="rounded bg-emerald-700 px-2 py-1 hover:bg-emerald-600">Log out</button>
+        </form>
+      </div>
+    </div>
+    {% with name=request.resolver_match.url_name %}
+    <nav class="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-2 pb-2 text-sm font-medium">
+      <a href="{% url 'dashboard' %}" class="whitespace-nowrap rounded-lg px-3 py-1.5 {% if name == 'dashboard' %}bg-white text-emerald-900{% else %}hover:bg-emerald-700{% endif %}">Dashboard</a>
+      <a href="{% url 'box_list' %}" class="whitespace-nowrap rounded-lg px-3 py-1.5 {% if 'box' in name %}bg-white text-emerald-900{% else %}hover:bg-emerald-700{% endif %}">Boxes</a>
+      <a href="{% url 'request_list' %}" class="whitespace-nowrap rounded-lg px-3 py-1.5 {% if 'request' in name %}bg-white text-emerald-900{% else %}hover:bg-emerald-700{% endif %}">Requests</a>
+      {% if can_edit_japan %}
+      <a href="{% url 'csv_import' %}" class="whitespace-nowrap rounded-lg px-3 py-1.5 {% if 'csv' in name %}bg-white text-emerald-900{% else %}hover:bg-emerald-700{% endif %}">CSV import</a>
+      {% endif %}
+    </nav>
+    {% endwith %}
+  </header>
+{% endif %}
+  <main class="mx-auto max-w-5xl px-4 py-4 pb-16">
+    {% if messages %}
+      <div class="mb-4 space-y-2">
+        {% for message in messages %}
+          <div class="rounded-lg px-4 py-3 text-sm {% if message.tags == 'error' %}bg-red-100 text-red-800{% else %}bg-emerald-100 text-emerald-900{% endif %}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+  {% block datalists %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,20 @@
+<form id="item-{{ item.pk }}" class="rounded-xl bg-orange-50 p-3 ring-2 ring-orange-300"
+      hx-post="{% url 'item_check' item.pk %}" hx-target="this" hx-swap="outerHTML">
+  <input type="hidden" name="result" value="wrong_qty">
+  <div class="font-semibold">{{ item.item_name }} <span class="text-slate-500">expected ×{{ item.qty }}</span></div>
+  {% if error %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endif %}
+  <div class="mt-2 grid grid-cols-3 gap-2">
+    <label class="col-span-1 text-xs font-medium">Received
+      <input type="number" name="received_qty" min="0" inputmode="numeric" required autofocus
+             value="{{ item.receive_check.received_qty|default_if_none:'' }}" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-base">
+    </label>
+    <label class="col-span-2 text-xs font-medium">Note
+      <input name="note" value="{{ item.receive_check.note|default:'' }}" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-base">
+    </label>
+  </div>
+  <div class="mt-2 flex gap-2">
+    <button class="flex-1 rounded-lg bg-orange-500 py-2.5 text-sm font-semibold text-white">Save</button>
+    <button type="button" class="rounded-lg bg-white px-4 py-2.5 text-sm ring-1 ring-slate-300"
+            hx-get="{% url 'item_row' item.pk %}" hx-target="#item-{{ item.pk }}" hx-swap="outerHTML">Cancel</button>
+  </div>
+</form>

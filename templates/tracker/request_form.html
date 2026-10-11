@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<a href="{% url 'request_list' %}" class="text-sm text-emerald-700">← Requests</a>
+<h1 class="mb-4 mt-1 text-2xl font-bold">Edit request</h1>
+<form method="post" class="space-y-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+  {% csrf_token %}
+  <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+    {% for field in form %}<div class="{% if field.name == 'item_name' or field.name == 'note' %}col-span-2{% endif %}">{% include "tracker/_field.html" %}</div>{% endfor %}
+  </div>
+  <button class="w-full rounded-lg bg-emerald-700 py-2.5 font-semibold text-white sm:w-auto sm:px-6">Save</button>
+</form>
+{% endblock %}
+{% block datalists %}{% include "tracker/_datalists.html" %}{% endblock %}
