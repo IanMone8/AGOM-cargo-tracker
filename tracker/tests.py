@@ -391,3 +391,24 @@ class JapanSenderHiddenPagesTests(BaseTest):
         r = self.client.get(reverse("dashboard"))
         self.assertContains(r, reverse("request_list"))
         self.assertContains(r, reverse("csv_import"))
+
+
+class DashboardStatCardTests(BaseTest):
+    def test_stat_cards(self):
+        checked = Box.objects.create(cargo=self.cargo, box_no=4, status=Box.Status.CHECKED)
+        ExtraItem.objects.create(box=checked, description="Head cover")  # a difference
+        Cargo.objects.create(code="KL", name="KL Cargo")
+        self.client.force_login(self.japan)
+        r = self.client.get(reverse("dashboard"))
+        html = r.content.decode()
+        for title, caption in [("Cargos", "Sent from Japan"), ("Total boxes", "Across all cargos"),
+                               ("Checked in Myanmar", "Finished box checks"),
+                               ("Needs review", "Boxes with differences")]:
+            self.assertIn(f'<span class="stat-title">{title}</span>', html)
+            self.assertIn(caption, html)
+        self.assertEqual((r.context["cargo_count"], r.context["total_box_count"],
+                          r.context["checked_box_count"], r.context["mismatch_count"]), (2, 2, 1, 1))
+        self.assertInHTML('<span class="stat-value">1<span class="stat-total"> / 2</span></span>', html)
+        for icon in ("plane", "boxes", "box-checked", "warning"):
+            self.assertIn(f'/static/img/icons/{icon}.png', html)
+        self.assertIn("onerror=\"this.style.display='none'\"", html)

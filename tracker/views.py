@@ -74,11 +74,11 @@ def dashboard(request):
     open_requests = CustomerRequest.objects.filter(status=CustomerRequest.Status.OPEN)
     return render(request, "tracker/dashboard.html", {
         "cargo_count": Cargo.objects.count(),
-        "active_box_count": Box.objects.exclude(status=Box.Status.CHECKED).count(),
+        "total_box_count": Box.objects.count(),
+        "checked_box_count": Box.objects.filter(status=Box.Status.CHECKED).count(),
+        "mismatch_count": Box.with_mismatches().count(),
         "in_transit": in_transit,
         "needs_review": needs_review,
-        "arrived_count": Box.objects.filter(status=Box.Status.ARRIVED).count(),
-        "mismatch_count": Box.with_mismatches().count(),
         "open_requests": open_requests[:8],
         "open_request_count": open_requests.count(),
         "recent": boxes_with_counts(Box.objects.order_by("-updated_at"))[:5],

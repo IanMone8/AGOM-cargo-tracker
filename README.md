@@ -11,7 +11,7 @@ It uses SQLite in development and Postgres in production (via `DATABASE_URL`).
 | Page | What it does |
 | --- | --- |
 | **Login** | Django's built-in auth |
-| **Dashboard** | Cards for Cargos · In transit · Needs review · Open requests, plus lists of boxes to review, in transit and recently updated |
+| **Dashboard** | Pastel stat cards: Cargos · Total boxes · Checked in Myanmar (e.g. 3 / 4) · Needs review (boxes with differences), plus lists of boxes waiting for check or review, in transit and recently updated |
 | **Shipments** | All boxes with cargo / status filters (live, via HTMX) and an **Add box** button |
 | **Add box** (modal) | Cargo company, Box ID, box note and an **Items inside** list. **Add item** adds another item card; each card has a **Delete** button |
 | **Box detail** | Japan list, **Start Myanmar check**, then one-tap **✓ Matched / ✗ Missing / ± Wrong qty**, undo, extra items and a live mismatch summary |
@@ -27,6 +27,9 @@ Theme styles live in `static/css/agom.css`; Tailwind (CDN) handles layout.
 
 **Logo:** put the logo at `static/img/agom-logo.png`. The sidebar, phone header, login page and
 favicon use it. Until the file exists the image is simply hidden.
+
+**Dashboard icons:** `static/img/icons/plane.png`, `boxes.png`, `box-checked.png` and `warning.png`
+(Cargos, Total boxes, Checked in Myanmar, Needs review). A missing icon is hidden.
 
 ### Myanmar check flow
 The Myanmar checker opens a box and taps **Start Myanmar check**. That records today as the

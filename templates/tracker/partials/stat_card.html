@@ -1,0 +1,9 @@
+{% load static %}{# Dashboard stat card. Context: tone, href, title, value, optional total, caption, icon_file #}
+<a href="{{ href }}" class="stat-card stat-{{ tone }}">
+  <span class="stat-title">{{ title }}</span>
+  <span class="stat-value">{{ value }}{% if total is not None %}<span class="stat-total"> / {{ total }}</span>{% endif %}</span>
+  <span class="stat-foot">
+    <span class="stat-caption">{{ caption }}</span>
+    <img src="{% static 'img/icons/'|add:icon_file %}" alt="" class="stat-img" loading="lazy" onerror="this.style.display='none'">
+  </span>
+</a>

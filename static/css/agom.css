@@ -65,3 +65,31 @@ textarea.field { resize: vertical; }
 #item-cards .item-card { counter-increment: item; }
 #item-cards .item-num::after { content: counter(item); }
 .item-num:empty::after { content: "+"; }
+
+/* Dashboard stat cards: pastel tiles with a darker bottom edge. */
+.stat-card {
+  position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 10.5rem;
+  padding: 1rem 1rem .9rem; border-radius: 1.6rem; color: var(--ink);
+  background: var(--tile-bg);
+  box-shadow: inset 0 -5px 0 var(--tile-edge), 0 12px 26px -16px var(--tile-shadow), 0 1px 2px rgba(0, 0, 0, .04);
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.stat-card:hover { transform: translateY(-2px); box-shadow: inset 0 -5px 0 var(--tile-edge), 0 18px 32px -16px var(--tile-shadow), 0 1px 2px rgba(0, 0, 0, .05); }
+.stat-card:active { transform: translateY(1px); }
+.stat-title { font-weight: 700; font-size: .95rem; line-height: 1.25; }
+.stat-value { flex: 1; display: flex; align-items: center; font-size: 2.6rem; font-weight: 800; line-height: 1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; padding: .5rem 0; }
+.stat-total { margin-left: .2rem; font-size: 1.5rem; font-weight: 700; color: rgba(29, 43, 36, .38); }
+.stat-foot { display: flex; align-items: flex-end; justify-content: space-between; gap: .5rem; min-height: 2.75rem; }
+.stat-caption { font-size: .75rem; line-height: 1.3; color: #77807a; padding-bottom: .15rem; }
+.stat-img { width: 2.75rem; height: 2.75rem; object-fit: contain; flex: none; }
+
+.stat-peach    { --tile-bg: #fde8dc; --tile-edge: #f6cfb9; --tile-shadow: rgba(196, 112, 70, .45); }
+.stat-lavender { --tile-bg: #ece8fb; --tile-edge: #d8d0f3; --tile-shadow: rgba(110, 90, 190, .40); }
+.stat-green    { --tile-bg: #e2f2e4; --tile-edge: #c6e3ca; --tile-shadow: rgba(46, 125, 70, .40); }
+.stat-cream    { --tile-bg: #fbf3dd; --tile-edge: #f0e1b5; --tile-shadow: rgba(170, 135, 50, .40); }
+
+@media (min-width: 640px) {
+  .stat-card { padding: 1.25rem 1.25rem 1.1rem; min-height: 11.5rem; }
+  .stat-value { font-size: 3rem; }
+  .stat-img { width: 3.25rem; height: 3.25rem; }
+}
