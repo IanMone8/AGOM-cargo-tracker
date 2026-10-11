@@ -1,0 +1,47 @@
+{% load tracker_tags %}
+{% with check=item.receive_check %}
+<div id="item-{{ item.pk }}" class="rounded-xl bg-white p-3 shadow-sm ring-1 {% if not check %}ring-slate-200{% elif check.result == 'matched' %}ring-emerald-300{% else %}ring-red-300{% endif %}">
+  <div class="flex items-start justify-between gap-3">
+    <div class="min-w-0">
+      <div class="font-semibold leading-tight">{{ item.item_name }}</div>
+      <div class="mt-0.5 text-xs text-slate-500">
+        {{ item.type }}{% if item.flex %} · {{ item.flex }}{% endif %}{% if item.loft %} · {{ item.loft }}°{% endif %}
+        · {{ item.get_condition_display }}{% if item.price_jpy %} · ¥{{ item.price_jpy }}{% endif %}
+        {% if item.customer %} · 👤 {{ item.customer }}{% endif %}
+      </div>
+      {% if item.note %}<div class="mt-0.5 text-xs italic text-slate-600">{{ item.note }}</div>{% endif %}
+      {% for r in item.requests.all %}<div class="mt-0.5 text-xs text-violet-700">🙋 Request: {{ r.customer }} ×{{ r.qty }}</div>{% endfor %}
+    </div>
+    <div class="shrink-0 text-right">
+      <div class="text-xl font-bold">×{{ item.qty }}</div>
+      {% if can_edit_japan and not check %}
+        <button class="text-xs text-slate-400 hover:text-red-600" hx-post="{% url 'item_delete' item.pk %}"
+                hx-target="#item-{{ item.pk }}" hx-swap="outerHTML" hx-confirm="Delete this item from the Japan list?">delete</button>
+      {% endif %}
+    </div>
+  </div>
+  {% if check %}
+    <div class="mt-2 flex items-center justify-between gap-2 text-sm">
+      <div><span class="{{ check.result|badge }}">{{ check.get_result_display }}</span>
+        {% if check.result != 'matched' %}<span class="ml-1">received {{ check.received_qty }}</span>{% endif %}
+        {% if check.note %}<span class="text-slate-500"> · {{ check.note }}</span>{% endif %}
+        <span class="text-xs text-slate-400"> · {{ check.checked_by.username|default:"" }}</span>
+      </div>
+      {% if can_check %}
+        <button class="text-xs text-slate-500 underline" hx-post="{% url 'item_check_clear' item.pk %}" hx-target="#item-{{ item.pk }}" hx-swap="outerHTML">undo</button>
+      {% endif %}
+    </div>
+  {% endif %}
+  {% if can_check %}
+    <div class="mt-2 grid grid-cols-3 gap-2">
+      <button hx-post="{% url 'item_check' item.pk %}" hx-vals='{"result": "matched"}' hx-target="#item-{{ item.pk }}" hx-swap="outerHTML"
+              class="rounded-lg py-2.5 text-sm font-semibold {% if check.result == 'matched' %}bg-emerald-600 text-white{% else %}bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200{% endif %}">✓ Matched</button>
+      <button hx-post="{% url 'item_check' item.pk %}" hx-vals='{"result": "missing"}' hx-target="#item-{{ item.pk }}" hx-swap="outerHTML"
+              class="rounded-lg py-2.5 text-sm font-semibold {% if check.result == 'missing' %}bg-red-600 text-white{% else %}bg-red-50 text-red-800 ring-1 ring-red-200{% endif %}">✗ Missing</button>
+      <button hx-get="{% url 'item_wrong_qty' item.pk %}" hx-target="#item-{{ item.pk }}" hx-swap="outerHTML"
+              class="rounded-lg py-2.5 text-sm font-semibold {% if check.result == 'wrong_qty' %}bg-orange-500 text-white{% else %}bg-orange-50 text-orange-800 ring-1 ring-orange-200{% endif %}">± Wrong qty</button>
+    </div>
+  {% endif %}
+</div>
+{% endwith %}
+{% if oob %}{% include "tracker/partials/summary.html" %}{% include "tracker/partials/box_status.html" %}{% endif %}

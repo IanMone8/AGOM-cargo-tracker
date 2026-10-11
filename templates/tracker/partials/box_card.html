@@ -1,0 +1,20 @@
+{% load tracker_tags %}
+<a href="{% url 'box_detail' box.pk %}" class="flex items-center justify-between gap-3 rounded-xl bg-white p-3 shadow-sm ring-1 ring-slate-200 hover:ring-emerald-500">
+  <div class="min-w-0">
+    <div class="flex items-center gap-2">
+      <span class="text-lg font-bold">{{ box.label }}</span>
+      <span class="{{ box.status|badge }}">{{ box.get_status_display }}</span>
+    </div>
+    <div class="mt-0.5 truncate text-xs text-slate-500">
+      {{ box.cargo.name }}
+      {% if box.japan_ship_date %} · shipped {{ box.japan_ship_date|date:"j M" }}{% endif %}
+      {% if box.myanmar_received_date %} · received {{ box.myanmar_received_date|date:"j M" }}{% endif %}
+    </div>
+  </div>
+  <div class="shrink-0 text-right text-xs">
+    <div class="font-medium">{{ box.checked_count }}/{{ box.item_count }} checked</div>
+    {% if box.problem_count or box.extra_count %}
+      <div class="text-red-600">{% if box.problem_count %}{{ box.problem_count }} issue{{ box.problem_count|pluralize }}{% endif %}{% if box.problem_count and box.extra_count %} · {% endif %}{% if box.extra_count %}{{ box.extra_count }} extra{% endif %}</div>
+    {% endif %}
+  </div>
+</a>

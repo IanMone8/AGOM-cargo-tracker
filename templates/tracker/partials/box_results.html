@@ -1,0 +1,4 @@
+<div class="space-y-2">
+  {% for box in boxes %}{% include "tracker/partials/box_card.html" %}{% empty %}
+  <p class="rounded-xl bg-white p-6 text-center text-sm text-slate-500">No boxes match.</p>{% endfor %}
+</div>

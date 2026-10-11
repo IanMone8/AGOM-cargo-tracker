@@ -1,0 +1,11 @@
+<form class="mb-3 space-y-3 rounded-xl bg-white p-3 shadow ring-2 ring-violet-300"
+      hx-post="{% url 'extra_add' box.pk %}" hx-target="#extra-form-slot">
+  <div class="grid grid-cols-4 gap-3">
+    <div class="col-span-3">{% include "tracker/_field.html" with field=form.description %}</div>
+    <div>{% include "tracker/_field.html" with field=form.qty %}</div>
+  </div>
+  <div class="flex gap-2">
+    <button class="flex-1 rounded-lg bg-violet-600 py-2.5 text-sm font-semibold text-white">Add extra item</button>
+    <button type="button" class="rounded-lg px-4 py-2.5 text-sm ring-1 ring-slate-300" onclick="this.closest('form').remove()">Close</button>
+  </div>
+</form>
