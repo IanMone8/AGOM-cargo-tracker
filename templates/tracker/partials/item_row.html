@@ -17,10 +17,10 @@
     </div>
     <div class="shrink-0 text-right">
       <div class="text-xl font-extrabold">×{{ item.qty }}</div><div class="text-[0.7rem] text-stone-400">{{ item.get_quantity_unit_display }}</div>
-      {% if can_edit_japan and not check %}
+      {% if not check %}{% if is_manager or can_edit_japan and not item.box.myanmar_started %}
         <button class="text-xs text-stone-400 hover:text-red-600" hx-post="{% url 'item_delete' item.pk %}"
                 hx-target="#item-{{ item.pk }}" hx-swap="outerHTML" hx-confirm="Delete this item from the Japan list?">delete</button>
-      {% endif %}
+      {% endif %}{% endif %}
     </div>
   </div>
   {% if check %}

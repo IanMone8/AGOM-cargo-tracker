@@ -40,6 +40,12 @@ class BoxForm(StyledMixin, forms.ModelForm):
             if not roles.can_edit_japan(user):
                 for name in ("cargo", "box_no", "japan_ship_date"):
                     self.fields.pop(name)
+            if not roles.can_check(user):
+                # Arrived / Checked belong to the Myanmar side.
+                self.fields["status"].choices = [
+                    (Box.Status.PACKED, Box.Status.PACKED.label),
+                    (Box.Status.SHIPPED, Box.Status.SHIPPED.label),
+                ]
 
 
 class BoxCreateForm(StyledMixin, forms.ModelForm):

@@ -50,6 +50,18 @@ class Box(models.Model):
     def label(self):
         return f"{self.cargo.code}-{self.box_no}"
 
+    @property
+    def myanmar_started(self):
+        """True once the box is received in Myanmar or any item has been checked.
+
+        From then on the Japan sender can no longer change the box or its list.
+        """
+        return bool(
+            self.myanmar_received_date
+            or self.status in (self.Status.ARRIVED, self.Status.CHECKED)
+            or ReceiveCheck.objects.filter(japan_item__box=self).exists()
+        )
+
     # --- check helpers -------------------------------------------------
     def problem_checks(self):
         return ReceiveCheck.objects.filter(japan_item__box=self).exclude(

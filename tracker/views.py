@@ -143,8 +143,8 @@ def box_item_card(request):
 @login_required
 def box_edit(request, pk):
     box = get_object_or_404(Box, pk=pk)
-    if not (roles.can_edit_japan(request.user) or roles.can_check(request.user)):
-        raise PermissionDenied("Your role cannot edit boxes.")
+    if not roles.can_edit_box(request.user, box):
+        raise PermissionDenied("This box can no longer be edited – the Myanmar check has started.")
     form = BoxForm(request.POST or None, instance=box, user=request.user)
     if form.is_valid():
         status_changed = "status" in form.changed_data
@@ -162,6 +162,9 @@ def box_detail(request, pk):
     items = box.items.select_related("receive_check").prefetch_related("requests")
     return render(request, "tracker/box_detail.html", {
         "box": box,
+        "can_edit_this_box": roles.can_edit_box(request.user, box),
+        "can_edit_items": roles.can_edit_box_items(request.user, box),
+        "japan_locked": roles.can_edit_japan(request.user) and not roles.can_edit_box_items(request.user, box),
         "items": items,
         "extras": box.extra_items.all(),
         "summary": box.summary(),
@@ -261,10 +264,16 @@ def item_row(request, pk):
 
 
 # --- Japan items (manual add / delete) ------------------------------------------
+def _require_box_items(user, box):
+    if not roles.can_edit_box_items(user, box):
+        raise PermissionDenied("This box is locked – the Myanmar check has started.")
+
+
 @login_required
 @roles.require(roles.can_edit_japan)
 def item_add(request, pk):
     box = get_object_or_404(Box, pk=pk)
+    _require_box_items(request.user, box)
     form = JapanItemForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
         item = form.save(commit=False)
@@ -285,6 +294,7 @@ def item_add(request, pk):
 def item_delete(request, pk):
     item = get_object_or_404(JapanItem.objects.select_related("box"), pk=pk)
     box = item.box
+    _require_box_items(request.user, box)
     item.delete()
     box.refresh_status()
     return _box_fragments(request, box, "tracker/partials/oob_only.html", {})
@@ -455,7 +465,11 @@ def csv_import(request):
     form = CSVImportForm(request.POST or None, request.FILES or None)
     result = None
     if request.method == "POST" and form.is_valid():
-        result = import_japan_csv(form.cleaned_data["file"], replace=form.cleaned_data["replace"])
+        result = import_japan_csv(
+            form.cleaned_data["file"],
+            replace=form.cleaned_data["replace"],
+            allow_locked=roles.is_manager(request.user),
+        )
         if not result.errors:
             messages.success(
                 request,

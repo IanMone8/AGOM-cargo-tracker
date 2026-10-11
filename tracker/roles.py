@@ -41,6 +41,20 @@ def can_check(user):
     return is_manager(user) or _in_group(user, MYANMAR)
 
 
+def can_edit_box_items(user, box):
+    """Edit the Japan side of a box (box header, add/delete items, CSV import).
+
+    The Japan sender loses this once the Myanmar check has started;
+    Owner and Admin can still correct things.
+    """
+    return is_manager(user) or (can_edit_japan(user) and not box.myanmar_started)
+
+
+def can_edit_box(user, box):
+    """Open the box Edit page (Myanmar checker edits the Myanmar side)."""
+    return can_edit_box_items(user, box) or can_check(user)
+
+
 def role_name(user):
     if user.is_superuser:
         return "Admin"

@@ -48,10 +48,14 @@ You can still pick a status by hand on the *Edit* page. A manual choice override
 | --- | --- | --- |
 | `admin` | Superuser | Everything, including `/admin/`, users and the catalog |
 | `owner` | Group **Owner** (staff) | Everything in the app, plus tracker data in `/admin/` |
-| `japan` | Group **Japan Sender** | Create/edit boxes (Japan side), add/delete Japan items, CSV import |
+| `japan` | Group **Japan Sender** | Create/edit boxes (Japan side, status Packed / Shipped only), add/delete Japan items, CSV import – until the Myanmar check starts |
 | `myanmar` | Group **Myanmar Checker** | Mark arrived, set the received date, receive checks, extra items |
 
 Everyone can view all pages and manage customer requests.
+
+**Locking:** once the Myanmar check has started on a box (it has a received date, or any item is checked),
+the Japan sender can no longer edit that box, add or delete its items, or import CSV rows into it.
+Owner and Admin can still correct it, and the Myanmar checker can still edit the Myanmar side.
 
 ## Run locally (development)
 
