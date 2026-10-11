@@ -3,7 +3,7 @@
 {% block content %}
 {% include "tracker/_page_header.html" with eyebrow="Welcome back, "|add:user.get_username title="Dashboard" subtitle="Golf shipments from Japan to Myanmar" show_add=True %}
 
-<div class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+<div class="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
   {% url 'cargo_history' as cargo_url %}{% url 'box_list' as boxes_url %}
   {% include "tracker/partials/stat_card.html" with tone="peach" href=cargo_url title="Cargos" value=cargo_count caption="Sent from Japan" icon_file="plane.png" %}
   {% include "tracker/partials/stat_card.html" with tone="lavender" href=boxes_url title="Total boxes" value=total_box_count caption="Across all cargos" icon_file="boxes.png" %}

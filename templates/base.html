@@ -10,7 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com/3.4.16"></script>
   <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"></script>
-  <link rel="stylesheet" href="{% static 'css/agom.css' %}">
+  <link rel="stylesheet" href="{% static_v 'css/agom.css' %}">
 </head>
 <body class="min-h-screen antialiased" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
 {% if user.is_authenticated %}

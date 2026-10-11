@@ -395,20 +395,35 @@ class JapanSenderHiddenPagesTests(BaseTest):
 
 class DashboardStatCardTests(BaseTest):
     def test_stat_cards(self):
+        import re
         checked = Box.objects.create(cargo=self.cargo, box_no=4, status=Box.Status.CHECKED)
         ExtraItem.objects.create(box=checked, description="Head cover")  # a difference
         Cargo.objects.create(code="KL", name="KL Cargo")
         self.client.force_login(self.japan)
         r = self.client.get(reverse("dashboard"))
         html = r.content.decode()
-        for title, caption in [("Cargos", "Sent from Japan"), ("Total boxes", "Across all cargos"),
-                               ("Checked in Myanmar", "Finished box checks"),
-                               ("Needs review", "Boxes with differences")]:
-            self.assertIn(f'<span class="stat-title">{title}</span>', html)
-            self.assertIn(caption, html)
         self.assertEqual((r.context["cargo_count"], r.context["total_box_count"],
                           r.context["checked_box_count"], r.context["mismatch_count"]), (2, 2, 1, 1))
-        self.assertInHTML('<span class="stat-value">1<span class="stat-total"> / 2</span></span>', html)
-        for icon in ("plane", "boxes", "box-checked", "warning"):
-            self.assertIn(f'/static/img/icons/{icon}.png', html)
-        self.assertIn("onerror=\"this.style.display='none'\"", html)
+
+        self.assertNotIn("{#", html)  # no template comment leaking into the page
+        self.assertNotIn("Dashboard stat card", html)
+        cards = re.findall(r'<a href="[^"]*" data-stat="(\w+)".*?</a>', html, re.S)
+        self.assertEqual(cards, ["peach", "lavender", "green", "cream"])
+        expected = [("Cargos", "2", "Sent from Japan", "plane"),
+                    ("Total boxes", "2", "Across all cargos", "boxes"),
+                    ("Checked in Myanmar", "1", "Finished box checks", "box-checked"),
+                    ("Needs review", "1", "Boxes with differences", "warning")]
+        blocks = re.findall(r'data-stat="\w+".*?</a>', html, re.S)
+        for block, (title, value, caption, icon) in zip(blocks, expected):
+            with self.subTest(title=title):
+                self.assertRegex(block, rf'class="stat-title[^"]*">{title}</span>')
+                self.assertRegex(block, rf'class="stat-value[^"]*">{value}(<|\s*</span>)')
+                self.assertRegex(block, rf'class="stat-caption[^"]*">{caption}</span>')
+                # icon: fixed size, contained, hidden if the file is missing
+                self.assertIn(f"/static/img/icons/{icon}.png", block)
+                self.assertIn('width="70" height="70"', block)
+                self.assertIn("object-contain", block)
+                self.assertIn("onerror=\"this.style.display='none'\"", block)
+        # "1 / 2" with a smaller, muted total only on the Checked card
+        self.assertRegex(blocks[2], r'class="stat-total[^"]*text-stone-900/35[^"]*">/ 2</span>')
+        self.assertNotIn("stat-total", blocks[0] + blocks[1] + blocks[3])

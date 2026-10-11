@@ -1,4 +1,9 @@
+import os
+
 from django import template
+from django.conf import settings
+from django.contrib.staticfiles import finders
+from django.templatetags.static import static
 
 register = template.Library()
 
@@ -58,3 +63,15 @@ def icon(name, cls="w-5 h-5"):
         'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{}"/></svg>',
         cls, ICONS.get(name, ""),
     )
+
+
+@register.simple_tag
+def static_v(path):
+    """Like {% static %}, but in development adds ?v=<file mtime> so browsers
+    pick up edited CSS/images straight away (production URLs are already hashed)."""
+    url = static(path)
+    if settings.DEBUG:
+        found = finders.find(path)
+        if found:
+            url += f"?v={int(os.path.getmtime(found))}"
+    return url
