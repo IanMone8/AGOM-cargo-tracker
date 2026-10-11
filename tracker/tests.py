@@ -427,3 +427,17 @@ class DashboardStatCardTests(BaseTest):
         # "1 / 2" with a smaller, muted total only on the Checked card
         self.assertRegex(blocks[2], r'class="stat-total[^"]*text-stone-900/35[^"]*">/ 2</span>')
         self.assertNotIn("stat-total", blocks[0] + blocks[1] + blocks[3])
+
+
+class SidebarIconTests(BaseTest):
+    def test_sidebar_uses_png_icons_with_fallback(self):
+        import re
+        self.client.force_login(self.japan)
+        html = self.client.get(reverse("dashboard")).content.decode()
+        for label, png in [("Dashboard", "house"), ("Shipments", "flying-box"), ("Cargo history", "calendar")]:
+            with self.subTest(label=label):
+                link = re.search(rf'<a [^>]*class="sidebar-link[^"]*">(?:(?!</a>).)*{label}</a>', html, re.S).group(0)
+                self.assertIn(f"/static/img/icons/{png}.png", link)
+                self.assertIn('width="24" height="24"', link)
+                self.assertIn("onerror=", link)
+                self.assertIn("<svg", link)  # line-icon fallback if the PNG is missing
