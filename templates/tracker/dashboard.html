@@ -1,40 +1,66 @@
 {% extends "base.html" %}
 {% load tracker_tags %}
 {% block content %}
-<h1 class="mb-4 text-2xl font-bold">Dashboard</h1>
+{% include "tracker/_page_header.html" with eyebrow="Welcome back, "|add:user.get_username title="Dashboard" subtitle="Golf shipments from Japan to Myanmar" show_add=True %}
 
-<div class="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-  <a href="{% url 'box_list' %}?status=shipped" class="rounded-xl bg-sky-50 p-4 ring-1 ring-sky-200">
-    <div class="text-3xl font-bold text-sky-800">{{ in_transit|length }}</div><div class="text-sm text-sky-900">In transit</div></a>
-  <a href="{% url 'box_list' %}?status=arrived" class="rounded-xl bg-amber-50 p-4 ring-1 ring-amber-200">
-    <div class="text-3xl font-bold text-amber-800">{{ arrived|length }}</div><div class="text-sm text-amber-900">Arrived, not checked</div></a>
-  <a href="#mismatches" class="rounded-xl bg-red-50 p-4 ring-1 ring-red-200">
-    <div class="text-3xl font-bold text-red-700">{{ mismatched|length }}</div><div class="text-sm text-red-900">With mismatches</div></a>
-  <a href="{% url 'request_list' %}?status=open" class="rounded-xl bg-rose-50 p-4 ring-1 ring-rose-200">
-    <div class="text-3xl font-bold text-rose-700">{{ open_request_count }}</div><div class="text-sm text-rose-900">Open requests</div></a>
+<div class="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+  <a href="{% url 'cargo_history' %}" class="card card-hover p-4 sm:p-5">
+    <div class="stat-icon bg-emerald-50 text-emerald-700">{% icon "ship" %}</div>
+    <div class="mt-3 text-3xl font-extrabold">{{ cargo_count }}</div>
+    <div class="text-sm font-semibold text-stone-600">Cargos</div>
+    <div class="text-xs text-stone-400">{{ active_box_count }} active box{{ active_box_count|pluralize:"es" }}</div>
+  </a>
+  <a href="{% url 'box_list' %}?status=shipped" class="card card-hover p-4 sm:p-5">
+    <div class="stat-icon bg-sky-50 text-sky-700">{% icon "box" %}</div>
+    <div class="mt-3 text-3xl font-extrabold">{{ in_transit|length }}</div>
+    <div class="text-sm font-semibold text-stone-600">In transit</div>
+    <div class="text-xs text-stone-400">Shipped from Japan</div>
+  </a>
+  <a href="#needs-review" class="card card-hover p-4 sm:p-5">
+    <div class="stat-icon bg-amber-50 text-amber-600">{% icon "alert" %}</div>
+    <div class="mt-3 text-3xl font-extrabold">{{ needs_review|length }}</div>
+    <div class="text-sm font-semibold text-stone-600">Needs review</div>
+    <div class="text-xs text-stone-400">{{ arrived_count }} to check · {{ mismatch_count }} mismatch</div>
+  </a>
+  <a href="{% url 'request_list' %}?status=open" class="card card-hover p-4 sm:p-5">
+    <div class="stat-icon bg-rose-50 text-rose-600">{% icon "users" %}</div>
+    <div class="mt-3 text-3xl font-extrabold">{{ open_request_count }}</div>
+    <div class="text-sm font-semibold text-stone-600">Open requests</div>
+    <div class="text-xs text-stone-400">Customers waiting</div>
+  </a>
 </div>
 
-<div class="grid gap-6 md:grid-cols-2">
-  <section>
-    <h2 class="mb-2 font-semibold text-slate-700">🚢 Boxes in transit</h2>
-    <div class="space-y-2">{% for box in in_transit %}{% include "tracker/partials/box_card.html" %}{% empty %}<p class="text-sm text-slate-500">Nothing in transit.</p>{% endfor %}</div>
-  </section>
-  <section>
-    <h2 class="mb-2 font-semibold text-slate-700">📦 Arrived, waiting for check</h2>
-    <div class="space-y-2">{% for box in arrived %}{% include "tracker/partials/box_card.html" %}{% empty %}<p class="text-sm text-slate-500">All arrived boxes are checked.</p>{% endfor %}</div>
-  </section>
-  <section id="mismatches">
-    <h2 class="mb-2 font-semibold text-slate-700">⚠️ Boxes with mismatches</h2>
-    <div class="space-y-2">{% for box in mismatched %}{% include "tracker/partials/box_card.html" %}{% empty %}<p class="text-sm text-slate-500">No mismatches. 🎉</p>{% endfor %}</div>
-  </section>
-  <section>
-    <h2 class="mb-2 font-semibold text-slate-700">🙋 Open customer requests</h2>
-    <div class="divide-y rounded-xl bg-white shadow-sm ring-1 ring-slate-200">
-      {% for r in open_requests %}
-        <div class="p-3 text-sm"><span class="font-semibold">{{ r.customer }}</span> · {{ r.item_name }} {{ r.flex }} {{ r.loft }} ×{{ r.qty }}</div>
-      {% empty %}<p class="p-3 text-sm text-slate-500">No open requests.</p>{% endfor %}
-      {% if open_request_count > open_requests|length %}<a href="{% url 'request_list' %}?status=open" class="block p-3 text-sm text-emerald-700">See all {{ open_request_count }} →</a>{% endif %}
+<div class="mt-6 grid gap-6 lg:grid-cols-5">
+  <section id="needs-review" class="min-w-0 lg:col-span-3">
+    <div class="mb-3 flex items-center justify-between">
+      <h2 class="text-lg font-bold">Needs review</h2>
+      <a href="{% url 'box_list' %}?status=arrived" class="text-sm font-semibold text-emerald-700">View all</a>
     </div>
+    <div class="space-y-3">{% for box in needs_review %}{% include "tracker/partials/box_card.html" %}{% empty %}
+      <div class="card p-6 text-center text-sm text-stone-500">Nothing to review – every arrived box is checked. ⛳</div>{% endfor %}</div>
+
+    <h2 class="mb-3 mt-6 text-lg font-bold">In transit</h2>
+    <div class="space-y-3">{% for box in in_transit %}{% include "tracker/partials/box_card.html" %}{% empty %}
+      <div class="card p-6 text-center text-sm text-stone-500">No boxes on the way.</div>{% endfor %}</div>
+  </section>
+
+  <section class="min-w-0 lg:col-span-2">
+    <div class="mb-3 flex items-center justify-between">
+      <h2 class="text-lg font-bold">Open customer requests</h2>
+      <a href="{% url 'request_list' %}" class="text-sm font-semibold text-emerald-700">View all</a>
+    </div>
+    <div class="card divide-y divide-stone-100">
+      {% for r in open_requests %}
+        <div class="flex items-center gap-3 p-4">
+          <div class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-emerald-50 text-sm font-bold uppercase text-emerald-800">{{ r.customer|slice:":1" }}</div>
+          <div class="min-w-0 text-sm"><div class="font-semibold">{{ r.customer }}</div><div class="truncate text-stone-500">{{ r.item_name }} {{ r.flex }} {{ r.loft }} ×{{ r.qty }}</div></div>
+        </div>
+      {% empty %}<p class="p-6 text-center text-sm text-stone-500">No open requests.</p>{% endfor %}
+    </div>
+
+    <h2 class="mb-3 mt-6 text-lg font-bold">Recently updated</h2>
+    <div class="space-y-3">{% for box in recent %}{% include "tracker/partials/box_card.html" with compact=True %}{% empty %}
+      <div class="card p-6 text-center text-sm text-stone-500">No boxes yet.</div>{% endfor %}</div>
   </section>
 </div>
 {% endblock %}

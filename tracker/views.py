@@ -1,23 +1,34 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db import transaction
 from django.core.exceptions import PermissionDenied
 from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from . import roles
 from .csv_import import import_japan_csv, template_csv
 from .forms import (
+    BoxCreateForm,
     BoxFilterForm,
     BoxForm,
+    ItemFormSet,
     CSVImportForm,
     CustomerRequestForm,
     ExtraItemForm,
     JapanItemForm,
 )
-from .models import Box, Catalog, CustomerRequest, ExtraItem, JapanItem, ReceiveCheck
+from .models import Box, Cargo, Catalog, CustomerRequest, ExtraItem, JapanItem, ReceiveCheck
+
+ITEM_CATEGORIES = ["Club", "Club set", "Bag", "Balls", "Shoes", "Apparel", "Accessory"]
+CLUB_TYPES = ["Driver", "Fairway wood", "Utility", "Iron set", "Iron", "Wedge", "Putter"]
+BRANDS = [
+    "Bridgestone", "Callaway", "Cleveland", "Cobra", "Honma", "Mizuno", "Odyssey", "Ping",
+    "PRGR", "Scotty Cameron", "Srixon", "TaylorMade", "Titleist", "XXIO", "Yamaha", "Yonex",
+]
 
 
 def is_htmx(request):
@@ -29,9 +40,11 @@ def catalog_context():
     entries = list(Catalog.objects.all())
     lofts = sorted({l for c in entries for l in c.loft_list}, key=lambda v: (len(v), v))
     return {
-        "catalog_types": sorted({c.type for c in entries}),
+        "catalog_types": sorted({c.type for c in entries} | set(CLUB_TYPES)),
         "catalog_models": [c.brand_model for c in entries],
         "catalog_lofts": lofts,
+        "item_categories": ITEM_CATEGORIES,
+        "brands": BRANDS,
     }
 
 
@@ -53,15 +66,22 @@ def boxes_with_counts(qs=None):
 @login_required
 def dashboard(request):
     in_transit = boxes_with_counts(Box.objects.filter(status=Box.Status.SHIPPED))
-    arrived = boxes_with_counts(Box.objects.filter(status=Box.Status.ARRIVED))
-    mismatched = boxes_with_counts(Box.with_mismatches())
+    needs_review = boxes_with_counts(
+        Box.objects.filter(
+            Q(status=Box.Status.ARRIVED) | Q(pk__in=Box.with_mismatches().values("pk"))
+        )
+    )
     open_requests = CustomerRequest.objects.filter(status=CustomerRequest.Status.OPEN)
     return render(request, "tracker/dashboard.html", {
+        "cargo_count": Cargo.objects.count(),
+        "active_box_count": Box.objects.exclude(status=Box.Status.CHECKED).count(),
         "in_transit": in_transit,
-        "arrived": arrived,
-        "mismatched": mismatched,
-        "open_requests": open_requests[:10],
+        "needs_review": needs_review,
+        "arrived_count": Box.objects.filter(status=Box.Status.ARRIVED).count(),
+        "mismatch_count": Box.with_mismatches().count(),
+        "open_requests": open_requests[:8],
         "open_request_count": open_requests.count(),
+        "recent": boxes_with_counts(Box.objects.order_by("-updated_at"))[:5],
     })
 
 
@@ -84,13 +104,40 @@ def box_list(request):
 @login_required
 @roles.require(roles.can_edit_japan)
 def box_create(request):
-    form = BoxForm(request.POST or None, user=request.user)
-    if form.is_valid():
-        box = form.save()
-        box.refresh_status()
-        messages.success(request, f"Box {box.label} created.")
+    """"Add box" – a modal over the current page when opened via HTMX."""
+    form = BoxCreateForm(request.POST or None)
+    formset = ItemFormSet(request.POST or None, prefix="items")
+    if request.method == "POST" and form.is_valid() and formset.is_valid():
+        with transaction.atomic():
+            box = form.save()
+            formset.instance = box
+            formset.save()
+            box.refresh_status()
+        messages.success(request, f"Box {box.label} added with {box.items.count()} item(s).")
+        if is_htmx(request):
+            response = HttpResponse(status=204)
+            response["HX-Redirect"] = reverse("box_detail", args=[box.pk])
+            return response
         return redirect("box_detail", pk=box.pk)
-    return render(request, "tracker/box_form.html", {"form": form})
+    ctx = {"form": form, "formset": formset, **catalog_context()}
+    if is_htmx(request):
+        return render(request, "tracker/partials/box_modal.html", ctx)
+    return render(request, "tracker/box_create.html", ctx)
+
+
+@login_required
+@roles.require(roles.can_edit_japan)
+def box_item_card(request):
+    """Return one more empty item card for the "Add box" modal."""
+    try:
+        index = max(0, int(request.GET.get("items-TOTAL_FORMS", "0")))
+    except ValueError:
+        index = 0
+    form = ItemFormSet(prefix="items").empty_form
+    form.prefix = f"items-{index}"
+    return render(request, "tracker/partials/item_card_new.html", {
+        "item_form": form, "index": index, "next_total": index + 1,
+    })
 
 
 @login_required
@@ -122,17 +169,22 @@ def box_detail(request, pk):
     })
 
 
-@login_required
-@roles.require(roles.can_check)
-@require_POST
-def box_mark_arrived(request, pk):
-    box = get_object_or_404(Box, pk=pk)
+def _start_check(box):
     if not box.myanmar_received_date:
         box.myanmar_received_date = timezone.localdate()
         box.save(update_fields=["myanmar_received_date", "updated_at"])
     box.refresh_status()
-    messages.success(request, f"Box {box.label} marked as arrived.")
-    return redirect("box_detail", pk=box.pk)
+
+
+@login_required
+@roles.require(roles.can_check)
+@require_POST
+def box_start_check(request, pk):
+    """Myanmar checker opens the box: records today's arrival and shows the check buttons."""
+    box = get_object_or_404(Box, pk=pk)
+    _start_check(box)
+    messages.success(request, f"Myanmar check started for {box.label}. Tap each item below.")
+    return redirect(reverse("box_detail", args=[box.pk]) + "#items")
 
 
 def _box_fragments(request, box, main_template, main_ctx):
@@ -156,6 +208,7 @@ def item_check(request, pk):
     result = request.POST.get("result")
     if result not in ReceiveCheck.Result.values:
         return HttpResponse("Bad result", status=400)
+    _start_check(item.box)
     if result == ReceiveCheck.Result.MATCHED:
         received = item.qty
     elif result == ReceiveCheck.Result.MISSING:
@@ -364,6 +417,35 @@ def request_detach(request, pk):
     return render(request, "tracker/partials/request_card.html", {
         "r": req, "status_choices": CustomerRequest.Status.choices,
     })
+
+
+# --- Cargo history ------------------------------------------------------------
+@login_required
+def cargo_history(request):
+    cargos = list(Cargo.objects.annotate(
+        box_total=Count("boxes", distinct=True),
+        in_transit=Count("boxes", filter=Q(boxes__status=Box.Status.SHIPPED), distinct=True),
+        checked=Count("boxes", filter=Q(boxes__status=Box.Status.CHECKED), distinct=True),
+    ))
+    problem_ids = set(Box.with_mismatches().values_list("pk", flat=True))
+    for cargo in cargos:
+        dated = cargo.boxes.exclude(japan_ship_date=None).exclude(myanmar_received_date=None)
+        days = [(b.myanmar_received_date - b.japan_ship_date).days for b in dated]
+        cargo.avg_days = round(sum(days) / len(days)) if days else None
+        cargo.issues = cargo.boxes.filter(pk__in=problem_ids).count()
+
+    selected = Cargo.objects.filter(code=request.GET.get("cargo", "").upper()).first()
+    boxes = boxes_with_counts(Box.objects.filter(cargo=selected) if selected else Box.objects.all())
+    boxes = boxes.order_by("-japan_ship_date", "-created_at")
+    for box in boxes:
+        box.transit_days = (
+            (box.myanmar_received_date - box.japan_ship_date).days
+            if box.japan_ship_date and box.myanmar_received_date else None
+        )
+    ctx = {"cargos": cargos, "selected": selected, "boxes": boxes}
+    if is_htmx(request) and request.headers.get("HX-Target") == "history-results":
+        return render(request, "tracker/partials/history_results.html", ctx)
+    return render(request, "tracker/cargo_history.html", ctx)
 
 
 # --- CSV import --------------------------------------------------------------

@@ -1,24 +1,24 @@
 {% load tracker_tags %}
-<div id="request-{{ r.pk }}" class="rounded-xl bg-white p-3 shadow-sm ring-1 ring-slate-200">
+<div id="request-{{ r.pk }}" class="card p-4">
   <div class="flex items-start justify-between gap-3">
     <div class="min-w-0">
       <div class="flex items-center gap-2"><span class="font-semibold">{{ r.customer }}</span><span class="{{ r.status|badge }}">{{ r.get_status_display }}</span></div>
       <div class="text-sm">{{ r.type }} {{ r.item_name }}{% if r.flex %} · {{ r.flex }}{% endif %}{% if r.loft %} · {{ r.loft }}°{% endif %} <b>×{{ r.qty }}</b></div>
-      {% if r.note %}<div class="text-xs italic text-slate-500">{{ r.note }}</div>{% endif %}
+      {% if r.note %}<div class="text-xs italic text-stone-500">{{ r.note }}</div>{% endif %}
       {% if r.japan_item %}
         <div class="mt-1 text-xs text-violet-700">📦 In <a class="font-semibold underline" href="{% url 'box_detail' r.box_id %}">{{ r.box.label }}</a>: {{ r.japan_item.item_name }} ×{{ r.japan_item.qty }}
-          <button class="ml-1 text-slate-500 underline" hx-post="{% url 'request_detach' r.pk %}" hx-target="#request-{{ r.pk }}" hx-swap="outerHTML">detach</button></div>
+          <button class="ml-1 text-stone-500 underline" hx-post="{% url 'request_detach' r.pk %}" hx-target="#request-{{ r.pk }}" hx-swap="outerHTML">detach</button></div>
       {% endif %}
     </div>
-    <a href="{% url 'request_edit' r.pk %}" class="shrink-0 text-xs text-slate-500 underline">edit</a>
+    <a href="{% url 'request_edit' r.pk %}" class="shrink-0 text-xs text-stone-500 underline">edit</a>
   </div>
   <div class="mt-2 flex flex-wrap items-center gap-2">
     <select name="status" hx-post="{% url 'request_status' r.pk %}" hx-target="#request-{{ r.pk }}" hx-swap="outerHTML"
-            class="rounded-lg border border-slate-300 px-2 py-1.5 text-sm">
+            class="field !w-auto !py-1.5 text-sm">
       {% for value, label in status_choices %}<option value="{{ value }}" {% if r.status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
     </select>
     {% if not r.japan_item %}
-      <button class="rounded-lg bg-violet-50 px-3 py-1.5 text-sm font-semibold text-violet-800 ring-1 ring-violet-200"
+      <button class="btn bg-violet-50 !py-1.5 text-violet-800 hover:bg-violet-100"
               hx-get="{% url 'request_attach' r.pk %}" hx-target="#attach-{{ r.pk }}">📦 Attach to box item</button>
     {% endif %}
   </div>

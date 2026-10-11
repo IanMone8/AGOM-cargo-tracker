@@ -1,53 +1,105 @@
-{% load static %}<!doctype html>
+{% load static tracker_tags %}<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#065f46">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f3b2c">
   <title>{% block title %}AGOM Cargo Tracker{% endblock %}</title>
+  <link rel="icon" href="{% static 'img/agom-logo.png' %}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com/3.4.16"></script>
   <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"></script>
-  <style>
-    .htmx-request.htmx-indicator, .htmx-request .htmx-indicator { opacity: 1 }
-    .htmx-indicator { opacity: 0; transition: opacity 150ms }
-    .htmx-request button { opacity: .6 }
-  </style>
+  <link rel="stylesheet" href="{% static 'css/agom.css' %}">
 </head>
-<body class="min-h-screen bg-slate-50 text-slate-900" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+<body class="min-h-screen antialiased" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
 {% if user.is_authenticated %}
-  <header class="sticky top-0 z-20 bg-emerald-800 text-white shadow">
-    <div class="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-      <a href="{% url 'dashboard' %}" class="text-lg font-bold tracking-tight">⛳ AGOM Cargo</a>
-      <div class="flex items-center gap-3 text-sm">
-        <span class="hidden sm:inline">{{ user.get_username }} · <span class="opacity-80">{{ role_name }}</span></span>
-        {% if user.is_staff %}<a href="{% url 'admin:index' %}" class="underline-offset-2 hover:underline">Admin</a>{% endif %}
+{% with name=request.resolver_match.url_name %}
+  <!-- Sidebar: fixed on desktop, slide-in drawer on phones -->
+  <div id="sidebar-overlay" class="fixed inset-0 z-30 hidden bg-black/40 lg:hidden" onclick="toggleSidebar(false)"></div>
+  <aside id="sidebar" class="sidebar fixed inset-y-0 left-0 z-40 flex w-72 -translate-x-full flex-col px-4 pb-5 pt-5 text-white transition-transform duration-200 lg:w-64 lg:translate-x-0">
+    <div class="flex items-center justify-between px-2">
+      <a href="{% url 'dashboard' %}" class="flex items-center gap-3">
+        <img src="{% static 'img/agom-logo.png' %}" alt="AGOM" class="h-11 w-auto max-w-[9rem] rounded-xl bg-white/95 object-contain p-1" onerror="this.style.display='none'">
+        <span class="leading-tight"><span class="block text-xs font-semibold uppercase tracking-[0.18em] text-emerald-200/80">AGOM</span><span class="block text-base font-bold">Cargo Tracker</span></span>
+      </a>
+      <button class="rounded-lg p-2 hover:bg-white/10 lg:hidden" onclick="toggleSidebar(false)" aria-label="Close menu">{% icon "x" %}</button>
+    </div>
+
+    <nav class="mt-8 flex-1 space-y-1">
+      <p class="px-3 pb-1 text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-emerald-200/60">Overview</p>
+      <a href="{% url 'dashboard' %}" class="sidebar-link {% if name == 'dashboard' %}active{% endif %}">{% icon "home" %} Dashboard</a>
+      <a href="{% url 'box_list' %}" class="sidebar-link {% if name == 'box_list' or name == 'box_detail' or name == 'box_edit' or name == 'box_create' %}active{% endif %}">{% icon "box" %} Shipments</a>
+      <a href="{% url 'cargo_history' %}" class="sidebar-link {% if name == 'cargo_history' %}active{% endif %}">{% icon "history" %} Cargo history</a>
+      <a href="{% url 'request_list' %}" class="sidebar-link {% if 'request' in name %}active{% endif %}">{% icon "users" %} Customer requests</a>
+      {% if can_edit_japan %}
+      <p class="px-3 pb-1 pt-5 text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-emerald-200/60">Japan</p>
+      <a href="{% url 'csv_import' %}" class="sidebar-link {% if 'csv' in name %}active{% endif %}">{% icon "upload" %} CSV import</a>
+      {% endif %}
+      {% if user.is_staff %}
+      <a href="{% url 'admin:index' %}" class="sidebar-link">{% icon "cog" %} Admin</a>
+      {% endif %}
+    </nav>
+
+    <div class="rounded-2xl bg-white/[0.07] p-3">
+      <div class="flex items-center gap-3">
+        <div class="grid h-10 w-10 place-items-center rounded-full bg-emerald-400/20 font-bold uppercase text-emerald-100">{{ user.get_username|slice:":1" }}</div>
+        <div class="min-w-0 flex-1"><div class="truncate text-sm font-semibold">{{ user.get_username }}</div><div class="text-xs text-emerald-200/80">{{ role_name }}</div></div>
         <form method="post" action="{% url 'logout' %}">{% csrf_token %}
-          <button class="rounded bg-emerald-700 px-2 py-1 hover:bg-emerald-600">Log out</button>
+          <button class="rounded-lg p-2 text-emerald-100 hover:bg-white/10" title="Log out" aria-label="Log out">{% icon "logout" %}</button>
         </form>
       </div>
     </div>
-    {% with name=request.resolver_match.url_name %}
-    <nav class="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-2 pb-2 text-sm font-medium">
-      <a href="{% url 'dashboard' %}" class="whitespace-nowrap rounded-lg px-3 py-1.5 {% if name == 'dashboard' %}bg-white text-emerald-900{% else %}hover:bg-emerald-700{% endif %}">Dashboard</a>
-      <a href="{% url 'box_list' %}" class="whitespace-nowrap rounded-lg px-3 py-1.5 {% if 'box' in name %}bg-white text-emerald-900{% else %}hover:bg-emerald-700{% endif %}">Boxes</a>
-      <a href="{% url 'request_list' %}" class="whitespace-nowrap rounded-lg px-3 py-1.5 {% if 'request' in name %}bg-white text-emerald-900{% else %}hover:bg-emerald-700{% endif %}">Requests</a>
+  </aside>
+
+  <div class="lg:pl-64">
+    <!-- Mobile top bar -->
+    <header class="sidebar sticky top-0 z-20 flex items-center justify-between px-4 py-3 text-white shadow-lg lg:hidden">
+      <button class="-ml-1 rounded-lg p-2 hover:bg-white/10" onclick="toggleSidebar(true)" aria-label="Open menu">{% icon "menu" "w-6 h-6" %}</button>
+      <a href="{% url 'dashboard' %}" class="flex items-center gap-2">
+        <img src="{% static 'img/agom-logo.png' %}" alt="AGOM" class="h-8 w-auto max-w-[6rem] rounded-lg bg-white/95 object-contain p-0.5" onerror="this.style.display='none'">
+        <span class="font-bold">Cargo Tracker</span>
+      </a>
       {% if can_edit_japan %}
-      <a href="{% url 'csv_import' %}" class="whitespace-nowrap rounded-lg px-3 py-1.5 {% if 'csv' in name %}bg-white text-emerald-900{% else %}hover:bg-emerald-700{% endif %}">CSV import</a>
+        <button class="rounded-lg bg-white/15 p-2 hover:bg-white/25" hx-get="{% url 'box_create' %}" hx-target="#modal" aria-label="Add box">{% icon "plus" "w-6 h-6" %}</button>
+      {% else %}<span class="w-10"></span>{% endif %}
+    </header>
+
+    <main class="mx-auto max-w-6xl px-4 pb-20 pt-5 sm:px-6 lg:px-8 lg:pt-8">
+      {% if messages %}
+        <div class="mb-5 space-y-2">
+          {% for message in messages %}
+            <div class="card flex items-center gap-3 px-4 py-3 text-sm font-medium {% if message.tags == 'error' %}text-red-800{% else %}text-emerald-900{% endif %}">
+              <span class="{% if message.tags == 'error' %}text-red-600{% else %}text-emerald-600{% endif %}">{% if message.tags == 'error' %}{% icon "alert" %}{% else %}{% icon "check" %}{% endif %}</span>{{ message }}
+            </div>
+          {% endfor %}
+        </div>
       {% endif %}
-    </nav>
-    {% endwith %}
-  </header>
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+{% endwith %}
+  <div id="modal"></div>
+  <script>
+    function toggleSidebar(open) {
+      document.getElementById('sidebar').classList.toggle('-translate-x-full', !open);
+      document.getElementById('sidebar-overlay').classList.toggle('hidden', !open);
+    }
+    // Hide the card and flag it for the formset to skip (keeps form indexes intact).
+    function deleteItemCard(btn) {
+      const card = btn.closest('.item-card');
+      const flag = card.querySelector('[data-delete-flag]');
+      if (flag) { flag.value = 'on'; card.style.display = 'none'; } else { card.remove(); }
+    }
+    function closeModal() { document.getElementById('modal').innerHTML = ''; document.body.classList.remove('overflow-hidden'); }
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+    document.body.addEventListener('htmx:afterSwap', e => {
+      if (e.detail.target.id === 'modal') document.body.classList.toggle('overflow-hidden', !!e.detail.target.innerHTML.trim());
+    });
+  </script>
+{% else %}
+  {% block public %}{% endblock %}
 {% endif %}
-  <main class="mx-auto max-w-5xl px-4 py-4 pb-16">
-    {% if messages %}
-      <div class="mb-4 space-y-2">
-        {% for message in messages %}
-          <div class="rounded-lg px-4 py-3 text-sm {% if message.tags == 'error' %}bg-red-100 text-red-800{% else %}bg-emerald-100 text-emerald-900{% endif %}">{{ message }}</div>
-        {% endfor %}
-      </div>
-    {% endif %}
-    {% block content %}{% endblock %}
-  </main>
   {% block datalists %}{% endblock %}
 </body>
 </html>

@@ -98,7 +98,7 @@ class PageTests(BaseTest):
         self.client.force_login(self.owner)
         for name, args in [("dashboard", []), ("box_list", []), ("box_detail", [self.box.pk]),
                            ("box_edit", [self.box.pk]), ("box_create", []), ("request_list", []),
-                           ("csv_import", []), ("csv_template", [])]:
+                           ("csv_import", []), ("csv_template", []), ("cargo_history", [])]:
             with self.subTest(name=name):
                 self.assertEqual(self.client.get(reverse(name, args=args)).status_code, 200)
 
@@ -155,3 +155,138 @@ class CSVImportTests(BaseTest):
     def test_replace(self):
         self.upload("box,type,item_name\nGN-3,Bag,Stand bag\n", replace="on")
         self.assertEqual(list(self.box.items.values_list("item_name", flat=True)), ["Stand bag"])
+
+
+class AddBoxModalTests(BaseTest):
+    def post_data(self, **items):
+        data = {"cargo": self.cargo.pk, "box_no": "9", "notes": "fragile",
+                "items-TOTAL_FORMS": "3", "items-INITIAL_FORMS": "0",
+                "items-MIN_NUM_FORMS": "0", "items-MAX_NUM_FORMS": "1000"}
+        data.update(items)
+        return data
+
+    def test_modal_opens_over_page(self):
+        self.client.force_login(self.japan)
+        r = self.client.get(reverse("box_create"), HTTP_HX_REQUEST="true")
+        self.assertContains(r, 'role="dialog"')
+        self.assertContains(r, "Items inside")
+        self.assertContains(r, 'name="items-0-shaft_material"')
+        self.assertNotContains(r, "<html")  # fragment, not a full page
+
+    def test_add_item_card(self):
+        self.client.force_login(self.japan)
+        r = self.client.get(reverse("box_item_card"), {"items-TOTAL_FORMS": "2"}, HTTP_HX_REQUEST="true")
+        self.assertContains(r, 'name="items-2-item_name"')
+        self.assertContains(r, 'id="id_items-TOTAL_FORMS" value="3" hx-swap-oob="true"')
+        self.assertContains(r, "Delete")
+
+    def test_create_box_with_items_skips_deleted_card(self):
+        # Card 1 was deleted in the browser: it is posted half-filled with DELETE=on.
+        data = self.post_data(**{
+            "items-1-item_name": "half typed", "items-1-DELETE": "on",
+            "items-0-item_name": "TSR2 Driver", "items-0-type": "Club", "items-0-qty": "1",
+            "items-0-quantity_unit": "pcs", "items-0-brand": "Titleist", "items-0-model": "TSR2",
+            "items-0-club_type": "Driver", "items-0-club_number": "1W", "items-0-loft": "10",
+            "items-0-flex": "S", "items-0-shaft_material": "graphite", "items-0-specification": "45.5in",
+            "items-0-color": "Black", "items-0-condition": "used", "items-0-price_jpy": "25000",
+            "items-2-item_name": "Pro V1", "items-2-type": "Balls", "items-2-qty": "3",
+            "items-2-quantity_unit": "dozen", "items-2-condition": "new",
+        })
+        r = self.htmx(self.japan, reverse("box_create"), data)
+        box = Box.objects.get(cargo=self.cargo, box_no=9)
+        self.assertEqual(r.status_code, 204)
+        self.assertEqual(r["HX-Redirect"], reverse("box_detail", args=[box.pk]))
+        self.assertEqual(box.notes, "fragile")
+        driver, balls = box.items.order_by("id")
+        self.assertEqual((driver.brand, driver.club_number, driver.shaft_material, driver.price_jpy),
+                         ("Titleist", "1W", "graphite", 25000))
+        self.assertEqual((balls.qty, balls.quantity_unit, balls.price_jpy), (3, "dozen", None))
+
+    def test_invalid_box_rerenders_modal(self):
+        data = self.post_data(cargo="", **{"items-0-item_name": "No type", "items-0-qty": "1",
+                                           "items-0-quantity_unit": "pcs", "items-0-condition": "new"})
+        r = self.htmx(self.japan, reverse("box_create"), data)
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'role="dialog"')
+        self.assertContains(r, "This field is required")
+        self.assertFalse(Box.objects.filter(box_no=9).exists())
+
+    def test_duplicate_box_id_rejected(self):
+        r = self.htmx(self.japan, reverse("box_create"), self.post_data(box_no="3"))
+        self.assertContains(r, "already exists")
+
+    def test_myanmar_cannot_add_box(self):
+        self.client.force_login(self.myanmar)
+        self.assertEqual(self.client.get(reverse("box_create")).status_code, 403)
+
+
+class MyanmarCheckFlowTests(BaseTest):
+    def test_start_check(self):
+        self.client.force_login(self.myanmar)
+        detail = reverse("box_detail", args=[self.box.pk])
+        r = self.client.get(detail)
+        self.assertContains(r, "Start Myanmar check")
+        self.assertNotContains(r, "✓ Matched")
+
+        r = self.client.post(reverse("box_start_check", args=[self.box.pk]))
+        self.assertRedirects(r, detail + "#items", fetch_redirect_response=False)
+        self.box.refresh_from_db()
+        self.assertEqual(self.box.status, Box.Status.ARRIVED)
+        self.assertIsNotNone(self.box.myanmar_received_date)
+
+        r = self.client.get(detail)
+        self.assertNotContains(r, "Start Myanmar check")
+        self.assertContains(r, "✓ Matched")
+
+    def test_japan_sender_cannot_start_check(self):
+        self.client.force_login(self.japan)
+        r = self.client.post(reverse("box_start_check", args=[self.box.pk]))
+        self.assertEqual(r.status_code, 403)
+        self.assertNotContains(self.client.get(reverse("box_detail", args=[self.box.pk])), "Start Myanmar check")
+
+
+class CargoHistoryTests(BaseTest):
+    def test_history_and_filter(self):
+        import datetime
+        self.box.japan_ship_date = datetime.date(2026, 9, 1)
+        self.box.myanmar_received_date = datetime.date(2026, 9, 15)
+        self.box.save()
+        other = Cargo.objects.create(code="KL", name="KL Cargo")
+        Box.objects.create(cargo=other, box_no=1)
+        self.client.force_login(self.owner)
+        r = self.client.get(reverse("cargo_history"))
+        self.assertContains(r, "14 days")
+        r = self.client.get(reverse("cargo_history"), {"cargo": "kl"},
+                            HTTP_HX_REQUEST="true", HTTP_HX_TARGET="history-results")
+        self.assertContains(r, "KL-1")
+        self.assertNotContains(r, "GN-3")
+
+
+class CSVNewFieldsTests(CSVImportTests):
+    def test_new_columns_and_aliases(self):
+        r = self.upload(
+            "Box,Name,Type,Qty,Unit,Brand,Model,Club type,Club number,Loft,Flex,Shaft material,"
+            "Specification,Color,Japan condition,Amount\n"
+            "GN-3,Qi10 Driver,Club,1,pcs,TaylorMade,Qi10,Driver,1W,10.5,x,Graphite,Diamana 60,Navy,used,30000\n"
+        )
+        self.assertContains(r, "Imported 1 item(s)")
+        item = self.box.items.get(item_name="Qi10 Driver")
+        self.assertEqual(
+            (item.brand, item.model, item.club_type, item.club_number, item.flex, item.shaft_material,
+             item.specification, item.color, item.condition, item.price_jpy, item.quantity_unit),
+            ("TaylorMade", "Qi10", "Driver", "1W", "X", "graphite", "Diamana 60", "Navy", "used", 30000, "pcs"),
+        )
+
+    def test_bad_unit_and_shaft(self):
+        r = self.upload("box,type,item_name,quantity_unit,shaft_material\nGN-3,Club,X,bag,wood\n")
+        self.assertContains(r, "quantity_unit must be one of")
+        self.assertContains(r, "shaft_material must be steel or graphite")
+
+    def test_template_round_trips(self):
+        Cargo.objects.create(code="KL", name="KL Cargo")
+        self.client.force_login(self.owner)
+        template = self.client.get(reverse("csv_template")).content.decode()
+        self.assertTrue(template.startswith("box,item_name,type,qty,quantity_unit,brand,model,club_type"))
+        r = self.upload(template)
+        self.assertContains(r, "Imported 3 item(s) into 2 box(es)")
+        self.assertEqual(JapanItem.objects.get(item_name="Pro V1 balls").quantity_unit, "dozen")

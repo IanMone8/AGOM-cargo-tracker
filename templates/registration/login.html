@@ -1,27 +1,28 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Log in · AGOM Cargo Tracker{% endblock %}
-{% block content %}
-<div class="mx-auto mt-10 max-w-sm">
-  <div class="mb-6 text-center">
-    <div class="text-4xl">⛳</div>
-    <h1 class="mt-2 text-2xl font-bold text-emerald-900">AGOM Cargo Tracker</h1>
-    <p class="text-sm text-slate-500">Japan → Myanmar golf shipments</p>
+{% block public %}
+<div class="sidebar flex min-h-screen items-center justify-center px-4 py-10">
+  <div class="w-full max-w-sm">
+    <div class="mb-6 text-center text-white">
+      <img src="{% static 'img/agom-logo.png' %}" alt="AGOM" class="mx-auto mb-3 h-20 w-auto max-w-[12rem] rounded-2xl bg-white object-contain p-2 shadow-lg" onerror="this.style.display='none'">
+      <h1 class="text-2xl font-bold">AGOM Cargo Tracker</h1>
+      <p class="text-sm text-emerald-100/80">Japan → Myanmar golf shipments</p>
+    </div>
+    <form method="post" class="card space-y-4 p-6">
+      {% csrf_token %}
+      {% if form.errors %}
+        <p class="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-800">Wrong username or password.</p>
+      {% endif %}
+      <label class="block text-sm font-semibold">Username
+        <input name="username" autocomplete="username" autocapitalize="none" required autofocus class="field mt-1" value="{{ form.username.value|default:'' }}">
+      </label>
+      <label class="block text-sm font-semibold">Password
+        <input type="password" name="password" autocomplete="current-password" required class="field mt-1">
+      </label>
+      <input type="hidden" name="next" value="{{ next }}">
+      <button class="btn btn-primary w-full py-3">Log in</button>
+    </form>
   </div>
-  <form method="post" class="space-y-4 rounded-2xl bg-white p-6 shadow">
-    {% csrf_token %}
-    {% if form.errors %}
-      <p class="rounded-lg bg-red-100 px-3 py-2 text-sm text-red-800">Wrong username or password.</p>
-    {% endif %}
-    <label class="block text-sm font-medium">Username
-      <input name="username" autocomplete="username" autocapitalize="none" required autofocus
-             class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-base" value="{{ form.username.value|default:'' }}">
-    </label>
-    <label class="block text-sm font-medium">Password
-      <input type="password" name="password" autocomplete="current-password" required
-             class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-base">
-    </label>
-    <input type="hidden" name="next" value="{{ next }}">
-    <button class="w-full rounded-lg bg-emerald-700 py-2.5 font-semibold text-white hover:bg-emerald-600">Log in</button>
-  </form>
 </div>
 {% endblock %}

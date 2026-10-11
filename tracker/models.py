@@ -109,22 +109,48 @@ class Box(models.Model):
 
 class JapanItem(models.Model):
     class Flex(models.TextChoices):
+        L = "L", "L"
+        A = "A", "A"
         R = "R", "R"
         SR = "SR", "SR"
         S = "S", "S"
+        X = "X", "X"
 
     class Condition(models.TextChoices):
         NEW = "new", "New"
         USED = "used", "Used"
 
+    class Unit(models.TextChoices):
+        PCS = "pcs", "pcs"
+        SET = "set", "set"
+        PAIR = "pair", "pair"
+        DOZEN = "dozen", "dozen"
+        BOX = "box", "box"
+
+    class Shaft(models.TextChoices):
+        STEEL = "steel", "Steel"
+        GRAPHITE = "graphite", "Graphite"
+
     box = models.ForeignKey(Box, on_delete=models.CASCADE, related_name="items")
-    type = models.CharField(max_length=50, help_text="e.g. Driver, Iron set, Putter")
-    item_name = models.CharField(max_length=200)
-    flex = models.CharField(max_length=3, choices=Flex.choices, blank=True)
-    loft = models.CharField(max_length=20, blank=True)
+    item_name = models.CharField("Name", max_length=200)
+    type = models.CharField(max_length=50, help_text="Category, e.g. Club, Bag, Balls, Accessory")
     qty = models.PositiveIntegerField(default=1)
-    condition = models.CharField(max_length=5, choices=Condition.choices, default=Condition.NEW)
-    price_jpy = models.PositiveIntegerField(null=True, blank=True)
+    quantity_unit = models.CharField(max_length=5, choices=Unit.choices, default=Unit.PCS)
+    brand = models.CharField(max_length=60, blank=True)
+    model = models.CharField(max_length=120, blank=True)
+    club_type = models.CharField(
+        "Club / item type", max_length=50, blank=True, help_text="e.g. Driver, Iron set, Putter"
+    )
+    club_number = models.CharField(max_length=20, blank=True, help_text="e.g. 1W, 3W, 7, 5-P")
+    loft = models.CharField(max_length=20, blank=True)
+    flex = models.CharField(max_length=3, choices=Flex.choices, blank=True)
+    shaft_material = models.CharField(max_length=10, choices=Shaft.choices, blank=True)
+    specification = models.CharField(max_length=255, blank=True, help_text="Shaft model, length, grip…")
+    color = models.CharField(max_length=40, blank=True)
+    condition = models.CharField(
+        "Japan condition", max_length=5, choices=Condition.choices, default=Condition.NEW
+    )
+    price_jpy = models.PositiveIntegerField("Amount (JPY)", null=True, blank=True)
     customer = models.CharField(max_length=100, blank=True)
     note = models.CharField(max_length=255, blank=True)
 
@@ -132,12 +158,20 @@ class JapanItem(models.Model):
         ordering = ["box", "id"]
 
     def __str__(self):
-        bits = [self.type, self.item_name, self.flex, self.loft]
+        bits = [self.item_name, self.flex, self.loft]
         return f"{self.box.label}: " + " ".join(b for b in bits if b) + f" ×{self.qty}"
 
     @property
     def spec(self):
-        return " · ".join(b for b in [self.flex, self.loft] if b)
+        return " · ".join(b for b in [self.club_number, self.flex, self.loft] if b)
+
+    @property
+    def details(self):
+        """Short one-line description for cards."""
+        bits = [self.brand, self.model, self.club_type or self.type, self.club_number,
+                self.flex, f"{self.loft}°" if self.loft else "",
+                self.get_shaft_material_display() if self.shaft_material else "", self.color]
+        return " · ".join(b for b in bits if b)
 
 
 class ReceiveCheck(models.Model):

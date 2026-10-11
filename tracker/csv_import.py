@@ -13,14 +13,24 @@ from django.db import transaction
 
 from .models import Box, Cargo, JapanItem
 
-COLUMNS = ["box", "type", "item_name", "flex", "loft", "qty", "condition", "price_jpy", "customer", "note"]
+COLUMNS = [
+    "box", "item_name", "type", "qty", "quantity_unit", "brand", "model", "club_type",
+    "club_number", "loft", "flex", "shaft_material", "specification", "color",
+    "condition", "price_jpy", "customer", "note",
+]
 REQUIRED = ["box", "type", "item_name"]
+# Friendlier header names that map onto the real columns.
+ALIASES = {"name": "item_name", "amount": "price_jpy", "unit": "quantity_unit",
+           "japan_condition": "condition", "shaft": "shaft_material"}
 BOX_RE = re.compile(r"^\s*([A-Za-z]+)\s*-?\s*(\d+)\s*$")
 
 TEMPLATE_ROWS = [
-    ["GN-3", "Driver", "Titleist TSR2", "S", "10", "1", "used", "25000", "Ko Aung", "with cover"],
-    ["GN-3", "Iron set", "Mizuno JPX 923 5-P", "R", "", "1", "new", "98000", "", ""],
-    ["KL-1", "Putter", "Scotty Cameron Newport 2", "", "", "2", "used", "", "", "34 inch"],
+    ["GN-3", "Titleist TSR2 Driver", "Club", "1", "pcs", "Titleist", "TSR2", "Driver", "1W",
+     "10", "S", "graphite", "Tour AD UB-6, 45.5in", "Black", "used", "25000", "Ko Aung", "with cover"],
+    ["GN-3", "Mizuno JPX 923 Irons", "Club", "1", "set", "Mizuno", "JPX 923", "Iron set", "5-P",
+     "", "R", "steel", "N.S.PRO 950", "Silver", "new", "98000", "", ""],
+    ["KL-1", "Pro V1 balls", "Balls", "2", "dozen", "Titleist", "Pro V1", "", "",
+     "", "", "", "", "White", "new", "", "", ""],
 ]
 
 
@@ -74,7 +84,8 @@ def import_japan_csv(uploaded_file, replace=False):
             return result
 
     reader = csv.DictReader(io.StringIO(text))
-    headers = [h.strip().lower() for h in (reader.fieldnames or [])]
+    headers = [h.strip().lower().replace(" ", "_") for h in (reader.fieldnames or [])]
+    headers = [ALIASES.get(h, h) for h in headers]
     missing = [c for c in REQUIRED if c not in headers]
     if missing:
         result.errors.append((1, "Missing column(s): " + ", ".join(missing)))
@@ -82,8 +93,10 @@ def import_japan_csv(uploaded_file, replace=False):
     reader.fieldnames = headers
 
     cargos = {c.code: c for c in Cargo.objects.all()}
-    flex_ok = {c for c, _ in JapanItem.Flex.choices}
-    cond_ok = {c for c, _ in JapanItem.Condition.choices}
+    flex_ok = set(JapanItem.Flex.values)
+    cond_ok = set(JapanItem.Condition.values)
+    unit_ok = set(JapanItem.Unit.values)
+    shaft_ok = set(JapanItem.Shaft.values)
     parsed = []  # (cargo_code, box_no, item kwargs)
 
     for row_no, row in enumerate(reader, start=2):
@@ -103,10 +116,16 @@ def import_japan_csv(uploaded_file, replace=False):
                 errors.append((row_no, f"{req} is required"))
         flex = row.get("flex", "").upper()
         if flex and flex not in flex_ok:
-            errors.append((row_no, f"flex must be R, SR or S, got '{flex}'"))
+            errors.append((row_no, f"flex must be one of {', '.join(JapanItem.Flex.values)}, got '{flex}'"))
         condition = (row.get("condition") or "new").lower()
         if condition not in cond_ok:
             errors.append((row_no, f"condition must be new or used, got '{condition}'"))
+        unit = (row.get("quantity_unit") or "pcs").lower()
+        if unit not in unit_ok:
+            errors.append((row_no, f"quantity_unit must be one of {', '.join(sorted(unit_ok))}, got '{unit}'"))
+        shaft = (row.get("shaft_material") or "").lower()
+        if shaft and shaft not in shaft_ok:
+            errors.append((row_no, f"shaft_material must be steel or graphite, got '{shaft}'"))
         qty = _parse_int(row.get("qty"), "qty", errors, row_no, default=1, minimum=1)
         price = _parse_int(row.get("price_jpy"), "price_jpy", errors, row_no)
         parsed.append((code, box_no, dict(
@@ -115,6 +134,14 @@ def import_japan_csv(uploaded_file, replace=False):
             flex=flex,
             loft=row.get("loft", "")[:20],
             qty=qty,
+            quantity_unit=unit,
+            brand=row.get("brand", "")[:60],
+            model=row.get("model", "")[:120],
+            club_type=row.get("club_type", "")[:50],
+            club_number=row.get("club_number", "")[:20],
+            shaft_material=shaft,
+            specification=row.get("specification", "")[:255],
+            color=row.get("color", "")[:40],
             condition=condition,
             price_jpy=price,
             customer=row.get("customer", "")[:100],

@@ -59,10 +59,17 @@ class Command(BaseCommand):
             )
             if created:
                 JapanItem.objects.bulk_create([
-                    JapanItem(box=box, type="Driver", item_name="Titleist TSR2", flex="S", loft="10", qty=1, condition="used", price_jpy=25000, customer="Ko Aung"),
-                    JapanItem(box=box, type="Iron set", item_name="Mizuno JPX 923 5-P", flex="R", qty=1, price_jpy=98000),
-                    JapanItem(box=box, type="Wedge", item_name="Cleveland RTX 6", loft="56", qty=2, condition="used"),
-                    JapanItem(box=box, type="Balls", item_name="Titleist Pro V1 (dozen)", qty=5),
+                    JapanItem(box=box, type="Club", item_name="Titleist TSR2 Driver", brand="Titleist", model="TSR2",
+                              club_type="Driver", club_number="1W", flex="S", loft="10", shaft_material="graphite",
+                              specification="Tour AD UB-6, 45.5in", color="Black", qty=1, condition="used",
+                              price_jpy=25000, customer="Ko Aung"),
+                    JapanItem(box=box, type="Club set", item_name="Mizuno JPX 923 Irons", brand="Mizuno", model="JPX 923",
+                              club_type="Iron set", club_number="5-P", flex="R", shaft_material="steel",
+                              specification="N.S.PRO 950", color="Silver", qty=1, quantity_unit="set", price_jpy=98000),
+                    JapanItem(box=box, type="Club", item_name="Cleveland RTX 6 Wedge", brand="Cleveland", model="RTX 6",
+                              club_type="Wedge", loft="56", shaft_material="steel", qty=2, condition="used"),
+                    JapanItem(box=box, type="Balls", item_name="Titleist Pro V1", brand="Titleist", model="Pro V1",
+                              color="White", qty=5, quantity_unit="dozen"),
                 ])
             box.refresh_status()
         CustomerRequest.objects.get_or_create(

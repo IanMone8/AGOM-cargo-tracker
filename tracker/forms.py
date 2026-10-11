@@ -1,12 +1,10 @@
 from django import forms
+from django.forms import inlineformset_factory
 
 from . import roles
 from .models import Box, Cargo, CustomerRequest, ExtraItem, JapanItem
 
-INPUT = (
-    "w-full rounded-lg border border-slate-300 px-3 py-2 text-base "
-    "focus:border-emerald-600 focus:ring-emerald-600"
-)
+INPUT = "field"  # styled in static/css/agom.css
 
 
 class StyledMixin:
@@ -17,7 +15,7 @@ class StyledMixin:
         for field in self.fields.values():
             w = field.widget
             if isinstance(w, forms.CheckboxInput):
-                w.attrs.setdefault("class", "h-5 w-5")
+                w.attrs.setdefault("class", "h-5 w-5 accent-emerald-700")
             else:
                 w.attrs.setdefault("class", INPUT)
 
@@ -44,17 +42,54 @@ class BoxForm(StyledMixin, forms.ModelForm):
                     self.fields.pop(name)
 
 
+class BoxCreateForm(StyledMixin, forms.ModelForm):
+    """The "Add box" modal: box header fields; items come from ItemFormSet."""
+
+    class Meta:
+        model = Box
+        fields = ["cargo", "box_no", "notes"]
+        labels = {"cargo": "Cargo company", "box_no": "Box ID", "notes": "Box note"}
+        widgets = {
+            "box_no": forms.NumberInput(attrs={"min": 1, "inputmode": "numeric", "placeholder": "e.g. 3"}),
+            "notes": forms.Textarea(attrs={"rows": 2, "placeholder": "Optional"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["cargo"].empty_label = "Choose cargo company…"
+        self.fields["box_no"].help_text = "Number only – shown as CODE-number, e.g. GN-3"
+
+
 class JapanItemForm(StyledMixin, forms.ModelForm):
     class Meta:
         model = JapanItem
-        fields = ["type", "item_name", "flex", "loft", "qty", "condition", "price_jpy", "customer", "note"]
+        fields = [
+            "item_name", "type", "qty", "quantity_unit", "brand", "model", "club_type",
+            "club_number", "loft", "flex", "shaft_material", "specification", "color",
+            "condition", "price_jpy", "customer", "note",
+        ]
         widgets = {
-            "type": forms.TextInput(attrs={"list": "catalog-types"}),
-            "item_name": forms.TextInput(attrs={"list": "catalog-models"}),
-            "loft": forms.TextInput(attrs={"list": "catalog-lofts"}),
+            "item_name": forms.TextInput(attrs={"list": "catalog-models", "placeholder": "e.g. Titleist TSR2 Driver"}),
+            "type": forms.TextInput(attrs={"list": "item-categories", "placeholder": "Club, Bag, Balls…"}),
+            "brand": forms.TextInput(attrs={"list": "brands"}),
+            "club_type": forms.TextInput(attrs={"list": "catalog-types"}),
+            "club_number": forms.TextInput(attrs={"placeholder": "1W, 7, 5-P"}),
+            "loft": forms.TextInput(attrs={"list": "catalog-lofts", "inputmode": "decimal"}),
             "qty": forms.NumberInput(attrs={"min": 1, "inputmode": "numeric"}),
-            "price_jpy": forms.NumberInput(attrs={"inputmode": "numeric"}),
+            "price_jpy": forms.NumberInput(attrs={"inputmode": "numeric", "placeholder": "Optional"}),
         }
+
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for name in ("flex", "shaft_material"):
+            choices = list(self.fields[name].choices)
+            self.fields[name].choices = [("", "Select…")] + choices[1:]
+
+
+ItemFormSet = inlineformset_factory(
+    Box, JapanItem, form=JapanItemForm, extra=1, can_delete=True
+)
 
 
 class ExtraItemForm(StyledMixin, forms.ModelForm):

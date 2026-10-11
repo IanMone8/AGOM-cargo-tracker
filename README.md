@@ -11,18 +11,33 @@ It uses SQLite in development and Postgres in production (via `DATABASE_URL`).
 | Page | What it does |
 | --- | --- |
 | **Login** | Django's built-in auth |
-| **Dashboard** | Boxes in transit · arrived but not checked · with mismatches · open customer requests |
-| **Boxes** | List with cargo / status filters (live, via HTMX) |
-| **Box detail** | Japan list with one-tap **✓ Matched / ✗ Missing / ± Wrong qty**, undo, add extra items, a live mismatch summary, and an "Arrived today" button |
+| **Dashboard** | Cards for Cargos · In transit · Needs review · Open requests, plus lists of boxes to review, in transit and recently updated |
+| **Shipments** | All boxes with cargo / status filters (live, via HTMX) and an **Add box** button |
+| **Add box** (modal) | Cargo company, Box ID, box note and an **Items inside** list. **Add item** adds another item card; each card has a **Delete** button |
+| **Box detail** | Japan list, **Start Myanmar check**, then one-tap **✓ Matched / ✗ Missing / ± Wrong qty**, undo, extra items and a live mismatch summary |
+| **Cargo history** | One card per cargo company (boxes, in transit, checked, issues, average transit days) and its box history, newest first |
 | **Requests** | Customer requests: create, change status inline, **attach to a Japan box item** (suggested matches or pick box → item) |
 | **CSV import** | Import Japan packing lists (several boxes per file), all-or-nothing validation, template download |
 | **Admin** | Every model is registered at `/admin/` |
+
+### Look and layout
+Green golf theme with a left sidebar (Dashboard, Shipments, Cargo history, Customer requests, CSV import).
+On phones the sidebar becomes a slide-in menu and **Add box** is the ＋ in the top bar.
+Theme styles live in `static/css/agom.css`; Tailwind (CDN) handles layout.
+
+**Logo:** put the logo at `static/img/agom-logo.png`. The sidebar, phone header, login page and
+favicon use it. Until the file exists the image is simply hidden.
+
+### Myanmar check flow
+The Myanmar checker opens a box and taps **Start Myanmar check**. That records today as the
+Myanmar received date (status → Arrived) and shows the check buttons on every item.
+The box becomes **Checked** once every item has a result.
 
 ### Box status rules
 Status is `Packed → Shipped → Arrived → Checked`. It moves forward automatically:
 
 * a Japan ship date sets **Shipped**
-* a Myanmar received date (or the *Arrived today* button) sets **Arrived**
+* a Myanmar received date (or **Start Myanmar check**) sets **Arrived**
 * once every Japan item has a check result, the box becomes **Checked** (undoing a check moves it back to Arrived)
 
 You can still pick a status by hand on the *Edit* page. A manual choice overrides the automatic rules.
@@ -68,15 +83,19 @@ Run the tests with `python manage.py test`.
 ## CSV format for Japan lists
 
 ```
-box,type,item_name,flex,loft,qty,condition,price_jpy,customer,note
-GN-3,Driver,Titleist TSR2,S,10,1,used,25000,Ko Aung,with cover
-GN-3,Iron set,Mizuno JPX 923 5-P,R,,1,new,98000,,
-KL-1,Putter,Scotty Cameron Newport 2,,,2,used,,,34 inch
+box,item_name,type,qty,quantity_unit,brand,model,club_type,club_number,loft,flex,shaft_material,specification,color,condition,price_jpy,customer,note
+GN-3,Titleist TSR2 Driver,Club,1,pcs,Titleist,TSR2,Driver,1W,10,S,graphite,"Tour AD UB-6, 45.5in",Black,used,25000,Ko Aung,with cover
+GN-3,Mizuno JPX 923 Irons,Club,1,set,Mizuno,JPX 923,Iron set,5-P,,R,steel,N.S.PRO 950,Silver,new,98000,,
+KL-1,Pro V1 balls,Balls,2,dozen,Titleist,Pro V1,,,,,,,White,new,,,
 ```
 
-* Required: `box`, `type`, `item_name`. The other columns are optional (`qty` defaults to 1, `condition` to `new`).
+* Required: `box`, `type`, `item_name`. All other columns are optional and may be left out of the file.
+* `type` is the category (Club, Bag, Balls…); `club_type` is the club / item type (Driver, Iron set, Putter…).
+* `qty` defaults to 1, `quantity_unit` to `pcs` (pcs, set, pair, dozen, box), `condition` (Japan condition) to `new` (new / used).
+* `shaft_material` is `steel`, `graphite` or empty. `price_jpy` is the optional amount.
+* Friendlier headers also work: `name`, `amount`, `unit`, `japan condition`, `club type` (case and spaces don't matter).
 * `box` is the cargo code plus the number (`GN-3`). The cargo company must already exist; missing boxes are created.
-* `flex` is `R`, `SR`, `S` or empty. `price_jpy` may contain `¥` and commas.
+* `flex` is `L`, `A`, `R`, `SR`, `S`, `X` or empty. `price_jpy` may contain `¥` and commas.
 * UTF-8 (including Excel's "CSV UTF-8") and Shift-JIS files are accepted.
 * If any row has an error, **nothing is imported** and every bad row is listed.
 * Tick *Replace existing Japan items* to re-import a corrected list. This deletes those boxes' current items and their checks first.
@@ -124,12 +143,15 @@ tracker/
   csv_import.py  CSV parser/validator
   admin.py       Django admin registration
   management/commands/  setup_roles, seed_demo
-templates/       base layout, pages, HTMX partials
+templates/       base layout (sidebar), pages, HTMX partials (Add box modal, item cards…)
+static/          css/agom.css (golf theme), img/agom-logo.png (add your logo here)
 ```
 
 ## Data model notes
 
-* `Box.box_no` is a number; the label (`GN-3`) is built from the cargo code.
+* `Box.box_no` is a number (the "Box ID" in the Add box form); the label (`GN-3`) is built from the cargo code.
+* Japan items store: name, type, qty, quantity unit, brand, model, club / item type, club number, loft, flex,
+  shaft material, specification, color, Japan condition, amount (optional), customer and note.
 * `ReceiveCheck` is one-to-one with `JapanItem`, so tapping a button again overwrites the check.
 * `CustomerRequest` has optional `box` **and** `japan_item` links. Attaching sets the status to *In box*; detaching sets it back to *Ordered*.
 * `Catalog` entries feed the type / model / loft suggestions in the item and request forms. Manage them in `/admin/`.
