@@ -441,3 +441,14 @@ class SidebarIconTests(BaseTest):
                 self.assertIn('width="24" height="24"', link)
                 self.assertIn("onerror=", link)
                 self.assertIn("<svg", link)  # line-icon fallback if the PNG is missing
+
+
+class FaviconTests(BaseTest):
+    def test_website_icon_is_3d_logo(self):
+        for url in (reverse("login"), reverse("dashboard")):
+            if url == reverse("dashboard"):
+                self.client.force_login(self.owner)
+            with self.subTest(url=url):
+                r = self.client.get(url)
+                self.assertContains(r, '<link rel="icon" type="image/png" href="/static/img/3D%20logo.png')
+                self.assertContains(r, '<link rel="apple-touch-icon" href="/static/img/3D%20logo.png')
