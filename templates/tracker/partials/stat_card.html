@@ -3,17 +3,17 @@ Dashboard stat card. Context: tone, href, title, value, optional total, caption,
 Styled with Tailwind utilities only, so it never depends on a cached copy of agom.css.
 {% endcomment %}
 <a href="{{ href }}" data-stat="{{ tone }}"
-   class="group relative flex h-[12.5rem] min-w-0 flex-col overflow-hidden rounded-[1.75rem] p-4 transition duration-150 hover:-translate-y-0.5 active:translate-y-px sm:h-[13.5rem] sm:p-5 xl:h-[15rem]
+   class="group relative flex h-[178px] min-w-0 flex-col overflow-hidden rounded-[1.75rem] p-4 transition duration-150 hover:-translate-y-0.5 active:translate-y-px xl:px-5
           {% if tone == 'peach' %}bg-[#fde8dc] shadow-[inset_0_-5px_0_#f6cfb9,0_14px_28px_-18px_rgba(196,112,70,0.55)]
           {% elif tone == 'lavender' %}bg-[#ece8fb] shadow-[inset_0_-5px_0_#d8d0f3,0_14px_28px_-18px_rgba(110,90,190,0.5)]
           {% elif tone == 'green' %}bg-[#e2f2e4] shadow-[inset_0_-5px_0_#c6e3ca,0_14px_28px_-18px_rgba(46,125,70,0.5)]
           {% else %}bg-[#fbf3dd] shadow-[inset_0_-5px_0_#f0e1b5,0_14px_28px_-18px_rgba(170,135,50,0.5)]{% endif %}">
-  <span class="stat-title block text-[0.95rem] font-bold leading-tight text-stone-900 sm:text-base">{{ title }}</span>
-  <span class="stat-value mt-2 block text-[2.6rem] font-extrabold leading-none tracking-tight text-stone-900 tabular-nums sm:mt-3 sm:text-5xl">{{ value }}{% if total is not None %}<span class="stat-total ml-1 text-2xl font-bold text-stone-900/35 sm:text-3xl">/ {{ total }}</span>{% endif %}</span>
+  <span class="stat-title relative z-10 block text-[0.85rem] font-bold leading-tight text-stone-900 sm:text-[0.95rem] xl:text-base">{{ title }}</span>
+  <span class="stat-value relative z-10 mt-2 block w-fit text-[2.6rem] font-extrabold leading-none tracking-tight text-stone-900 tabular-nums xl:text-[2.75rem]">{{ value }}{% if total is not None %}<span class="stat-total ml-1 text-2xl font-bold text-stone-900/35">/ {{ total }}</span>{% endif %}</span>
   <span class="mt-auto flex items-end justify-between gap-2">
-    <span class="stat-caption min-w-0 pb-1 text-[0.72rem] leading-snug text-stone-500 sm:text-[0.8rem] xl:max-w-[calc(100%-8.25rem)]">{{ caption }}</span>
+    <span class="stat-caption relative z-10 min-w-0 pb-1 text-[0.72rem] leading-snug text-stone-500 sm:text-[0.8rem] xl:max-w-[calc(100%-8.25rem)]">{{ caption }}</span>
     <img src="{% static_v 'img/icons/'|add:icon_file %}" alt="" width="70" height="70" loading="lazy"
-         class="stat-img h-[70px] w-[70px] shrink-0 object-contain sm:h-[84px] sm:w-[84px] xl:absolute xl:bottom-[11px] xl:right-[3px] xl:h-[109px] xl:w-[123px]"
+         class="stat-img h-[70px] w-[70px] shrink-0 object-contain xl:absolute xl:bottom-[11px] xl:right-[3px] xl:h-[109px] xl:w-[123px]"
          onerror="this.style.display='none'">
   </span>
 </a>
