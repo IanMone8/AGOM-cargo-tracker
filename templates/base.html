@@ -31,9 +31,11 @@
       <a href="{% url 'dashboard' %}" class="sidebar-link {% if name == 'dashboard' %}active{% endif %}">{% icon "home" %} Dashboard</a>
       <a href="{% url 'box_list' %}" class="sidebar-link {% if name == 'box_list' or name == 'box_detail' or name == 'box_edit' or name == 'box_create' %}active{% endif %}">{% icon "box" %} Shipments</a>
       <a href="{% url 'cargo_history' %}" class="sidebar-link {% if name == 'cargo_history' %}active{% endif %}">{% icon "history" %} Cargo history</a>
+      {% if can_use_requests %}
       <a href="{% url 'request_list' %}" class="sidebar-link {% if 'request' in name %}active{% endif %}">{% icon "users" %} Customer requests</a>
-      {% if can_edit_japan %}
-      <p class="px-3 pb-1 pt-5 text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-emerald-200/60">Japan</p>
+      {% endif %}
+      {% if can_import_csv %}
+      <p class="px-3 pb-1 pt-5 text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-emerald-200/60">Data</p>
       <a href="{% url 'csv_import' %}" class="sidebar-link {% if 'csv' in name %}active{% endif %}">{% icon "upload" %} CSV import</a>
       {% endif %}
       {% if user.is_staff %}

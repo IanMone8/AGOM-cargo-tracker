@@ -5,7 +5,7 @@
 - Japan sender     -> group "Japan Sender": boxes, Japan lists, CSV import
 - Myanmar checker  -> group "Myanmar Checker": arrival, receive checks, extra items
 
-Everyone logged in can view every page and manage customer requests.
+CSV import is Owner/Admin only; customer requests are hidden from the Japan sender.
 """
 from functools import wraps
 
@@ -39,6 +39,16 @@ def can_edit_japan(user):
 def can_check(user):
     """Record Myanmar arrival, receive checks and extra items."""
     return is_manager(user) or _in_group(user, MYANMAR)
+
+
+def can_import_csv(user):
+    """CSV import of Japan lists – Owner / Admin only."""
+    return is_manager(user)
+
+
+def can_use_requests(user):
+    """Customer requests – Owner / Admin and the Myanmar checker (not the Japan sender)."""
+    return is_manager(user) or can_check(user)
 
 
 def can_edit_box_items(user, box):

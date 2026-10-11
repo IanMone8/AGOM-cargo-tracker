@@ -54,7 +54,7 @@
   <div id="item-list" class="space-y-3">
     {% for item in items %}{% include "tracker/partials/item_row.html" with oob=False %}{% endfor %}
   </div>
-  {% if not items %}<p class="card p-8 text-center text-sm text-stone-500">No items yet.{% if can_edit_items %} Add one or use <a class="font-semibold text-emerald-700 underline" href="{% url 'csv_import' %}">CSV import</a>.{% endif %}</p>{% endif %}
+  {% if not items %}<p class="card p-8 text-center text-sm text-stone-500">No items yet.{% if can_edit_items and can_import_csv %} Add one or use <a class="font-semibold text-emerald-700 underline" href="{% url 'csv_import' %}">CSV import</a>.{% endif %}</p>{% endif %}
 </section>
 
 <section class="mt-8">

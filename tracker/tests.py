@@ -130,7 +130,7 @@ class RequestTests(BaseTest):
 
 class CSVImportTests(BaseTest):
     def upload(self, text, **extra):
-        self.client.force_login(self.japan)
+        self.client.force_login(self.owner)
         f = SimpleUploadedFile("list.csv", text.encode("utf-8-sig"), content_type="text/csv")
         return self.client.post(reverse("csv_import"), {"file": f, **extra})
 
@@ -353,18 +353,41 @@ class JapanSenderLockTests(BaseTest):
         self.client.force_login(self.owner)
         self.assertEqual(self.client.get(reverse("item_add", args=[self.box.pk])).status_code, 200)
 
-    def test_csv_import_into_locked_box(self):
-        self.start_check()
-        csv_text = "box,type,item_name\nGN-3,Bag,Stand bag\n"
+
+class JapanSenderHiddenPagesTests(BaseTest):
+    def test_japan_cannot_use_csv_or_requests(self):
+        req = CustomerRequest.objects.create(customer="Ko Aung", item_name="TSR2")
         self.client.force_login(self.japan)
-        f = SimpleUploadedFile("l.csv", csv_text.encode(), content_type="text/csv")
-        r = self.client.post(reverse("csv_import"), {"file": f})
-        self.assertContains(r, "Box GN-3 is locked")
+        for name, args in [("csv_import", []), ("csv_template", []), ("request_list", []),
+                           ("request_edit", [req.pk]), ("request_attach", [req.pk])]:
+            with self.subTest(name=name):
+                self.assertEqual(self.client.get(reverse(name, args=args)).status_code, 403)
+        for name in ("request_status", "request_detach"):
+            with self.subTest(name=name):
+                self.assertEqual(self.client.post(reverse(name, args=[req.pk]), {"status": "fulfilled"}).status_code, 403)
+        f = SimpleUploadedFile("l.csv", b"box,type,item_name\nGN-3,Bag,Stand bag\n", content_type="text/csv")
+        self.assertEqual(self.client.post(reverse("csv_import"), {"file": f}).status_code, 403)
+        req.refresh_from_db()
+        self.assertEqual(req.status, "open")
         self.assertFalse(JapanItem.objects.filter(item_name="Stand bag").exists())
-        # a new box in the same kind of file is still fine
-        f = SimpleUploadedFile("l.csv", b"box,type,item_name\nGN-8,Bag,Stand bag\n", content_type="text/csv")
-        self.assertContains(self.client.post(reverse("csv_import"), {"file": f}), "Imported 1 item(s)")
-        # the owner can still import into the locked box
+
+    def test_japan_sidebar_and_dashboard_hide_links(self):
+        CustomerRequest.objects.create(customer="Ko Aung", item_name="TSR2")
+        self.client.force_login(self.japan)
+        r = self.client.get(reverse("dashboard"))
+        self.assertNotContains(r, reverse("csv_import"))
+        self.assertNotContains(r, reverse("request_list"))
+        self.assertNotContains(r, "Open requests")
+        self.assertNotContains(r, "Ko Aung")
+        self.assertContains(r, "Add box")  # still can add boxes
+
+    def test_other_roles_keep_access(self):
+        self.client.force_login(self.myanmar)
+        r = self.client.get(reverse("dashboard"))
+        self.assertContains(r, reverse("request_list"))
+        self.assertNotContains(r, reverse("csv_import"))
+        self.assertEqual(self.client.get(reverse("request_list")).status_code, 200)
         self.client.force_login(self.owner)
-        f = SimpleUploadedFile("l.csv", csv_text.encode(), content_type="text/csv")
-        self.assertContains(self.client.post(reverse("csv_import"), {"file": f}), "Imported 1 item(s)")
+        r = self.client.get(reverse("dashboard"))
+        self.assertContains(r, reverse("request_list"))
+        self.assertContains(r, reverse("csv_import"))

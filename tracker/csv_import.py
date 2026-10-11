@@ -71,7 +71,7 @@ def _parse_int(value, name, errors, row, default=None, minimum=0):
     return number
 
 
-def import_japan_csv(uploaded_file, replace=False, allow_locked=False):
+def import_japan_csv(uploaded_file, replace=False):
     result = ImportResult()
     raw = uploaded_file.read()
     try:
@@ -147,12 +147,6 @@ def import_japan_csv(uploaded_file, replace=False, allow_locked=False):
             customer=row.get("customer", "")[:100],
             note=row.get("note", "")[:255],
         )))
-
-    if not allow_locked:
-        for code, box_no in dict.fromkeys((code, no) for code, no, _ in parsed):
-            box = Box.objects.filter(cargo__code=code, box_no=box_no).first()
-            if box and box.myanmar_started:
-                result.errors.append((0, f"Box {box.label} is locked – the Myanmar check has started"))
 
     if not parsed and not result.errors:
         result.errors.append((0, "The file has no data rows."))

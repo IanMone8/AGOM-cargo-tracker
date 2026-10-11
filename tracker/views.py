@@ -327,6 +327,7 @@ def extra_delete(request, pk):
 
 # --- Customer requests -------------------------------------------------------
 @login_required
+@roles.require(roles.can_use_requests)
 def request_list(request):
     status = request.GET.get("status", "active")
     qs = CustomerRequest.objects.select_related("box__cargo", "japan_item")
@@ -359,6 +360,7 @@ def request_list(request):
 
 
 @login_required
+@roles.require(roles.can_use_requests)
 def request_edit(request, pk):
     req = get_object_or_404(CustomerRequest, pk=pk)
     form = CustomerRequestForm(request.POST or None, instance=req)
@@ -370,6 +372,7 @@ def request_edit(request, pk):
 
 
 @login_required
+@roles.require(roles.can_use_requests)
 @require_POST
 def request_status(request, pk):
     req = get_object_or_404(CustomerRequest, pk=pk)
@@ -398,6 +401,7 @@ def _suggestions(req):
 
 
 @login_required
+@roles.require(roles.can_use_requests)
 def request_attach(request, pk):
     req = get_object_or_404(CustomerRequest, pk=pk)
     if request.method == "POST":
@@ -413,6 +417,7 @@ def request_attach(request, pk):
 
 
 @login_required
+@roles.require(roles.can_use_requests)
 def request_attach_items(request):
     box = Box.objects.filter(pk=request.GET.get("box") or 0).first()
     items = box.items.all() if box else []
@@ -420,6 +425,7 @@ def request_attach_items(request):
 
 
 @login_required
+@roles.require(roles.can_use_requests)
 @require_POST
 def request_detach(request, pk):
     req = get_object_or_404(CustomerRequest, pk=pk)
@@ -460,16 +466,12 @@ def cargo_history(request):
 
 # --- CSV import --------------------------------------------------------------
 @login_required
-@roles.require(roles.can_edit_japan)
+@roles.require(roles.can_import_csv)
 def csv_import(request):
     form = CSVImportForm(request.POST or None, request.FILES or None)
     result = None
     if request.method == "POST" and form.is_valid():
-        result = import_japan_csv(
-            form.cleaned_data["file"],
-            replace=form.cleaned_data["replace"],
-            allow_locked=roles.is_manager(request.user),
-        )
+        result = import_japan_csv(form.cleaned_data["file"], replace=form.cleaned_data["replace"])
         if not result.errors:
             messages.success(
                 request,
@@ -479,6 +481,7 @@ def csv_import(request):
 
 
 @login_required
+@roles.require(roles.can_import_csv)
 def csv_template(request):
     response = HttpResponse(template_csv(), content_type="text/csv")
     response["Content-Disposition"] = 'attachment; filename="japan_list_template.csv"'

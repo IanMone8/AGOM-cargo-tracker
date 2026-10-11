@@ -17,7 +17,7 @@ It uses SQLite in development and Postgres in production (via `DATABASE_URL`).
 | **Box detail** | Japan list, **Start Myanmar check**, then one-tap **✓ Matched / ✗ Missing / ± Wrong qty**, undo, extra items and a live mismatch summary |
 | **Cargo history** | One card per cargo company (boxes, in transit, checked, issues, average transit days) and its box history, newest first |
 | **Requests** | Customer requests: create, change status inline, **attach to a Japan box item** (suggested matches or pick box → item) |
-| **CSV import** | Import Japan packing lists (several boxes per file), all-or-nothing validation, template download |
+| **CSV import** | (Owner / Admin) Import Japan packing lists (several boxes per file), all-or-nothing validation, template download |
 | **Admin** | Every model is registered at `/admin/` |
 
 ### Look and layout
@@ -48,13 +48,15 @@ You can still pick a status by hand on the *Edit* page. A manual choice override
 | --- | --- | --- |
 | `admin` | Superuser | Everything, including `/admin/`, users and the catalog |
 | `owner` | Group **Owner** (staff) | Everything in the app, plus tracker data in `/admin/` |
-| `japan` | Group **Japan Sender** | Create/edit boxes (Japan side, status Packed / Shipped only), add/delete Japan items, CSV import – until the Myanmar check starts |
-| `myanmar` | Group **Myanmar Checker** | Mark arrived, set the received date, receive checks, extra items |
+| `japan` | Group **Japan Sender** | Add boxes, edit boxes (Japan side, status Packed / Shipped only), add/delete Japan items – until the Myanmar check starts. No CSV import, no customer requests |
+| `myanmar` | Group **Myanmar Checker** | Start Myanmar check, set the received date, receive checks, extra items, customer requests |
 
-Everyone can view all pages and manage customer requests.
+Everyone can view the dashboard, shipments and cargo history. **CSV import** is for Owner and Admin only.
+**Customer requests** are for Owner, Admin and the Myanmar checker; the Japan sender doesn't see them
+(no sidebar link, no dashboard card, and the pages return "forbidden").
 
 **Locking:** once the Myanmar check has started on a box (it has a received date, or any item is checked),
-the Japan sender can no longer edit that box, add or delete its items, or import CSV rows into it.
+the Japan sender can no longer edit that box or add or delete its items.
 Owner and Admin can still correct it, and the Myanmar checker can still edit the Myanmar side.
 
 ## Run locally (development)

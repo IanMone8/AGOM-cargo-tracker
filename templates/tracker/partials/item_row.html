@@ -13,7 +13,7 @@
       </div>
       {% if item.specification %}<div class="mt-1 text-xs text-stone-600">{{ item.specification }}</div>{% endif %}
       {% if item.note %}<div class="mt-0.5 text-xs italic text-stone-600">{{ item.note }}</div>{% endif %}
-      {% for r in item.requests.all %}<div class="mt-0.5 text-xs text-violet-700">🙋 Request: {{ r.customer }} ×{{ r.qty }}</div>{% endfor %}
+      {% if can_use_requests %}{% for r in item.requests.all %}<div class="mt-0.5 text-xs text-violet-700">🙋 Request: {{ r.customer }} ×{{ r.qty }}</div>{% endfor %}{% endif %}
     </div>
     <div class="shrink-0 text-right">
       <div class="text-xl font-extrabold">×{{ item.qty }}</div><div class="text-[0.7rem] text-stone-400">{{ item.get_quantity_unit_display }}</div>
