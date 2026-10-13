@@ -550,3 +550,94 @@ class MarkShippedTests(BaseTest):
         self.assertEqual(self.client.post(reverse("box_mark_shipped", args=[self.box.pk])).status_code, 403)
         self.box.refresh_from_db()
         self.assertEqual(self.box.status, Box.Status.PACKED)
+
+
+class DateRuleTests(BaseTest):
+    """Received in Myanmar can't be before Shipped from Japan; calendars start today."""
+
+    def setUp(self):
+        super().setUp()
+        import datetime
+        from django.utils import timezone
+        self.today = timezone.localdate()
+        self.day = datetime.timedelta(days=1)
+
+    def edit(self, user, **data):
+        self.client.force_login(user)
+        post = {"cargo": self.cargo.pk, "box_no": 3, "status": self.box.status, "notes": ""}
+        post.update({k: (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in data.items()})
+        return self.client.post(reverse("box_edit", args=[self.box.pk]), post)
+
+    def test_received_before_shipped_rejected(self):
+        self.box.japan_ship_date = self.today + self.day
+        self.box.status = Box.Status.SHIPPED
+        self.box.save()
+        r = self.edit(self.owner, japan_ship_date=self.today + self.day, myanmar_received_date=self.today)
+        self.assertContains(r, "can&#x27;t be before the ship date")
+        self.box.refresh_from_db()
+        self.assertIsNone(self.box.myanmar_received_date)
+        # same day or later is fine
+        r = self.edit(self.owner, japan_ship_date=self.today + self.day, myanmar_received_date=self.today + self.day)
+        self.assertEqual(r.status_code, 302)
+
+    def test_myanmar_form_also_checks_ship_date(self):
+        self.box.japan_ship_date = self.today + self.day * 2
+        self.box.status = Box.Status.SHIPPED
+        self.box.save()
+        r = self.edit(self.myanmar, myanmar_received_date=self.today + self.day)
+        self.assertContains(r, "can&#x27;t be before the ship date")
+
+    def test_past_dates_rejected_but_existing_past_dates_kept(self):
+        r = self.edit(self.japan, japan_ship_date=self.today - self.day)
+        self.assertContains(r, "Choose today or a later date.")
+        # a box that already has a past date can still be saved unchanged
+        self.box.japan_ship_date = self.today - self.day * 30
+        self.box.save()
+        r = self.edit(self.japan, japan_ship_date=self.today - self.day * 30, notes="changed")
+        self.assertEqual(r.status_code, 302)
+        self.box.refresh_from_db()
+        self.assertEqual(self.box.notes, "changed")
+
+    def test_calendar_min_attributes(self):
+        self.client.force_login(self.owner)
+        r = self.client.get(reverse("box_edit", args=[self.box.pk]))
+        form = r.context["form"]
+        self.assertEqual(form.fields["japan_ship_date"].widget.attrs["min"], self.today.isoformat())
+        self.assertEqual(form.fields["myanmar_received_date"].widget.attrs["min"], self.today.isoformat())
+        self.box.japan_ship_date = self.today + self.day * 3
+        self.box.save()
+        form = self.client.get(reverse("box_edit", args=[self.box.pk])).context["form"]
+        self.assertEqual(form.fields["myanmar_received_date"].widget.attrs["min"],
+                         (self.today + self.day * 3).isoformat())
+        self.assertIn('min="', r.content.decode())
+
+    def test_shipping_without_date_records_today(self):
+        r = self.edit(self.japan, status="shipped")
+        self.assertEqual(r.status_code, 302)
+        self.box.refresh_from_db()
+        self.assertEqual((self.box.status, self.box.japan_ship_date), ("shipped", self.today))
+
+    def test_start_check_blocked_before_ship_date(self):
+        self.box.japan_ship_date = self.today + self.day
+        self.box.status = Box.Status.SHIPPED
+        self.box.save()
+        self.client.force_login(self.myanmar)
+        detail = reverse("box_detail", args=[self.box.pk])
+        r = self.client.get(detail)
+        self.assertContains(r, "Not shipped yet.")
+        self.assertNotContains(r, "Start Myanmar check")
+        r = self.client.post(reverse("box_start_check", args=[self.box.pk]), follow=True)
+        self.assertContains(r, "can&#x27;t be received in Myanmar before that")
+        r = self.client.post(reverse("item_check", args=[self.item1.pk]), {"result": "matched"})
+        self.assertEqual(r.status_code, 409)
+        self.box.refresh_from_db()
+        self.assertIsNone(self.box.myanmar_received_date)
+        self.assertFalse(ReceiveCheck.objects.exists())
+
+    def test_model_rule_covers_admin(self):
+        from django.core.exceptions import ValidationError
+        self.box.japan_ship_date = self.today
+        self.box.myanmar_received_date = self.today - self.day
+        with self.assertRaises(ValidationError) as ctx:
+            self.box.full_clean()
+        self.assertIn("myanmar_received_date", ctx.exception.message_dict)

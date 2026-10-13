@@ -62,6 +62,10 @@ Everyone can view the dashboard, shipments and cargo history. **CSV import** is 
 Cargo history, request attach lists, or by direct link) until the Japan sender sets it to **Shipped** – with the one-tap **Mark as shipped** button on the box page
 (or Edit box → Status → Shipped → Save).
 
+**Dates:** *Received in Myanmar* can't be before *Shipped from Japan* (same day is allowed) – checked in the
+app and in Django admin. Calendars don't offer dates before today (a date already saved on a box stays as it is).
+Marking a box Shipped without a date records today, and the Myanmar check can't start before the ship date.
+
 **Locking:** once the Myanmar check has started on a box (it has a received date, or any item is checked),
 the Japan sender can no longer edit that box or add or delete its items.
 Owner and Admin can still correct it, and the Myanmar checker can still edit the Myanmar side.

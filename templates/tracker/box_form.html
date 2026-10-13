@@ -11,4 +11,20 @@
   <p class="text-xs text-stone-500">Status moves forward automatically: a ship date → Shipped, a received date → Arrived, all items checked → Checked. Choosing a status here overrides that.</p>
   <button class="btn btn-primary w-full py-3 sm:w-auto sm:px-8">Save</button>
 </form>
+<script>
+  // Received in Myanmar can't be before the ship date: move the calendar's minimum along.
+  (function () {
+    const ship = document.getElementById('id_japan_ship_date');
+    const recv = document.getElementById('id_myanmar_received_date');
+    if (!ship || !recv) return;
+    const base = recv.min;
+    const sync = (clearTooEarly) => {
+      const low = [base, ship.value].filter(Boolean).sort().pop();
+      recv.min = low;
+      if (clearTooEarly && recv.value && recv.value < low) recv.value = '';
+    };
+    ship.addEventListener('change', () => sync(true));
+    sync(false);
+  })();
+</script>
 {% endblock %}

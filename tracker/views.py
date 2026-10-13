@@ -183,6 +183,7 @@ def box_detail(request, pk):
     return render(request, "tracker/box_detail.html", {
         "box": box,
         "can_edit_this_box": roles.can_edit_box(request.user, box),
+        "ships_later": not box.can_be_received_on(timezone.localdate()),
         "can_edit_items": roles.can_edit_box_items(request.user, box),
         "japan_locked": roles.can_edit_japan(request.user) and not roles.can_edit_box_items(request.user, box),
         "items": items,
@@ -192,7 +193,16 @@ def box_detail(request, pk):
     })
 
 
+class ReceivedBeforeShipped(Exception):
+    pass
+
+
 def _start_check(box):
+    if not box.myanmar_received_date and not box.can_be_received_on(timezone.localdate()):
+        raise ReceivedBeforeShipped(
+            f"{box.label} ships from Japan on {box.japan_ship_date.day} {box.japan_ship_date:%b %Y} – "
+            "it can't be received in Myanmar before that."
+        )
     if not box.myanmar_received_date:
         box.myanmar_received_date = timezone.localdate()
         box.save(update_fields=["myanmar_received_date", "updated_at"])
@@ -221,7 +231,11 @@ def box_mark_shipped(request, pk):
 def box_start_check(request, pk):
     """Myanmar checker opens the box: records today's arrival and shows the check buttons."""
     box = get_object_or_404(visible_boxes(request.user), pk=pk)
-    _start_check(box)
+    try:
+        _start_check(box)
+    except ReceivedBeforeShipped as exc:
+        messages.error(request, str(exc))
+        return redirect("box_detail", pk=box.pk)
     messages.success(request, f"Myanmar check started for {box.label}. Tap each item below.")
     return redirect(reverse("box_detail", args=[box.pk]) + "#items")
 
@@ -247,7 +261,10 @@ def item_check(request, pk):
     result = request.POST.get("result")
     if result not in ReceiveCheck.Result.values:
         return HttpResponse("Bad result", status=400)
-    _start_check(item.box)
+    try:
+        _start_check(item.box)
+    except ReceivedBeforeShipped as exc:
+        return HttpResponse(str(exc), status=409)
     if result == ReceiveCheck.Result.MATCHED:
         received = item.qty
     elif result == ReceiveCheck.Result.MISSING:

@@ -41,7 +41,12 @@
   </div>
 {% endif %}
 
-{% if can_check and not box.myanmar_received_date %}
+{% if can_check and not box.myanmar_received_date and ships_later %}
+  <div class="card mt-4 border-l-4 border-l-sky-400 p-5 text-sm text-stone-600">
+    <b class="text-stone-800">Not shipped yet.</b> This box leaves Japan on {{ box.japan_ship_date|date:"j M Y" }}.
+    The Myanmar check opens from that date.
+  </div>
+{% elif can_check and not box.myanmar_received_date %}
   <div class="card mt-4 flex flex-col items-start gap-3 border-l-4 border-l-amber-400 p-5 sm:flex-row sm:items-center sm:justify-between">
     <div>
       <h2 class="font-bold">Box arrived in Myanmar?</h2>

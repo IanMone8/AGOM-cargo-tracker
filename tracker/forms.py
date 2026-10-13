@@ -1,5 +1,6 @@
 from django import forms
 from django.forms import inlineformset_factory
+from django.utils import timezone
 
 from . import roles
 from .models import Box, Cargo, CustomerRequest, ExtraItem, JapanItem
@@ -46,6 +47,39 @@ class BoxForm(StyledMixin, forms.ModelForm):
                     (Box.Status.PACKED, Box.Status.PACKED.label),
                     (Box.Status.SHIPPED, Box.Status.SHIPPED.label),
                 ]
+        self._limit_calendars()
+
+    def _limit_calendars(self):
+        """Calendars can't pick a date before today, and the received date can't be
+        before the ship date. A date already saved on the box stays selectable,
+        otherwise the browser would refuse to submit the form."""
+        today = timezone.localdate()
+        ship = self.instance.japan_ship_date
+        received = self.instance.myanmar_received_date
+        if "japan_ship_date" in self.fields:
+            low = min(today, ship) if ship else today
+            self.fields["japan_ship_date"].widget.attrs["min"] = low.isoformat()
+        if "myanmar_received_date" in self.fields:
+            low = max(today, ship) if ship else today
+            if received:
+                low = min(low, received)
+            attrs = self.fields["myanmar_received_date"].widget.attrs
+            attrs["min"] = low.isoformat()
+            attrs["data-today"] = today.isoformat()
+
+    def clean(self):
+        data = super().clean()
+        today = timezone.localdate()
+        for name in ("japan_ship_date", "myanmar_received_date"):
+            value = data.get(name)
+            if name in self.changed_data and value and value < today:
+                self.add_error(name, "Choose today or a later date.")
+        # Shipping without a date: record today, so the received date has something to follow.
+        if ("japan_ship_date" in self.fields and not data.get("japan_ship_date")
+                and data.get("status") and data["status"] != Box.Status.PACKED):
+            data["japan_ship_date"] = today
+            self.instance.japan_ship_date = today
+        return data
 
 
 class BoxCreateForm(StyledMixin, forms.ModelForm):

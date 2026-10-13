@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Q
 
@@ -45,6 +46,20 @@ class Box(models.Model):
 
     def __str__(self):
         return self.label
+
+    def clean(self):
+        super().clean()
+        ship, received = self.japan_ship_date, self.myanmar_received_date
+        if ship and received and received < ship:
+            raise ValidationError({
+                "myanmar_received_date": (
+                    f"Received in Myanmar can't be before the ship date ({ship.day} {ship:%b %Y})."
+                )
+            })
+
+    def can_be_received_on(self, day):
+        """A box can't arrive in Myanmar before it left Japan."""
+        return not self.japan_ship_date or day >= self.japan_ship_date
 
     @property
     def label(self):
