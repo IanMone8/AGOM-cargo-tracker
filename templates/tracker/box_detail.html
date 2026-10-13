@@ -22,6 +22,18 @@
   </dl>
 </div>
 
+{% if can_edit_items and box.status == 'packed' %}
+  <div class="card mt-4 flex flex-col items-start gap-3 border-l-4 border-l-sky-400 p-5 sm:flex-row sm:items-center sm:justify-between">
+    <div>
+      <h2 class="font-bold">Ready to send?</h2>
+      <p class="text-sm text-stone-500">The Myanmar checker can't see this box until it is marked as shipped.</p>
+    </div>
+    <form method="post" action="{% url 'box_mark_shipped' box.pk %}" class="w-full sm:w-auto">{% csrf_token %}
+      <button class="btn btn-primary w-full py-3 sm:w-auto">{% icon "ship" %} Mark as shipped</button>
+    </form>
+  </div>
+{% endif %}
+
 {% if japan_locked %}
   <div class="card mt-4 flex items-center gap-3 border-l-4 border-l-stone-300 p-4 text-sm text-stone-600">
     <span class="text-stone-400">{% icon "alert" %}</span>

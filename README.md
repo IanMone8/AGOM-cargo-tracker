@@ -59,7 +59,8 @@ Everyone can view the dashboard, shipments and cargo history. **CSV import** is 
 (no sidebar link, no dashboard card, and the pages return "forbidden").
 
 **Shipped boxes only for Myanmar:** the Myanmar checker doesn't see a box (dashboard, Shipments,
-Cargo history, request attach lists, or by direct link) until the Japan sender sets it to **Shipped**.
+Cargo history, request attach lists, or by direct link) until the Japan sender sets it to **Shipped** – with the one-tap **Mark as shipped** button on the box page
+(or Edit box → Status → Shipped → Save).
 
 **Locking:** once the Myanmar check has started on a box (it has a received date, or any item is checked),
 the Japan sender can no longer edit that box or add or delete its items.

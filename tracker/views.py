@@ -200,6 +200,22 @@ def _start_check(box):
 
 
 @login_required
+@roles.require(roles.can_edit_japan)
+@require_POST
+def box_mark_shipped(request, pk):
+    """Japan sender: one tap to send the box. From now on Myanmar can see it."""
+    box = get_object_or_404(visible_boxes(request.user), pk=pk)
+    _require_box_items(request.user, box)
+    if box.status == Box.Status.PACKED:
+        box.status = Box.Status.SHIPPED
+        if not box.japan_ship_date:
+            box.japan_ship_date = timezone.localdate()
+        box.save(update_fields=["status", "japan_ship_date", "updated_at"])
+        messages.success(request, f"{box.label} marked as shipped – Myanmar can now see it.")
+    return redirect("box_detail", pk=box.pk)
+
+
+@login_required
 @roles.require(roles.can_check)
 @require_POST
 def box_start_check(request, pk):

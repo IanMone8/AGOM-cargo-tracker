@@ -518,3 +518,35 @@ class MyanmarSeesShippedOnlyTests(BaseTest):
             with self.subTest(user=user.username):
                 self.assertContains(self.client.get(reverse("box_list")), self.box.label)
                 self.assertEqual(self.client.get(reverse("box_detail", args=[self.box.pk])).status_code, 200)
+
+
+class MarkShippedTests(BaseTest):
+    def test_one_tap_ship_makes_box_visible_to_myanmar(self):
+        self.client.force_login(self.japan)
+        detail = reverse("box_detail", args=[self.box.pk])
+        self.assertContains(self.client.get(detail), "Mark as shipped")
+        r = self.client.post(reverse("box_mark_shipped", args=[self.box.pk]))
+        self.assertRedirects(r, detail)
+        self.box.refresh_from_db()
+        self.assertEqual(self.box.status, Box.Status.SHIPPED)
+        self.assertIsNotNone(self.box.japan_ship_date)
+        self.assertNotContains(self.client.get(detail), "Mark as shipped")
+
+        self.client.force_login(self.myanmar)
+        self.assertContains(self.client.get(reverse("dashboard")), self.box.label)
+        self.assertContains(self.client.get(reverse("box_list")), self.box.label)
+
+    def test_keeps_existing_ship_date(self):
+        import datetime
+        self.box.japan_ship_date = datetime.date(2026, 10, 1)
+        self.box.save()
+        self.client.force_login(self.japan)
+        self.client.post(reverse("box_mark_shipped", args=[self.box.pk]))
+        self.box.refresh_from_db()
+        self.assertEqual(self.box.japan_ship_date, datetime.date(2026, 10, 1))
+
+    def test_only_japan_side_can_ship(self):
+        self.client.force_login(self.myanmar)
+        self.assertEqual(self.client.post(reverse("box_mark_shipped", args=[self.box.pk])).status_code, 403)
+        self.box.refresh_from_db()
+        self.assertEqual(self.box.status, Box.Status.PACKED)
