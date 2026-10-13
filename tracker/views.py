@@ -48,6 +48,21 @@ def catalog_context():
     }
 
 
+def visible_boxes(user):
+    """Boxes this user may see: the Myanmar checker only sees a box once it is shipped."""
+    qs = Box.objects.all()
+    if not roles.sees_unshipped_boxes(user):
+        qs = qs.exclude(status=Box.Status.PACKED)
+    return qs
+
+
+def visible_items(user):
+    qs = JapanItem.objects.all()
+    if not roles.sees_unshipped_boxes(user):
+        qs = qs.exclude(box__status=Box.Status.PACKED)
+    return qs
+
+
 def boxes_with_counts(qs=None):
     qs = qs if qs is not None else Box.objects.all()
     return qs.select_related("cargo").annotate(
@@ -65,23 +80,24 @@ def boxes_with_counts(qs=None):
 # --- Dashboard ---------------------------------------------------------------
 @login_required
 def dashboard(request):
-    in_transit = boxes_with_counts(Box.objects.filter(status=Box.Status.SHIPPED))
+    boxes = visible_boxes(request.user)
+    in_transit = boxes_with_counts(boxes.filter(status=Box.Status.SHIPPED))
     needs_review = boxes_with_counts(
-        Box.objects.filter(
+        boxes.filter(
             Q(status=Box.Status.ARRIVED) | Q(pk__in=Box.with_mismatches().values("pk"))
         )
     )
     open_requests = CustomerRequest.objects.filter(status=CustomerRequest.Status.OPEN)
     return render(request, "tracker/dashboard.html", {
         "cargo_count": Cargo.objects.count(),
-        "total_box_count": Box.objects.count(),
-        "checked_box_count": Box.objects.filter(status=Box.Status.CHECKED).count(),
-        "mismatch_count": Box.with_mismatches().count(),
+        "total_box_count": boxes.count(),
+        "checked_box_count": boxes.filter(status=Box.Status.CHECKED).count(),
+        "mismatch_count": boxes.filter(pk__in=Box.with_mismatches().values("pk")).count(),
         "in_transit": in_transit,
         "needs_review": needs_review,
         "open_requests": open_requests[:8],
         "open_request_count": open_requests.count(),
-        "recent": boxes_with_counts(Box.objects.order_by("-updated_at"))[:5],
+        "recent": boxes_with_counts(boxes.order_by("-updated_at"))[:5],
     })
 
 
@@ -89,7 +105,11 @@ def dashboard(request):
 @login_required
 def box_list(request):
     form = BoxFilterForm(request.GET or None)
-    qs = Box.objects.all()
+    if not roles.sees_unshipped_boxes(request.user):
+        form.fields["status"].choices = [
+            c for c in form.fields["status"].choices if c[0] != Box.Status.PACKED
+        ]
+    qs = visible_boxes(request.user)
     if form.is_valid():
         if form.cleaned_data["cargo"]:
             qs = qs.filter(cargo=form.cleaned_data["cargo"])
@@ -142,7 +162,7 @@ def box_item_card(request):
 
 @login_required
 def box_edit(request, pk):
-    box = get_object_or_404(Box, pk=pk)
+    box = get_object_or_404(visible_boxes(request.user), pk=pk)
     if not roles.can_edit_box(request.user, box):
         raise PermissionDenied("This box can no longer be edited – the Myanmar check has started.")
     form = BoxForm(request.POST or None, instance=box, user=request.user)
@@ -158,7 +178,7 @@ def box_edit(request, pk):
 
 @login_required
 def box_detail(request, pk):
-    box = get_object_or_404(Box.objects.select_related("cargo"), pk=pk)
+    box = get_object_or_404(visible_boxes(request.user).select_related("cargo"), pk=pk)
     items = box.items.select_related("receive_check").prefetch_related("requests")
     return render(request, "tracker/box_detail.html", {
         "box": box,
@@ -184,7 +204,7 @@ def _start_check(box):
 @require_POST
 def box_start_check(request, pk):
     """Myanmar checker opens the box: records today's arrival and shows the check buttons."""
-    box = get_object_or_404(Box, pk=pk)
+    box = get_object_or_404(visible_boxes(request.user), pk=pk)
     _start_check(box)
     messages.success(request, f"Myanmar check started for {box.label}. Tap each item below.")
     return redirect(reverse("box_detail", args=[box.pk]) + "#items")
@@ -207,7 +227,7 @@ def _box_fragments(request, box, main_template, main_ctx):
 @roles.require(roles.can_check)
 @require_POST
 def item_check(request, pk):
-    item = get_object_or_404(JapanItem.objects.select_related("box__cargo"), pk=pk)
+    item = get_object_or_404(visible_items(request.user).select_related("box__cargo"), pk=pk)
     result = request.POST.get("result")
     if result not in ReceiveCheck.Result.values:
         return HttpResponse("Bad result", status=400)
@@ -243,7 +263,7 @@ def item_check(request, pk):
 @roles.require(roles.can_check)
 @require_POST
 def item_check_clear(request, pk):
-    item = get_object_or_404(JapanItem.objects.select_related("box"), pk=pk)
+    item = get_object_or_404(visible_items(request.user).select_related("box"), pk=pk)
     ReceiveCheck.objects.filter(japan_item=item).delete()
     item.box.refresh_status()
     item = JapanItem.objects.get(pk=item.pk)
@@ -253,13 +273,13 @@ def item_check_clear(request, pk):
 @login_required
 @roles.require(roles.can_check)
 def item_wrong_qty_form(request, pk):
-    item = get_object_or_404(JapanItem, pk=pk)
+    item = get_object_or_404(visible_items(request.user), pk=pk)
     return render(request, "tracker/partials/item_wrong_qty.html", {"item": item})
 
 
 @login_required
 def item_row(request, pk):
-    item = get_object_or_404(JapanItem.objects.select_related("receive_check"), pk=pk)
+    item = get_object_or_404(visible_items(request.user).select_related("receive_check"), pk=pk)
     return render(request, "tracker/partials/item_row.html", {"item": item, "box": item.box})
 
 
@@ -272,7 +292,7 @@ def _require_box_items(user, box):
 @login_required
 @roles.require(roles.can_edit_japan)
 def item_add(request, pk):
-    box = get_object_or_404(Box, pk=pk)
+    box = get_object_or_404(visible_boxes(request.user), pk=pk)
     _require_box_items(request.user, box)
     form = JapanItemForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
@@ -292,7 +312,7 @@ def item_add(request, pk):
 @roles.require(roles.can_edit_japan)
 @require_POST
 def item_delete(request, pk):
-    item = get_object_or_404(JapanItem.objects.select_related("box"), pk=pk)
+    item = get_object_or_404(visible_items(request.user).select_related("box"), pk=pk)
     box = item.box
     _require_box_items(request.user, box)
     item.delete()
@@ -304,7 +324,7 @@ def item_delete(request, pk):
 @login_required
 @roles.require(roles.can_check)
 def extra_add(request, pk):
-    box = get_object_or_404(Box, pk=pk)
+    box = get_object_or_404(visible_boxes(request.user), pk=pk)
     form = ExtraItemForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
         extra = form.save(commit=False)
@@ -319,7 +339,9 @@ def extra_add(request, pk):
 @roles.require(roles.can_check)
 @require_POST
 def extra_delete(request, pk):
-    extra = get_object_or_404(ExtraItem.objects.select_related("box"), pk=pk)
+    extra = get_object_or_404(
+        ExtraItem.objects.select_related("box").filter(box__in=visible_boxes(request.user)), pk=pk
+    )
     box = extra.box
     extra.delete()
     return _box_fragments(request, box, "tracker/partials/oob_only.html", {})
@@ -385,9 +407,9 @@ def request_status(request, pk):
     })
 
 
-def _suggestions(req):
+def _suggestions(req, user):
     """Japan items that look like this request and are not yet attached."""
-    qs = JapanItem.objects.select_related("box__cargo").filter(requests__isnull=True)
+    qs = visible_items(user).select_related("box__cargo").filter(requests__isnull=True)
     words = [w for w in req.item_name.split() if len(w) > 2][:3]
     cond = Q()
     for w in words:
@@ -405,21 +427,21 @@ def _suggestions(req):
 def request_attach(request, pk):
     req = get_object_or_404(CustomerRequest, pk=pk)
     if request.method == "POST":
-        item = get_object_or_404(JapanItem, pk=request.POST.get("japan_item"))
+        item = get_object_or_404(visible_items(request.user), pk=request.POST.get("japan_item"))
         req.attach(item)
         return render(request, "tracker/partials/request_card.html", {
             "r": req, "status_choices": CustomerRequest.Status.choices,
         })
-    boxes = Box.objects.select_related("cargo").exclude(status=Box.Status.CHECKED)
+    boxes = visible_boxes(request.user).select_related("cargo").exclude(status=Box.Status.CHECKED)
     return render(request, "tracker/partials/request_attach.html", {
-        "r": req, "suggestions": _suggestions(req), "boxes": boxes,
+        "r": req, "suggestions": _suggestions(req, request.user), "boxes": boxes,
     })
 
 
 @login_required
 @roles.require(roles.can_use_requests)
 def request_attach_items(request):
-    box = Box.objects.filter(pk=request.GET.get("box") or 0).first()
+    box = visible_boxes(request.user).filter(pk=request.GET.get("box") or 0).first()
     items = box.items.all() if box else []
     return render(request, "tracker/partials/attach_item_options.html", {"items": items})
 
@@ -438,20 +460,22 @@ def request_detach(request, pk):
 # --- Cargo history ------------------------------------------------------------
 @login_required
 def cargo_history(request):
+    visible = visible_boxes(request.user)
+    shown = Q() if roles.sees_unshipped_boxes(request.user) else ~Q(boxes__status=Box.Status.PACKED)
     cargos = list(Cargo.objects.annotate(
-        box_total=Count("boxes", distinct=True),
+        box_total=Count("boxes", filter=shown, distinct=True),
         in_transit=Count("boxes", filter=Q(boxes__status=Box.Status.SHIPPED), distinct=True),
         checked=Count("boxes", filter=Q(boxes__status=Box.Status.CHECKED), distinct=True),
     ))
     problem_ids = set(Box.with_mismatches().values_list("pk", flat=True))
     for cargo in cargos:
-        dated = cargo.boxes.exclude(japan_ship_date=None).exclude(myanmar_received_date=None)
+        dated = visible.filter(cargo=cargo).exclude(japan_ship_date=None).exclude(myanmar_received_date=None)
         days = [(b.myanmar_received_date - b.japan_ship_date).days for b in dated]
         cargo.avg_days = round(sum(days) / len(days)) if days else None
-        cargo.issues = cargo.boxes.filter(pk__in=problem_ids).count()
+        cargo.issues = visible.filter(cargo=cargo, pk__in=problem_ids).count()
 
     selected = Cargo.objects.filter(code=request.GET.get("cargo", "").upper()).first()
-    boxes = boxes_with_counts(Box.objects.filter(cargo=selected) if selected else Box.objects.all())
+    boxes = boxes_with_counts(visible.filter(cargo=selected) if selected else visible)
     boxes = boxes.order_by("-japan_ship_date", "-created_at")
     for box in boxes:
         box.transit_days = (

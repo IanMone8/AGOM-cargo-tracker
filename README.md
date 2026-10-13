@@ -58,6 +58,9 @@ Everyone can view the dashboard, shipments and cargo history. **CSV import** is 
 **Customer requests** are for Owner, Admin and the Myanmar checker; the Japan sender doesn't see them
 (no sidebar link, no dashboard card, and the pages return "forbidden").
 
+**Shipped boxes only for Myanmar:** the Myanmar checker doesn't see a box (dashboard, Shipments,
+Cargo history, request attach lists, or by direct link) until the Japan sender sets it to **Shipped**.
+
 **Locking:** once the Myanmar check has started on a box (it has a received date, or any item is checked),
 the Japan sender can no longer edit that box or add or delete its items.
 Owner and Admin can still correct it, and the Myanmar checker can still edit the Myanmar side.

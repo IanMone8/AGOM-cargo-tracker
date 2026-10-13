@@ -30,6 +30,12 @@ class BaseTest(TestCase):
         self.item1 = JapanItem.objects.create(box=self.box, type="Driver", item_name="TSR2", flex="S", qty=1)
         self.item2 = JapanItem.objects.create(box=self.box, type="Wedge", item_name="RTX 6", qty=3)
 
+    def ship(self, box=None):
+        """Japan sender marks the box Shipped – only then can Myanmar see it."""
+        box = box or self.box
+        box.status = Box.Status.SHIPPED
+        box.save()
+
     def htmx(self, user, url, data=None):
         self.client.force_login(user)
         return self.client.post(url, data or {}, HTTP_HX_REQUEST="true")
@@ -50,6 +56,10 @@ class ModelTests(BaseTest):
 
 
 class CheckTests(BaseTest):
+    def setUp(self):
+        super().setUp()
+        self.ship()
+
     def test_one_tap_checks_and_auto_checked(self):
         url1 = reverse("item_check", args=[self.item1.pk])
         r = self.htmx(self.myanmar, url1, {"result": "matched"})
@@ -222,6 +232,7 @@ class AddBoxModalTests(BaseTest):
 
 class MyanmarCheckFlowTests(BaseTest):
     def test_start_check(self):
+        self.ship()
         self.client.force_login(self.myanmar)
         detail = reverse("box_detail", args=[self.box.pk])
         r = self.client.get(detail)
@@ -294,6 +305,7 @@ class CSVNewFieldsTests(CSVImportTests):
 
 class JapanSenderLockTests(BaseTest):
     def start_check(self):
+        self.ship()
         self.client.force_login(self.myanmar)
         self.client.post(reverse("box_start_check", args=[self.box.pk]))
         self.client.logout()
@@ -313,6 +325,7 @@ class JapanSenderLockTests(BaseTest):
         self.assertEqual(self.box.status, Box.Status.PACKED)
 
     def test_myanmar_and_owner_keep_all_statuses(self):
+        self.ship()
         for user in (self.myanmar, self.owner):
             self.client.force_login(user)
             r = self.client.get(reverse("box_edit", args=[self.box.pk]))
@@ -452,3 +465,56 @@ class FaviconTests(BaseTest):
                 r = self.client.get(url)
                 self.assertContains(r, '<link rel="icon" type="image/png" href="/static/img/3D%20logo.png')
                 self.assertContains(r, '<link rel="apple-touch-icon" href="/static/img/3D%20logo.png')
+
+
+class MyanmarSeesShippedOnlyTests(BaseTest):
+    """A packed box stays hidden from the Myanmar checker until it is shipped."""
+
+    def test_packed_box_hidden_everywhere(self):
+        req = CustomerRequest.objects.create(customer="Ko Aung", item_name="TSR2 driver", flex="S")
+        self.client.force_login(self.myanmar)
+        label = self.box.label
+        self.assertNotContains(self.client.get(reverse("box_list")), label)
+        self.assertNotContains(self.client.get(reverse("box_list"), {"status": "packed"}), label)
+        self.assertNotContains(self.client.get(reverse("box_list")), '<option value="packed"')
+        self.assertNotContains(self.client.get(reverse("cargo_history")), label)
+        dash = self.client.get(reverse("dashboard"))
+        self.assertNotContains(dash, label)
+        self.assertEqual(dash.context["total_box_count"], 0)
+        # direct links don't work either
+        for name, pk in [("box_detail", self.box.pk), ("box_edit", self.box.pk), ("item_row", self.item1.pk),
+                         ("item_wrong_qty", self.item1.pk), ("extra_add", self.box.pk)]:
+            with self.subTest(name=name):
+                self.assertEqual(self.client.get(reverse(name, args=[pk])).status_code, 404)
+        for name, pk, data in [("box_start_check", self.box.pk, {}),
+                               ("item_check", self.item1.pk, {"result": "matched"})]:
+            with self.subTest(name=name):
+                self.assertEqual(self.client.post(reverse(name, args=[pk]), data).status_code, 404)
+        self.assertFalse(ReceiveCheck.objects.exists())
+        self.box.refresh_from_db()
+        self.assertEqual(self.box.status, Box.Status.PACKED)
+        # not offered when attaching customer requests
+        r = self.client.get(reverse("request_attach", args=[req.pk]))
+        self.assertNotContains(r, label)
+        r = self.client.get(reverse("request_attach_items"), {"box": self.box.pk})
+        self.assertNotContains(r, "TSR2")
+        self.assertEqual(self.client.post(reverse("request_attach", args=[req.pk]),
+                                          {"japan_item": self.item1.pk}).status_code, 404)
+
+    def test_visible_after_japan_sender_ships(self):
+        self.client.force_login(self.japan)
+        self.client.post(reverse("box_edit", args=[self.box.pk]),
+                         {"cargo": self.cargo.pk, "box_no": 3, "status": "shipped"})
+        self.box.refresh_from_db()
+        self.assertEqual(self.box.status, Box.Status.SHIPPED)
+        self.client.force_login(self.myanmar)
+        self.assertContains(self.client.get(reverse("box_list")), self.box.label)
+        self.assertContains(self.client.get(reverse("dashboard")), self.box.label)
+        self.assertContains(self.client.get(reverse("box_detail", args=[self.box.pk])), "Start Myanmar check")
+
+    def test_owner_and_japan_still_see_packed_boxes(self):
+        for user in (self.owner, self.japan):
+            self.client.force_login(user)
+            with self.subTest(user=user.username):
+                self.assertContains(self.client.get(reverse("box_list")), self.box.label)
+                self.assertEqual(self.client.get(reverse("box_detail", args=[self.box.pk])).status_code, 200)

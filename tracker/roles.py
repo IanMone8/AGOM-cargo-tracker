@@ -51,6 +51,11 @@ def can_use_requests(user):
     return is_manager(user) or can_check(user)
 
 
+def sees_unshipped_boxes(user):
+    """Packed (not yet shipped) boxes are hidden from the Myanmar checker."""
+    return is_manager(user) or can_edit_japan(user)
+
+
 def can_edit_box_items(user, box):
     """Edit the Japan side of a box (box header, add/delete items, CSV import).
 
