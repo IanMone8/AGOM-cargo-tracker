@@ -464,7 +464,16 @@ class FaviconTests(BaseTest):
             with self.subTest(url=url):
                 r = self.client.get(url)
                 self.assertContains(r, '<link rel="icon" type="image/png" href="/static/img/3D%20logo.png')
-                self.assertContains(r, '<link rel="apple-touch-icon" href="/static/img/3D%20logo.png')
+                self.assertContains(r, '<link rel="apple-touch-icon" href="/static/img/3D%20cover%20logo.png')
+                self.assertContains(r, '<link rel="manifest" href="/manifest.webmanifest">')
+
+    def test_manifest_uses_3d_cover_logo(self):
+        r = self.client.get(reverse("web_manifest"))  # no login needed: phones fetch it directly
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["Content-Type"], "application/manifest+json")
+        data = r.json()
+        self.assertEqual(data["short_name"], "AGOM Cargo")
+        self.assertEqual({i["src"] for i in data["icons"]}, {"/static/img/3D%20cover%20logo.png"})
 
 
 class MyanmarSeesShippedOnlyTests(BaseTest):

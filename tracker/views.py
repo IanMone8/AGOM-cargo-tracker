@@ -3,10 +3,11 @@ from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.core.exceptions import PermissionDenied
 from django.db.models import Count, Q
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.templatetags.static import static
 from django.views.decorators.http import require_POST
 
 from . import roles
@@ -542,4 +543,26 @@ def csv_import(request):
 def csv_template(request):
     response = HttpResponse(template_csv(), content_type="text/csv")
     response["Content-Disposition"] = 'attachment; filename="japan_list_template.csv"'
+    return response
+
+
+# --- Phone home-screen app ---------------------------------------------------
+def web_manifest(request):
+    """Lets phones add the tracker to the home screen with the 3D cover logo as app icon."""
+    icon = static("img/3D cover logo.png")
+    data = {
+        "name": "AGOM Cargo Tracker",
+        "short_name": "AGOM Cargo",
+        "start_url": "/",
+        "scope": "/",
+        "display": "standalone",
+        "background_color": "#f4f6ef",
+        "theme_color": "#0f3b2c",
+        "icons": [
+            {"src": icon, "sizes": "192x192", "type": "image/png", "purpose": "any"},
+            {"src": icon, "sizes": "512x512", "type": "image/png", "purpose": "any"},
+        ],
+    }
+    response = JsonResponse(data, json_dumps_params={"ensure_ascii": False})
+    response["Content-Type"] = "application/manifest+json"
     return response

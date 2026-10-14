@@ -6,7 +6,11 @@
   <meta name="theme-color" content="#0f3b2c">
   <title>{% block title %}AGOM Cargo Tracker{% endblock %}</title>
   <link rel="icon" type="image/png" href="{% static_v 'img/3D logo.png' %}">
-  <link rel="apple-touch-icon" href="{% static_v 'img/3D logo.png' %}">
+  <link rel="apple-touch-icon" href="{% static_v 'img/3D cover logo.png' %}">
+  <link rel="manifest" href="{% url 'web_manifest' %}">
+  <meta name="apple-mobile-web-app-title" content="AGOM Cargo">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com/3.4.16"></script>

@@ -4,6 +4,7 @@ from . import views
 
 urlpatterns = [
     path("", views.dashboard, name="dashboard"),
+    path("manifest.webmanifest", views.web_manifest, name="web_manifest"),
     path("boxes/", views.box_list, name="box_list"),
     path("boxes/new/", views.box_create, name="box_create"),
     path("boxes/<int:pk>/", views.box_detail, name="box_detail"),
