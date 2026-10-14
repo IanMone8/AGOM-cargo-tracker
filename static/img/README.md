@@ -1,3 +1,7 @@
+Originals live here; the app shows small copies from `display/` (made by
+`python scripts/make_display_images.py`, needs `pip install Pillow`). After replacing an original,
+run the script again and commit the new `display/` files.
+
 Images used by the app:
 
 - `agom-logo.png` – the AGOM logo (sidebar, phone header, login page)

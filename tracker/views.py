@@ -635,7 +635,6 @@ def csv_template(request):
 # --- Phone home-screen app ---------------------------------------------------
 def web_manifest(request):
     """Lets phones add the tracker to the home screen with the 3D cover logo as app icon."""
-    icon = static("img/3D cover logo.png")
     data = {
         "name": "AGOM Cargo Tracker",
         "short_name": "AGOM Cargo",
@@ -645,8 +644,8 @@ def web_manifest(request):
         "background_color": "#f4f6ef",
         "theme_color": "#0f3b2c",
         "icons": [
-            {"src": icon, "sizes": "192x192", "type": "image/png", "purpose": "any"},
-            {"src": icon, "sizes": "512x512", "type": "image/png", "purpose": "any"},
+            {"src": static("img/display/app-icon-192.png"), "sizes": "192x192", "type": "image/png", "purpose": "any"},
+            {"src": static("img/display/app-icon-512.png"), "sizes": "512x512", "type": "image/png", "purpose": "any"},
         ],
     }
     response = JsonResponse(data, json_dumps_params={"ensure_ascii": False})

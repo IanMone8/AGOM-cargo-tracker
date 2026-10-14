@@ -12,7 +12,7 @@ Styled with Tailwind utilities only, so it never depends on a cached copy of ago
   <span class="stat-value pop-sm relative z-10 mt-2 block w-fit text-[2.6rem] font-extrabold leading-none tracking-tight text-stone-900 tabular-nums xl:text-[2.75rem]">{{ value }}{% if total is not None %}<span class="stat-total ml-1 text-2xl font-bold text-stone-900/35">/ {{ total }}</span>{% endif %}</span>
   <span class="mt-auto flex items-end justify-between gap-2">
     <span class="stat-caption relative z-10 min-w-0 pb-1 text-[0.72rem] leading-snug text-stone-500 sm:text-[0.8rem] xl:max-w-[calc(100%-8.25rem)]">{{ caption }}</span>
-    <img src="{% static_v 'img/icons/'|add:icon_file %}" alt="" width="70" height="70" loading="lazy"
+    <img src="{% static_v 'img/display/icons/'|add:icon_file %}" alt="" width="70" height="70" loading="lazy"
          class="stat-img pop drop-3d h-[70px] w-[70px] shrink-0 object-contain xl:absolute xl:bottom-[11px] xl:right-[3px] xl:h-[109px] xl:w-[123px]"
          onerror="this.style.display='none'">
   </span>

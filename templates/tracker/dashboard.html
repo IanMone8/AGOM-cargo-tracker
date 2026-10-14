@@ -5,10 +5,10 @@
 
 <div class="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
   {% url 'cargo_history' as cargo_url %}{% url 'box_list' as boxes_url %}
-  {% include "tracker/partials/stat_card.html" with tone="peach" href=cargo_url title="Cargos" value=cargo_count caption="Sent from Japan" icon_file="plane.png" %}
-  {% include "tracker/partials/stat_card.html" with tone="lavender" href=boxes_url title="Total boxes" value=total_box_count caption="Across all cargos" icon_file="boxes.png" %}
-  {% include "tracker/partials/stat_card.html" with tone="green" href=boxes_url|add:"?status=checked" title="Checked in Myanmar" value=checked_box_count total=total_box_count caption="Finished box checks" icon_file="box-checked.png" %}
-  {% include "tracker/partials/stat_card.html" with tone="cream" href="#needs-review" title="Needs review" value=mismatch_count caption="Boxes with differences" icon_file="warning.png" %}
+  {% include "tracker/partials/stat_card.html" with tone="peach" href=cargo_url title="Cargos" value=cargo_count caption="Sent from Japan" icon_file="plane.webp" %}
+  {% include "tracker/partials/stat_card.html" with tone="lavender" href=boxes_url title="Total boxes" value=total_box_count caption="Across all cargos" icon_file="boxes.webp" %}
+  {% include "tracker/partials/stat_card.html" with tone="green" href=boxes_url|add:"?status=checked" title="Checked in Myanmar" value=checked_box_count total=total_box_count caption="Finished box checks" icon_file="box-checked.webp" %}
+  {% include "tracker/partials/stat_card.html" with tone="cream" href="#needs-review" title="Needs review" value=mismatch_count caption="Boxes with differences" icon_file="warning.webp" %}
 </div>
 
 <div class="mt-6 grid gap-6 lg:grid-cols-5">

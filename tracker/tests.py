@@ -433,7 +433,7 @@ class DashboardStatCardTests(BaseTest):
                 self.assertRegex(block, rf'class="stat-value[^"]*">{value}(<|\s*</span>)')
                 self.assertRegex(block, rf'class="stat-caption[^"]*">{caption}</span>')
                 # icon: fixed size, contained, hidden if the file is missing
-                self.assertIn(f"/static/img/icons/{icon}.png", block)
+                self.assertIn(f"/static/img/display/icons/{icon}.webp", block)
                 self.assertIn('width="70" height="70"', block)
                 self.assertIn("object-contain", block)
                 self.assertIn("onerror=\"this.style.display='none'\"", block)
@@ -450,7 +450,7 @@ class SidebarIconTests(BaseTest):
         for label, png in [("Dashboard", "house"), ("Shipments", "flying-box"), ("Cargo history", "calendar")]:
             with self.subTest(label=label):
                 link = re.search(rf'<a [^>]*class="sidebar-link[^"]*">(?:(?!</a>).)*{label}</a>', html, re.S).group(0)
-                self.assertIn(f"/static/img/icons/{png}.png", link)
+                self.assertIn(f"/static/img/display/icons/{png}.webp", link)
                 self.assertIn('width="24" height="24"', link)
                 self.assertIn("onerror=", link)
                 self.assertIn("<svg", link)  # line-icon fallback if the PNG is missing
@@ -463,8 +463,8 @@ class FaviconTests(BaseTest):
                 self.client.force_login(self.owner)
             with self.subTest(url=url):
                 r = self.client.get(url)
-                self.assertContains(r, '<link rel="icon" type="image/png" href="/static/img/3D%20logo.png')
-                self.assertContains(r, '<link rel="apple-touch-icon" href="/static/img/3D%20cover%20logo.png')
+                self.assertContains(r, '<link rel="icon" type="image/png" href="/static/img/display/3d-logo.png')
+                self.assertContains(r, '<link rel="apple-touch-icon" sizes="180x180" href="/static/img/display/app-icon-180.png')
                 self.assertContains(r, '<link rel="manifest" href="/manifest.webmanifest">')
 
     def test_manifest_uses_3d_cover_logo(self):
@@ -473,7 +473,9 @@ class FaviconTests(BaseTest):
         self.assertEqual(r["Content-Type"], "application/manifest+json")
         data = r.json()
         self.assertEqual(data["short_name"], "AGOM Cargo")
-        self.assertEqual({i["src"] for i in data["icons"]}, {"/static/img/3D%20cover%20logo.png"})
+        self.assertEqual([(i["src"], i["sizes"]) for i in data["icons"]],
+                         [("/static/img/display/app-icon-192.png", "192x192"),
+                          ("/static/img/display/app-icon-512.png", "512x512")])
 
 
 class MyanmarSeesShippedOnlyTests(BaseTest):
@@ -752,3 +754,19 @@ class CustomerPageTests(BaseTest):
         self.assertContains(r, reverse("customer_by_name") + "?name=Ko%20Aung")
         r = self.client.get(reverse("customer_by_name"), {"name": "Ko Aung"})
         self.assertRedirects(r, reverse("customer_detail", args=[self.ko.pk]))
+
+
+class DisplayImageTests(TestCase):
+    """The app must show the small copies, and every file it points to must exist."""
+
+    def test_display_copies_exist_and_are_small(self):
+        from pathlib import Path
+        from django.conf import settings
+        root = Path(settings.BASE_DIR) / "static" / "img" / "display"
+        names = [f"icons/{n}.webp" for n in ("plane", "boxes", "box-checked", "warning", "house", "flying-box", "calendar")]
+        names += ["3d-logo.png", "app-icon-180.png", "app-icon-192.png", "app-icon-512.png"]
+        for name in names:
+            with self.subTest(name=name):
+                f = root / name
+                self.assertTrue(f.exists())
+                self.assertLess(f.stat().st_size, 200 * 1024)
