@@ -56,6 +56,11 @@ def sees_unshipped_boxes(user):
     return is_manager(user) or can_edit_japan(user)
 
 
+def can_use_customers(user):
+    """Customer list / details – same people as customer requests (not the Japan sender)."""
+    return can_use_requests(user)
+
+
 def can_edit_box_items(user, box):
     """Edit the Japan side of a box (box header, add/delete items, CSV import).
 

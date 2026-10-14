@@ -650,3 +650,105 @@ class DateRuleTests(BaseTest):
         with self.assertRaises(ValidationError) as ctx:
             self.box.full_clean()
         self.assertIn("myanmar_received_date", ctx.exception.message_dict)
+
+
+class CustomerPageTests(BaseTest):
+    def setUp(self):
+        super().setUp()
+        from .models import Customer
+        self.Customer = Customer
+        self.ship()
+        self.ko = Customer.objects.create(name="Ko Aung", address="No. 12, Bahan, Yangon",
+                                          phone="09 7712 3456", viber_member=True)
+
+    def test_japan_sender_has_no_customer_pages(self):
+        self.client.force_login(self.japan)
+        self.assertNotContains(self.client.get(reverse("dashboard")), reverse("customer_list"))
+        for url in (reverse("customer_list"), reverse("customer_detail", args=[self.ko.pk]),
+                    reverse("customer_edit", args=[self.ko.pk]), reverse("customer_by_name") + "?name=Ko"):
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url).status_code, 403)
+        self.assertEqual(self.client.post(reverse("customer_list"), {"name": "X"}).status_code, 403)
+
+    def test_list_shows_contact_viber_and_last_order(self):
+        CustomerRequest.objects.create(customer="ko aung", item_name="Old wedge", status="fulfilled")
+        CustomerRequest.objects.create(customer="Ko Aung", item_name="Qi10 Driver", flex="S")
+        self.client.force_login(self.myanmar)
+        r = self.client.get(reverse("customer_list"))
+        self.assertContains(r, reverse("customer_detail", args=[self.ko.pk]))
+        for text in ("Ko Aung", "No. 12, Bahan, Yangon", 'href="tel:09 7712 3456"', "Viber member", "Qi10 Driver"):
+            self.assertContains(r, text)
+        self.assertNotContains(r, "Old wedge")  # only the latest order is shown
+        self.assertContains(self.client.get(reverse("customer_list")), reverse("customer_list"))  # sidebar link
+
+    def test_last_order_falls_back_to_box_item(self):
+        self.item1.customer = "Ko Aung"
+        self.item1.save()
+        self.client.force_login(self.owner)
+        r = self.client.get(reverse("customer_list"))
+        self.assertContains(r, "TSR2")
+        self.assertContains(r, "in GN-3")
+
+    def test_search_and_viber_filter(self):
+        self.Customer.objects.create(name="Ma Hnin", phone="09 111", viber_member=False)
+        self.client.force_login(self.owner)
+        r = self.client.get(reverse("customer_list"), {"q": "bahan"}, HTTP_HX_REQUEST="true",
+                            HTTP_HX_TARGET="customer-results")
+        self.assertContains(r, "Ko Aung")
+        self.assertNotContains(r, "Ma Hnin")
+        r = self.client.get(reverse("customer_list"), {"viber": "1"})
+        self.assertContains(r, "Ko Aung")
+        self.assertNotContains(r, "Ma Hnin")
+
+    def test_detail_shows_orders_and_items(self):
+        CustomerRequest.objects.create(customer="Ko Aung", item_name="Qi10 Driver")
+        self.item1.customer = "KO AUNG"
+        self.item1.save()
+        self.client.force_login(self.myanmar)
+        r = self.client.get(reverse("customer_detail", args=[self.ko.pk]))
+        for text in ("Ko Aung", "No. 12, Bahan, Yangon", "Viber channel member", "Qi10 Driver", "TSR2", "GN-3"):
+            self.assertContains(r, text)
+
+    def test_detail_hides_items_in_unshipped_boxes_from_myanmar(self):
+        self.box.status = Box.Status.PACKED
+        self.box.save()
+        self.item1.customer = "Ko Aung"
+        self.item1.save()
+        self.client.force_login(self.myanmar)
+        self.assertNotContains(self.client.get(reverse("customer_detail", args=[self.ko.pk])), "TSR2")
+        self.client.force_login(self.owner)
+        self.assertContains(self.client.get(reverse("customer_detail", args=[self.ko.pk])), "TSR2")
+
+    def test_create_edit_and_rename_keeps_orders(self):
+        self.client.force_login(self.owner)
+        r = self.client.post(reverse("customer_list"), {"name": "  Ma   Hnin ", "phone": "09 222", "viber_member": "on"})
+        ma = self.Customer.objects.get(name="Ma Hnin")
+        self.assertRedirects(r, reverse("customer_detail", args=[ma.pk]))
+        self.assertTrue(ma.viber_member)
+        r = self.client.post(reverse("customer_list"), {"name": "ma hnin"})
+        self.assertContains(r, "already exists")
+        CustomerRequest.objects.create(customer="Ma Hnin", item_name="G430")
+        self.client.post(reverse("customer_edit", args=[ma.pk]), {"name": "Daw Hnin", "phone": "09 222"})
+        ma.refresh_from_db()
+        self.assertEqual(ma.name, "Daw Hnin")
+        self.assertEqual(CustomerRequest.objects.get(item_name="G430").customer, "Daw Hnin")
+
+    def test_names_on_requests_items_and_csv_create_customers(self):
+        CustomerRequest.objects.create(customer="U Tun", item_name="Putter")
+        self.item2.customer = "Daw Mya"
+        self.item2.save()
+        self.client.force_login(self.owner)
+        f = SimpleUploadedFile("l.csv", b"box,type,item_name,customer\nGN-3,Bag,Stand bag,Ko Zaw\n", content_type="text/csv")
+        self.client.post(reverse("csv_import"), {"file": f})
+        names = set(self.Customer.objects.values_list("name", flat=True))
+        self.assertTrue({"U Tun", "Daw Mya", "Ko Zaw"} <= names)
+        CustomerRequest.objects.create(customer="ko aung", item_name="x")  # same person, different case
+        self.assertEqual(self.Customer.objects.filter(name__iexact="ko aung").count(), 1)
+
+    def test_customer_name_links(self):
+        req = CustomerRequest.objects.create(customer="Ko Aung", item_name="Qi10")
+        self.client.force_login(self.myanmar)
+        r = self.client.get(reverse("request_list"))
+        self.assertContains(r, reverse("customer_by_name") + "?name=Ko%20Aung")
+        r = self.client.get(reverse("customer_by_name"), {"name": "Ko Aung"})
+        self.assertRedirects(r, reverse("customer_detail", args=[self.ko.pk]))

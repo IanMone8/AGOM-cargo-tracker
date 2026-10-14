@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% load tracker_tags %}
+{% block content %}
+<div class="mb-6 flex flex-wrap items-end justify-between gap-3">
+  <div>
+    <p class="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">Customers</p>
+    <h1 class="text-2xl font-extrabold tracking-tight sm:text-3xl">Customers</h1>
+    <p class="mt-1 text-sm text-stone-500">Contact details and what each customer ordered</p>
+  </div>
+  <button onclick="document.getElementById('new-customer').classList.toggle('hidden')" class="btn btn-primary">{% icon "plus" %} New customer</button>
+</div>
+
+<form id="new-customer" method="post" class="{% if not show_form %}hidden{% endif %} card mb-4 space-y-3 p-5">
+  {% csrf_token %}
+  <div class="grid gap-3 sm:grid-cols-2">
+    {% include "tracker/_field.html" with field=form.name %}
+    {% include "tracker/_field.html" with field=form.phone %}
+    <div class="sm:col-span-2">{% include "tracker/_field.html" with field=form.address %}</div>
+    <label class="flex items-center gap-2 text-sm font-semibold text-stone-700">{{ form.viber_member }} {{ form.viber_member.label }}</label>
+    <div class="sm:col-span-2">{% include "tracker/_field.html" with field=form.note %}</div>
+  </div>
+  <button class="btn btn-primary w-full py-3 sm:w-auto sm:px-8">Save customer</button>
+</form>
+
+<form class="card mb-4 grid grid-cols-[1fr_auto] items-center gap-3 p-3" hx-get="{% url 'customer_list' %}" hx-target="#customer-results"
+      hx-trigger="change, input changed delay:300ms from:input[name=q], search from:input[name=q]" hx-push-url="true">
+  <input name="q" value="{{ q }}" placeholder="Search customers…" class="field" type="search">
+  <label class="flex items-center gap-2 whitespace-nowrap text-sm font-semibold text-stone-600">
+    <input type="checkbox" name="viber" value="1" class="h-5 w-5 accent-violet-600" {% if viber %}checked{% endif %}> Viber only
+  </label>
+</form>
+
+<div id="customer-results">{% include "tracker/partials/customer_results.html" %}</div>
+{% endblock %}

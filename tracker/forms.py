@@ -3,7 +3,7 @@ from django.forms import inlineformset_factory
 from django.utils import timezone
 
 from . import roles
-from .models import Box, Cargo, CustomerRequest, ExtraItem, JapanItem
+from .models import Box, Cargo, Customer, CustomerRequest, ExtraItem, JapanItem
 
 INPUT = "field"  # styled in static/css/agom.css
 
@@ -163,3 +163,21 @@ class CSVImportForm(StyledMixin, forms.Form):
         label="Replace existing Japan items in the boxes in this file",
         help_text="Deletes those boxes' current items (and their receive checks) first.",
     )
+
+
+class CustomerForm(StyledMixin, forms.ModelForm):
+    class Meta:
+        model = Customer
+        fields = ["name", "phone", "viber_member", "address", "note"]
+        widgets = {
+            "phone": forms.TextInput(attrs={"inputmode": "tel", "autocomplete": "tel", "placeholder": "09…"}),
+            "address": forms.Textarea(attrs={"rows": 2}),
+            "note": forms.Textarea(attrs={"rows": 2}),
+        }
+
+    def clean_name(self):
+        name = " ".join(self.cleaned_data["name"].split())
+        clash = Customer.objects.filter(name__iexact=name).exclude(pk=self.instance.pk)
+        if clash.exists():
+            raise forms.ValidationError("A customer with this name already exists.")
+        return name

@@ -2,7 +2,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.core.exceptions import PermissionDenied
-from django.db.models import Count, Q
+from django.db.models import Count, OuterRef, Q, Subquery
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -18,11 +18,12 @@ from .forms import (
     BoxForm,
     ItemFormSet,
     CSVImportForm,
+    CustomerForm,
     CustomerRequestForm,
     ExtraItemForm,
     JapanItemForm,
 )
-from .models import Box, Cargo, Catalog, CustomerRequest, ExtraItem, JapanItem, ReceiveCheck
+from .models import Box, Cargo, Catalog, Customer, CustomerRequest, ExtraItem, JapanItem, ReceiveCheck
 
 ITEM_CATEGORIES = ["Club", "Club set", "Bag", "Balls", "Shoes", "Apparel", "Accessory"]
 CLUB_TYPES = ["Driver", "Fairway wood", "Utility", "Iron set", "Iron", "Wedge", "Putter"]
@@ -489,6 +490,91 @@ def request_detach(request, pk):
     return render(request, "tracker/partials/request_card.html", {
         "r": req, "status_choices": CustomerRequest.Status.choices,
     })
+
+
+# --- Customers ------------------------------------------------------------------
+def customers_with_last_order(qs):
+    last_req = CustomerRequest.objects.filter(customer__iexact=OuterRef("name")).order_by("-created_at")
+    last_item = JapanItem.objects.filter(customer__iexact=OuterRef("name")).order_by("-box__created_at", "-id")
+    return qs.annotate(
+        last_req_item=Subquery(last_req.values("item_name")[:1]),
+        last_req_at=Subquery(last_req.values("created_at")[:1]),
+        last_req_status=Subquery(last_req.values("status")[:1]),
+        last_item_name=Subquery(last_item.values("item_name")[:1]),
+        last_item_cargo=Subquery(last_item.values("box__cargo__code")[:1]),
+        last_item_box=Subquery(last_item.values("box__box_no")[:1]),
+    )
+
+
+@login_required
+@roles.require(roles.can_use_customers)
+def customer_list(request):
+    q = request.GET.get("q", "").strip()
+    qs = Customer.objects.all()
+    if q:
+        qs = qs.filter(Q(name__icontains=q) | Q(phone__icontains=q) | Q(address__icontains=q))
+    if request.GET.get("viber") == "1":
+        qs = qs.filter(viber_member=True)
+    status_labels = dict(CustomerRequest.Status.choices)
+    customers = list(customers_with_last_order(qs))
+    for c in customers:
+        c.last_req_status_label = status_labels.get(c.last_req_status, "")
+
+    form = CustomerForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        customer = form.save()
+        messages.success(request, f"Customer {customer.name} added.")
+        return redirect("customer_detail", pk=customer.pk)
+
+    ctx = {"customers": customers, "q": q, "viber": request.GET.get("viber") == "1",
+           "form": form, "show_form": request.method == "POST"}
+    if is_htmx(request) and request.headers.get("HX-Target") == "customer-results":
+        return render(request, "tracker/partials/customer_results.html", ctx)
+    return render(request, "tracker/customer_list.html", ctx)
+
+
+@login_required
+@roles.require(roles.can_use_customers)
+def customer_detail(request, pk):
+    customer = get_object_or_404(Customer, pk=pk)
+    reqs = customer.requests().select_related("box__cargo", "japan_item")
+    items = (visible_items(request.user).filter(customer__iexact=customer.name)
+             .select_related("box__cargo", "receive_check").order_by("-box__created_at", "-id"))
+    return render(request, "tracker/customer_detail.html", {
+        "customer": customer,
+        "requests": reqs,
+        "items": items,
+        "open_count": reqs.exclude(status=CustomerRequest.Status.FULFILLED).count(),
+        "fulfilled_count": reqs.filter(status=CustomerRequest.Status.FULFILLED).count(),
+        "status_choices": CustomerRequest.Status.choices,
+    })
+
+
+@login_required
+@roles.require(roles.can_use_customers)
+def customer_edit(request, pk):
+    customer = get_object_or_404(Customer, pk=pk)
+    old_name = customer.name
+    form = CustomerForm(request.POST or None, instance=customer)
+    if form.is_valid():
+        with transaction.atomic():
+            customer = form.save()
+            if customer.name != old_name:  # keep their orders linked after a rename
+                CustomerRequest.objects.filter(customer__iexact=old_name).update(customer=customer.name)
+                JapanItem.objects.filter(customer__iexact=old_name).update(customer=customer.name)
+        messages.success(request, f"{customer.name} saved.")
+        return redirect("customer_detail", pk=customer.pk)
+    return render(request, "tracker/customer_form.html", {"form": form, "customer": customer})
+
+
+@login_required
+@roles.require(roles.can_use_customers)
+def customer_by_name(request):
+    """Links from requests / items, which only know the customer's name."""
+    customer = Customer.ensure(request.GET.get("name", ""))
+    if not customer:
+        return redirect("customer_list")
+    return redirect("customer_detail", pk=customer.pk)
 
 
 # --- Cargo history ------------------------------------------------------------

@@ -188,6 +188,11 @@ class JapanItem(models.Model):
         bits = [self.item_name, self.flex, self.loft]
         return f"{self.box.label}: " + " ".join(b for b in bits if b) + f" ×{self.qty}"
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.customer:
+            Customer.ensure(self.customer)
+
     @property
     def spec(self):
         return " · ".join(b for b in [self.club_number, self.flex, self.loft] if b)
@@ -272,6 +277,10 @@ class CustomerRequest(models.Model):
     def __str__(self):
         return f"{self.customer}: {self.item_name} ×{self.qty} ({self.get_status_display()})"
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        Customer.ensure(self.customer)
+
     def attach(self, item):
         self.japan_item = item
         self.box = item.box
@@ -317,3 +326,41 @@ class Catalog(models.Model):
     @property
     def loft_list(self):
         return self._split(self.loft_options)
+
+
+class Customer(models.Model):
+    """A customer in Myanmar. Orders are linked by name: customer requests and
+    Japan items whose `customer` field matches this name (case-insensitive)."""
+
+    name = models.CharField(max_length=100, unique=True)
+    address = models.TextField(blank=True)
+    phone = models.CharField(max_length=40, blank=True)
+    viber_member = models.BooleanField("Viber channel member", default=False)
+    note = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        self.name = " ".join(self.name.split())
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def ensure(cls, name):
+        """Get or create the customer for a name typed on a request or item."""
+        name = " ".join((name or "").split())
+        if not name:
+            return None
+        existing = cls.objects.filter(name__iexact=name).first()
+        return existing or cls.objects.create(name=name)
+
+    def requests(self):
+        return CustomerRequest.objects.filter(customer__iexact=self.name)
+
+    def items(self):
+        return JapanItem.objects.filter(customer__iexact=self.name)

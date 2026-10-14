@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 
 from django.db import transaction
 
-from .models import Box, Cargo, JapanItem
+from .models import Box, Cargo, Customer, JapanItem
 
 COLUMNS = [
     "box", "item_name", "type", "qty", "quantity_unit", "brand", "model", "club_type",
@@ -168,6 +168,8 @@ def import_japan_csv(uploaded_file, replace=False):
         JapanItem.objects.bulk_create(
             JapanItem(box=boxes[(code, no)], **kwargs) for code, no, kwargs in parsed
         )
+        for name in {kwargs["customer"] for _, _, kwargs in parsed if kwargs["customer"]}:
+            Customer.ensure(name)  # bulk_create skips save(), so add customers here
         result.created_items = len(parsed)
         result.boxes = list(boxes.values())
         for box in result.boxes:

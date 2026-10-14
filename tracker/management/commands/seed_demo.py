@@ -8,7 +8,7 @@ import datetime
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from tracker.models import Box, Cargo, Catalog, CustomerRequest, JapanItem
+from tracker.models import Box, Cargo, Catalog, Customer, CustomerRequest, JapanItem
 
 CARGOS = [("JP", "JP Cargo"), ("GN", "GN Cargo"), ("KL", "KL Cargo"), ("KAG", "KAG Cargo")]
 CATALOG = [
@@ -72,6 +72,8 @@ class Command(BaseCommand):
                               color="White", qty=5, quantity_unit="dozen"),
                 ])
             box.refresh_status()
+        for name in JapanItem.objects.exclude(customer="").values_list("customer", flat=True).distinct():
+            Customer.ensure(name)  # bulk_create above skips the automatic customer creation
         CustomerRequest.objects.get_or_create(
             customer="Ma Hnin", item_name="Ping G430 Max",
             defaults={"type": "Driver", "flex": "SR", "loft": "10.5"},

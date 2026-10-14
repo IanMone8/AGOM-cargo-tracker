@@ -12,4 +12,5 @@ def roles(request):
         "is_manager": r.is_manager(user),
         "can_import_csv": r.can_import_csv(user),
         "can_use_requests": r.can_use_requests(user),
+        "can_use_customers": r.can_use_customers(user),
     }

@@ -9,7 +9,7 @@
         <span class="rounded-md bg-stone-100 px-1.5 py-0.5 text-stone-600">{{ item.type }}</span>
         <span class="rounded-md bg-stone-100 px-1.5 py-0.5 text-stone-600">{{ item.get_condition_display }}</span>
         {% if item.price_jpy %}<span class="rounded-md bg-stone-100 px-1.5 py-0.5 text-stone-600">¥{{ item.price_jpy }}</span>{% endif %}
-        {% if item.customer %}<span class="rounded-md bg-emerald-50 px-1.5 py-0.5 text-emerald-800">👤 {{ item.customer }}</span>{% endif %}
+        {% if item.customer %}{% if can_use_customers %}<a href="{% url 'customer_by_name' %}?name={{ item.customer|urlencode }}" class="rounded-md bg-emerald-50 px-1.5 py-0.5 text-emerald-800 hover:underline">👤 {{ item.customer }}</a>{% else %}<span class="rounded-md bg-emerald-50 px-1.5 py-0.5 text-emerald-800">👤 {{ item.customer }}</span>{% endif %}{% endif %}
       </div>
       {% if item.specification %}<div class="mt-1 text-xs text-stone-600">{{ item.specification }}</div>{% endif %}
       {% if item.note %}<div class="mt-0.5 text-xs italic text-stone-600">{{ item.note }}</div>{% endif %}

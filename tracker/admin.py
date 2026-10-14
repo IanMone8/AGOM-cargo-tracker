@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Box, Cargo, Catalog, CustomerRequest, ExtraItem, JapanItem, ReceiveCheck
+from .models import Box, Cargo, Catalog, Customer, CustomerRequest, ExtraItem, JapanItem, ReceiveCheck
 
 
 @admin.register(Cargo)
@@ -86,3 +86,10 @@ class CatalogAdmin(admin.ModelAdmin):
     list_display = ["type", "brand_model", "flex_options", "loft_options"]
     list_filter = ["type"]
     search_fields = ["brand_model"]
+
+
+@admin.register(Customer)
+class CustomerAdmin(admin.ModelAdmin):
+    list_display = ["name", "phone", "viber_member", "address"]
+    list_filter = ["viber_member"]
+    search_fields = ["name", "phone", "address"]
