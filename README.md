@@ -28,7 +28,7 @@ The look is "3D-styled": raised cards with a light top edge and darker bottom ed
 thick edge and press down when tapped, sunken inputs, and stat/box cards that tilt toward the mouse with a
 soft glare (desktop only; turned off when the device asks for reduced motion).
 
-**Logo:** put the logo at `static/img/agom-logo.png`. The sidebar, phone header, login page and
+**Logo:** `static/img/3D logo.png` (shown from its small copy in `static/img/display/`). The sidebar, phone header, login page and
 favicon use it. Until the file exists the image is simply hidden.
 
 **Dashboard icons:** `static/img/icons/plane.png`, `boxes.png`, `box-checked.png` and `warning.png`
@@ -168,7 +168,7 @@ tracker/
   admin.py       Django admin registration
   management/commands/  setup_roles, seed_demo
 templates/       base layout (sidebar), pages, HTMX partials (Add box modal, item cards…)
-static/          css/agom.css (golf theme), img/agom-logo.png (add your logo here)
+static/          css/agom.css (golf theme), img/ (logos, icons; small copies in img/display/)
 ```
 
 ## Data model notes

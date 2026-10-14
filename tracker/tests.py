@@ -770,3 +770,14 @@ class DisplayImageTests(TestCase):
                 f = root / name
                 self.assertTrue(f.exists())
                 self.assertLess(f.stat().st_size, 200 * 1024)
+
+
+class LogoTests(BaseTest):
+    def test_sidebar_header_and_login_use_3d_logo(self):
+        r = self.client.get(reverse("login"))
+        self.assertContains(r, 'src="/static/img/display/3d-logo.png')
+        self.assertNotContains(r, "agom-logo")
+        self.client.force_login(self.owner)
+        html = self.client.get(reverse("dashboard")).content.decode()
+        self.assertEqual(html.count('src="/static/img/display/3d-logo.png'), 2)  # sidebar + phone header
+        self.assertNotIn("agom-logo", html)

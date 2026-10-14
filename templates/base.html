@@ -25,7 +25,7 @@
   <aside id="sidebar" class="sidebar fixed inset-y-0 left-0 z-40 flex w-72 -translate-x-full flex-col px-4 pb-5 pt-5 text-white transition-transform duration-200 lg:w-64 lg:translate-x-0">
     <div class="flex items-center justify-between px-2">
       <a href="{% url 'dashboard' %}" class="flex items-center gap-3">
-        <img src="{% static 'img/agom-logo.png' %}" alt="AGOM" class="h-11 w-auto max-w-[9rem] rounded-xl bg-white/95 object-contain p-1" onerror="this.style.display='none'">
+        <img src="{% static_v 'img/display/3d-logo.png' %}" alt="AGOM Golf Shop" width="64" height="64" class="h-16 w-16 shrink-0 rounded-2xl bg-white object-contain p-1 shadow-[inset_0_1px_0_#fff,0_3px_0_rgba(0,0,0,0.25),0_10px_18px_-8px_rgba(0,0,0,0.5)]" onerror="this.style.display='none'">
         <span class="leading-tight"><span class="block text-xs font-semibold uppercase tracking-[0.18em] text-emerald-200/80">AGOM</span><span class="block text-base font-bold">Cargo Tracker</span></span>
       </a>
       <button class="rounded-lg p-2 hover:bg-white/10 lg:hidden" onclick="toggleSidebar(false)" aria-label="Close menu">{% icon "x" %}</button>
@@ -67,7 +67,7 @@
     <header class="sidebar sticky top-0 z-20 flex items-center justify-between px-4 py-3 text-white shadow-lg lg:hidden">
       <button class="-ml-1 rounded-lg p-2 hover:bg-white/10" onclick="toggleSidebar(true)" aria-label="Open menu">{% icon "menu" "w-6 h-6" %}</button>
       <a href="{% url 'dashboard' %}" class="flex items-center gap-2">
-        <img src="{% static 'img/agom-logo.png' %}" alt="AGOM" class="h-8 w-auto max-w-[6rem] rounded-lg bg-white/95 object-contain p-0.5" onerror="this.style.display='none'">
+        <img src="{% static_v 'img/display/3d-logo.png' %}" alt="AGOM Golf Shop" width="36" height="36" class="h-9 w-9 rounded-lg bg-white object-contain p-0.5" onerror="this.style.display='none'">
         <span class="font-bold">Cargo Tracker</span>
       </a>
       {% if can_edit_japan %}

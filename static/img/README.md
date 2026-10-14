@@ -4,8 +4,7 @@ run the script again and commit the new `display/` files.
 
 Images used by the app:
 
-- `agom-logo.png` – the AGOM logo (sidebar, phone header, login page)
-- `3D logo.png` – the website icon (browser tab)
+- `3D logo.png` – the AGOM logo: sidebar, phone header, login page and browser-tab icon
 - `3D cover logo.png` – the app icon when the site is added to a phone's home screen (iPhone and Android);
   a square PNG of about 512×512 works best
 - `icons/plane.png`, `icons/boxes.png`, `icons/box-checked.png`, `icons/warning.png` –

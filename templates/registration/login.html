@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static tracker_tags %}
 {% block title %}Log in · AGOM Cargo Tracker{% endblock %}
 {% block public %}
 <div class="sidebar flex min-h-screen items-center justify-center px-4 py-10">
   <div class="w-full max-w-sm">
     <div class="mb-6 text-center text-white">
-      <img src="{% static 'img/agom-logo.png' %}" alt="AGOM" class="mx-auto mb-3 h-20 w-auto max-w-[12rem] rounded-2xl bg-white object-contain p-2 shadow-lg" onerror="this.style.display='none'">
+      <img src="{% static_v 'img/display/3d-logo.png' %}" alt="AGOM Golf Shop" width="128" height="128" class="mx-auto mb-4 h-32 w-32 rounded-3xl bg-white object-contain p-2 shadow-[inset_0_1px_0_#fff,0_3px_0_rgba(0,0,0,0.25),0_10px_18px_-8px_rgba(0,0,0,0.5)]" onerror="this.style.display='none'">
       <h1 class="text-2xl font-bold">AGOM Cargo Tracker</h1>
       <p class="text-sm text-emerald-100/80">Japan → Myanmar golf shipments</p>
     </div>
