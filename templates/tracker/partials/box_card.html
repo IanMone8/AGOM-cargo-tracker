@@ -1,6 +1,6 @@
 {% load tracker_tags %}
-<a href="{% url 'box_detail' box.pk %}" class="card card-hover flex min-w-0 items-center gap-3 p-3 sm:p-4">
-  <div class="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-emerald-900 text-[0.7rem] font-extrabold tracking-wide text-white">{{ box.cargo.code }}</div>
+<a href="{% url 'box_detail' box.pk %}" data-tilt="4" class="card relative flex min-w-0 items-center gap-3 p-3 sm:p-4">
+  <div class="pop-sm grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-b from-emerald-700 to-emerald-950 text-[0.7rem] font-extrabold tracking-wide text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_3px_0_#062016,0_8px_14px_-6px_rgba(6,32,22,0.6)]">{{ box.cargo.code }}</div>
   <div class="min-w-0 flex-1">
     <div class="flex flex-wrap items-center gap-2">
       <span class="text-base font-extrabold">{{ box.label }}</span>

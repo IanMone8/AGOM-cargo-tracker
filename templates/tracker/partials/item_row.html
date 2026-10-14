@@ -38,11 +38,11 @@
   {% if can_check and item.box.myanmar_received_date %}
     <div class="mt-3 grid grid-cols-3 gap-2">
       <button hx-post="{% url 'item_check' item.pk %}" hx-vals='{"result": "matched"}' hx-target="#item-{{ item.pk }}" hx-swap="outerHTML"
-              class="rounded-xl py-2.5 text-sm font-bold {% if check.result == 'matched' %}bg-emerald-600 text-white{% else %}bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200{% endif %}">✓ Matched</button>
+              class="press rounded-xl text-sm font-bold {% if check.result == 'matched' %}bg-emerald-600 text-white{% else %}border border-emerald-200 bg-emerald-50 text-emerald-800{% endif %}">✓ Matched</button>
       <button hx-post="{% url 'item_check' item.pk %}" hx-vals='{"result": "missing"}' hx-target="#item-{{ item.pk }}" hx-swap="outerHTML"
-              class="rounded-xl py-2.5 text-sm font-bold {% if check.result == 'missing' %}bg-red-600 text-white{% else %}bg-red-50 text-red-800 ring-1 ring-red-200{% endif %}">✗ Missing</button>
+              class="press rounded-xl text-sm font-bold {% if check.result == 'missing' %}bg-red-600 text-white{% else %}border border-red-200 bg-red-50 text-red-800{% endif %}">✗ Missing</button>
       <button hx-get="{% url 'item_wrong_qty' item.pk %}" hx-target="#item-{{ item.pk }}" hx-swap="outerHTML"
-              class="rounded-xl py-2.5 text-sm font-bold {% if check.result == 'wrong_qty' %}bg-orange-500 text-white{% else %}bg-orange-50 text-orange-800 ring-1 ring-orange-200{% endif %}">± Wrong qty</button>
+              class="press rounded-xl text-sm font-bold {% if check.result == 'wrong_qty' %}bg-orange-500 text-white{% else %}border border-orange-200 bg-orange-50 text-orange-800{% endif %}">± Wrong qty</button>
     </div>
   {% endif %}
 </div>

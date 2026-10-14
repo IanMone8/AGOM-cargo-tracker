@@ -24,6 +24,9 @@ It uses SQLite in development and Postgres in production (via `DATABASE_URL`).
 Green golf theme with a left sidebar (Dashboard, Shipments, Cargo history, Customer requests, CSV import).
 On phones the sidebar becomes a slide-in menu and **Add box** is the ＋ in the top bar.
 Theme styles live in `static/css/agom.css`; Tailwind (CDN) handles layout.
+The look is "3D-styled": raised cards with a light top edge and darker bottom edge, buttons that sit on a
+thick edge and press down when tapped, sunken inputs, and stat/box cards that tilt toward the mouse with a
+soft glare (desktop only; turned off when the device asks for reduced motion).
 
 **Logo:** put the logo at `static/img/agom-logo.png`. The sidebar, phone header, login page and
 favicon use it. Until the file exists the image is simply hidden.

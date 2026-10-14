@@ -94,6 +94,29 @@
       const flag = card.querySelector('[data-delete-flag]');
       if (flag) { flag.value = 'on'; card.style.display = 'none'; } else { card.remove(); }
     }
+    // 3D tilt for [data-tilt] cards (mouse/trackpad only; off for reduced motion).
+    (function () {
+      if (!matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      let active = null;
+      const reset = el => { el.classList.remove('is-tilting'); el.style.removeProperty('--rx'); el.style.removeProperty('--ry'); };
+      document.addEventListener('pointermove', e => {
+        const el = e.target.closest && e.target.closest('[data-tilt]');
+        if (active && active !== el) { reset(active); active = null; }
+        if (!el) return;
+        const max = parseFloat(el.dataset.tilt) || 8;
+        const r = el.getBoundingClientRect();
+        const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+        el.style.setProperty('--ry', ((x - 0.5) * 2 * max).toFixed(2) + 'deg');
+        el.style.setProperty('--rx', ((0.5 - y) * 2 * max).toFixed(2) + 'deg');
+        el.style.setProperty('--gx', (x * 100).toFixed(1) + '%');
+        el.style.setProperty('--gy', (y * 100).toFixed(1) + '%');
+        el.classList.add('is-tilting');
+        active = el;
+      }, { passive: true });
+      document.addEventListener('pointerleave', () => { if (active) { reset(active); active = null; } });
+      window.addEventListener('blur', () => { if (active) { reset(active); active = null; } });
+    })();
     function closeModal() { document.getElementById('modal').innerHTML = ''; document.body.classList.remove('overflow-hidden'); }
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
     document.body.addEventListener('htmx:afterSwap', e => {
