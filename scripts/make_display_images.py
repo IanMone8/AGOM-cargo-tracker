@@ -39,6 +39,9 @@ def main():
     logo = ROOT / "3D logo.png"
     if logo.exists():
         fit(Image.open(logo), 256).save(OUT / "3d-logo.png", optimize=True)
+    badge = ROOT / "agom-badge.png"
+    if badge.exists():
+        fit(Image.open(badge), 320).save(OUT / "agom-badge.webp", "WEBP", quality=88, method=6)
     cover = ROOT / "3D cover logo.png"
     if cover.exists():
         img = Image.open(cover)

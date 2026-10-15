@@ -961,3 +961,19 @@ class AttachItemSelectTests(BaseTest):
         self.assertContains(r, "In box")
         self.req.refresh_from_db()
         self.assertEqual((self.req.status, self.req.japan_item, self.req.box), ("in_box", self.item2, self.box))
+
+
+class DashboardHeroTests(BaseTest):
+    def test_hero_for_every_role(self):
+        for user in (self.owner, self.japan, self.myanmar):
+            self.client.force_login(user)
+            html = self.client.get(reverse("dashboard")).content.decode()
+            with self.subTest(user=user.username):
+                for text in ("Golf stock route", "Take with Trust.", "Play with Confidence.", "Get Achievements.",
+                             "Track every golf bag, club, and accessory by cargo and box."):
+                    self.assertIn(text, html)
+                self.assertIn('src="/static/img/display/agom-badge.webp', html)
+                self.assertIn("onerror=\"this.style.display='none'\"", html)
+                self.assertIn('class="hero-hill"', html)
+                # banner comes before the four stat cards
+                self.assertLess(html.index('class="hero"'), html.index("data-stat="))
