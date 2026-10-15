@@ -3,6 +3,6 @@
   {% if items is None %}<option value="">Choose a box first…</option>
   {% else %}
     <option value="">{% if items %}Choose item…{% else %}No items in this box{% endif %}</option>
-    {% for item in items %}<option value="{{ item.pk }}">{{ item.title }}{% if item.item_name and item.club_label %} · {{ item.club_label }}{% endif %}{% if item.flex %} {{ item.flex }}{% endif %} ×{{ item.qty }}{% if item.customer %} ({{ item.customer }}){% endif %}</option>{% endfor %}
+    {% for item in items %}<option value="{{ item.pk }}">{% if item.is_bag %}Golf bag: {% endif %}{{ item.title }}{% if item.item_name and item.club_label %} · {{ item.club_label }}{% endif %}{% if item.flex %} {{ item.flex }}{% endif %} ×{{ item.qty }}{% if item.customer %} ({{ item.customer }}){% endif %}</option>{% endfor %}
   {% endif %}
 </select>

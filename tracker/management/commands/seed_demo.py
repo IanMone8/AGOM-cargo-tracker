@@ -46,6 +46,7 @@ class Command(BaseCommand):
 
         today = timezone.localdate()
         gn, kl, jp = (Cargo.objects.get(code=c) for c in ("GN", "KL", "JP"))
+        BAGS = [("Titleist Stand Bag", "Black"), ("Ping Hoofer", "Navy"), ("Callaway Cart Bag", "White / red")]
         boxes = [
             (gn, 3, today - datetime.timedelta(days=12), None),
             (gn, 4, today - datetime.timedelta(days=20), today - datetime.timedelta(days=2)),
@@ -58,7 +59,10 @@ class Command(BaseCommand):
                 defaults={"japan_ship_date": shipped, "myanmar_received_date": received},
             )
             if created:
+                bag_name, bag_color = BAGS[no % len(BAGS)]
                 JapanItem.objects.bulk_create([
+                    JapanItem(box=box, is_bag=True, type=JapanItem.BAG_TYPE, item_name=bag_name, color=bag_color,
+                              qty=1, condition="used"),
                     JapanItem(box=box, type="Club", item_name="Titleist TSR2 Driver", brand="Titleist", model="TSR2",
                               club_type="Driver", club_number="1W", flex="S", loft="10", shaft_material="graphite",
                               specification="Tour AD UB-6, 45.5in", color="Black", qty=1, condition="used",

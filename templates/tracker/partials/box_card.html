@@ -3,7 +3,7 @@
   <div class="pop-sm grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-b from-emerald-700 to-emerald-950 text-[0.7rem] font-extrabold tracking-wide text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_3px_0_#062016,0_8px_14px_-6px_rgba(6,32,22,0.6)]">{{ box.cargo.code }}</div>
   <div class="min-w-0 flex-1">
     <div class="flex flex-wrap items-center gap-2">
-      <span class="text-base font-extrabold">{{ box.label }}</span>
+      <span class="min-w-0 text-base font-extrabold">{{ box.label }}{% if box.bag_name %}<span class="font-semibold text-stone-600"> · {{ box.bag_name }}</span>{% endif %}</span>
       <span class="{{ box.status|badge }}">{{ box.get_status_display }}</span>
       {% if box.problem_count or box.extra_count %}<span class="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700">{% icon "alert" "w-3.5 h-3.5" %}{{ box.problem_count|add:box.extra_count }}</span>{% endif %}
     </div>

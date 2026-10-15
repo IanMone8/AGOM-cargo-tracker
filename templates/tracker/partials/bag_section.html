@@ -1,0 +1,30 @@
+{% load tracker_tags %}{# The box's golf bag, shown first on the box page. Context: box, bags, bag_problem, can_edit_items #}
+<section id="bag-section" class="mt-6 scroll-mt-20">
+  <div class="mb-3 flex items-center justify-between gap-2">
+    <div>
+      <h2 class="flex items-center gap-2 text-lg font-bold"><span class="text-emerald-700">{% icon "bag" %}</span>Golf bag</h2>
+      <p class="text-xs text-stone-500">Every item below is packed inside this bag</p>
+    </div>
+    {% if can_edit_items %}
+      <button class="btn btn-soft shrink-0 whitespace-nowrap" hx-get="{% url 'box_bag' box.pk %}" hx-target="#bag-form-slot">
+        {% if bags %}{% icon "edit" %} Edit bag{% else %}{% icon "plus" %} Add bag{% endif %}</button>
+    {% endif %}
+  </div>
+  {% if bag_problem == "none" %}
+    <div class="card mb-3 flex items-start gap-3 border-l-4 border-l-amber-400 p-4 text-sm text-stone-600" data-bag-warning>
+      <span class="text-amber-500">{% icon "alert" %}</span>
+      <span><b class="text-stone-800">No bag recorded.</b> Every box holds one golf bag with all items inside it.
+        {% if can_edit_items %}Tap <b>Add bag</b> to record it.{% else %}Ask the owner to add it.{% endif %}</span>
+    </div>
+  {% elif bag_problem == "many" %}
+    <div class="card mb-3 flex items-start gap-3 border-l-4 border-l-red-400 p-4 text-sm text-stone-600" data-bag-warning>
+      <span class="text-red-500">{% icon "alert" %}</span>
+      <span><b class="text-stone-800">{{ bags|length }} golf bags recorded.</b> A box should hold exactly one.
+        {% if is_manager %}Delete the extra one below or fix it in Admin.{% else %}Ask the owner to fix it.{% endif %}</span>
+    </div>
+  {% endif %}
+  <div id="bag-form-slot"></div>
+  <div class="space-y-3">
+    {% for item in bags %}{% include "tracker/partials/item_row.html" with oob=False %}{% endfor %}
+  </div>
+</section>

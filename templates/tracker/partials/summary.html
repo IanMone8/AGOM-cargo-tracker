@@ -1,7 +1,7 @@
 <section id="summary" {% if oob %}hx-swap-oob="true"{% endif %} class="card p-5">
   <div class="mb-2 flex items-center justify-between text-sm">
     <span class="font-bold">Myanmar check</span>
-    <span class="font-semibold text-stone-500">{{ summary.checked }}/{{ summary.total }} items</span>
+    <span class="font-semibold text-stone-500">{{ summary.checked }}/{{ summary.total }} checked{% if summary.bags %} <span class="font-normal">(bag + {{ summary.inside }} item{{ summary.inside|pluralize }})</span>{% endif %}</span>
   </div>
   <div class="h-2.5 w-full overflow-hidden rounded-full bg-stone-100">
     <div class="h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-700 transition-all" style="width: {% widthratio summary.checked summary.total|default:1 100 %}%"></div>

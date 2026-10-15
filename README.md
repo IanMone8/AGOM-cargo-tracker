@@ -13,8 +13,8 @@ It uses SQLite in development and Postgres in production (via `DATABASE_URL`).
 | **Login** | Django's built-in auth |
 | **Dashboard** | Pastel stat cards: Cargos · Total boxes · Checked in Myanmar (e.g. 3 / 4) · Needs review (boxes with differences), plus lists of boxes waiting for check or review, in transit and recently updated |
 | **Shipments** | All boxes with cargo / status filters (live, via HTMX) and an **Add box** button |
-| **Add box** (modal) | Cargo company, Box ID, box note and an **Items inside** list. **Add item** adds another item card; each card has a **Delete** button |
-| **Box detail** | Japan list, **Start Myanmar check**, then one-tap **✓ Matched / ✗ Missing / ± Wrong qty**, undo, extra items and a live mismatch summary |
+| **Add box** (modal) | Cargo company, Box ID, box note, the required **Golf bag** card, then **Items inside the bag**. **Add item** adds another item card; each card has **Copy** and **Delete** |
+| **Box detail** | "GN-3 · Titleist Stand Bag" header, the golf bag first, then the items inside it, **Start Myanmar check**, then one-tap **✓ Matched / ✗ Missing / ± Wrong qty**, undo, extra items and a live mismatch summary |
 | **Cargo history** | One card per cargo company (boxes, in transit, checked, issues, average transit days) and its box history, newest first |
 | **Requests** | Customer requests: create, change status inline, **attach to a Japan box item** (suggested matches or pick box → item) |
 | **CSV import** | (Owner / Admin) Import Japan packing lists (several boxes per file), all-or-nothing validation, template download |
@@ -86,6 +86,18 @@ like Other – values can be added on the same page) and **Club options** (the v
 active options and no free text isn't shown. Each card has **Copy**, and saved items have **copy** on the box page.
 Brand, model, price, etc. are kept for old data, CSV and admin.
 
+**One golf bag per box:** every box holds exactly one golf bag and all golf items are packed inside it.
+The bag (name, color, optional customer, note) is stored as a Japan item flagged `is_bag`, so it is
+checked in Myanmar (its own Matched / Missing / Wrong qty row at the top), can be linked to customer orders
+and attached to requests like any other item. A box only becomes **Checked** when the bag and every item are checked.
+Box lists, Cargo history, requests and the box page show the bag next to the box ID ("JP-7 · Titleist Stand Bag").
+The rule is enforced in the Add box modal, on the box page (the bag can be edited but not copied; only Owner/Admin
+can delete it), in CSV import and in `/admin/`. Owner/Admin can override it (a tick box in the modal, CSV import
+and admin) and then get a clear warning. A box without a bag shows **No bag recorded** on its page with an
+**Add bag** button (Owner/Admin can always use it; the Japan sender until the Myanmar check starts).
+When upgrading, the migration marks an existing box's single item of type *Bag* as its golf bag; boxes with no
+or several bag items are left for the owner to fix.
+
 **Locking:** once the Myanmar check has started on a box (it has a received date, or any item is checked),
 the Japan sender can no longer edit that box or add or delete its items.
 Owner and Admin can still correct it, and the Myanmar checker can still edit the Myanmar side.
@@ -120,14 +132,21 @@ Run the tests with `python manage.py test`.
 ## CSV format for Japan lists
 
 ```
-box,item_name,club_option,flex,qty,customer,note
-GN-3,Titleist TSR2,Driver 10.5°,S,1,Ko Aung,with cover
-GN-3,,Driver head 9.5,,2,,
-GN-3,Mizuno JPX 923,Iron · Graphite 5,R,1,,
-KL-1,Cleveland RTX 6,Wedge 52,,1,,
+box,kind,item_name,color,club_option,flex,qty,customer,note
+GN-3,bag,Titleist Stand Bag,Black,,,1,Ko Aung,
+GN-3,,Titleist TSR2,,Driver 10.5°,S,1,Ko Aung,with cover
+GN-3,,,,Driver head 9.5,,2,,
+GN-3,,Mizuno JPX 923,,Iron · Graphite 5,R,1,,
+KL-1,bag,Ping Hoofer,Navy,,,1,,
+KL-1,,Cleveland RTX 6,,Wedge 52,,1,,
 ```
 
 * Required: `box`, plus `item_name` or `club_option` on each row. Other columns are optional.
+* `kind` = `bag` marks the box's golf bag (bag name in `item_name`, plus `color`, `customer`, `note`; qty 1);
+  empty (or `item`) is an item inside the bag. Each box needs **exactly one** bag row – or must already have its
+  bag when you add items to it. A box with no bag or two bags is rejected with its row numbers, e.g.
+  *Row 4: Box GN-6 has 2 bag rows (rows 4, 6)*. Older files with a row of `type` *Bag* count as the bag row.
+  Owner/Admin can tick *Owner override* to import such boxes anyway; they are listed as warnings.
 * `club_option` is one label from **Admin → Club options**, e.g. `Driver 10.5`, `Driver head 9.5`,
   `Iron · Graphite 5`, `Iron Steel`, `Wedge 52°`, `Wood 3W`, `Hybrid 4H`, `Putter 34` (the `°`, `·` and `″` are
   optional, case doesn't matter). Woods and hybrids also accept the number alone – `wood 3`, `Hybrid 4` – or just
@@ -191,6 +210,7 @@ static/          css/agom.css (golf theme), img/ (logos, icons; small copies in 
 ## Data model notes
 
 * `Box.box_no` is a number (the "Box ID" in the Add box form); the label (`GN-3`) is built from the cargo code.
+* The golf bag is a Japan item with `is_bag = True` (type "Golf bag", qty 1); it sorts first in every list.
 * Japan items store: name, type, qty, quantity unit, brand, model, club / item type, club number, loft, flex,
   shaft material, specification, color, Japan condition, amount (optional), customer and note.
 * `ReceiveCheck` is one-to-one with `JapanItem`, so tapping a button again overwrites the check.

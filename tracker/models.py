@@ -66,6 +66,27 @@ class Box(models.Model):
     def label(self):
         return f"{self.cargo.code}-{self.box_no}"
 
+    # --- the golf bag (every box holds exactly one) ---------------------------
+    @property
+    def bag_name(self):
+        """Name of the box's golf bag ("" when none is recorded).
+        Lists annotate ``bag_title`` (see views.boxes_with_counts) to avoid a query per box."""
+        if hasattr(self, "bag_title"):
+            return self.bag_title or ""
+        bag = self.items.filter(is_bag=True).first()
+        return bag.title if bag else ""
+
+    @property
+    def bag_count(self):
+        if hasattr(self, "bags_annotated"):
+            return self.bags_annotated
+        return self.items.filter(is_bag=True).count()
+
+    @property
+    def title(self):
+        """ "JP-7 · Titleist Stand Bag" – the box ID with its bag's name."""
+        return f"{self.label} · {self.bag_name}" if self.bag_name else self.label
+
     @property
     def myanmar_started(self):
         """True once the box is received in Myanmar or any item has been checked.
@@ -88,8 +109,11 @@ class Box(models.Model):
         """Counts used for the mismatch summary on the box page."""
         items = list(self.items.select_related("receive_check"))
         checks = [i.receive_check for i in items if hasattr(i, "receive_check")]
+        bags = sum(i.is_bag for i in items)
         return {
             "total": len(items),
+            "bags": bags,
+            "inside": len(items) - bags,
             "checked": len(checks),
             "unchecked": len(items) - len(checks),
             "matched": sum(c.result == ReceiveCheck.Result.MATCHED for c in checks),
@@ -202,9 +226,14 @@ class JapanItem(models.Model):
     price_jpy = models.PositiveIntegerField("Amount (JPY)", null=True, blank=True)
     customer = models.CharField(max_length=100, blank=True)
     note = models.CharField(max_length=255, blank=True)
+    is_bag = models.BooleanField(
+        "Golf bag", default=False,
+        help_text="The box's golf bag (every box holds exactly one; the other items are packed inside it)")
+
+    BAG_TYPE = "Golf bag"
 
     class Meta:
-        ordering = ["box", "id"]
+        ordering = ["box", "-is_bag", "id"]  # the bag first, then the items inside it
 
     def __str__(self):
         return f"{self.box.label}: {self.title}" + (f" {self.flex}" if self.flex else "") + f" ×{self.qty}"
@@ -216,7 +245,7 @@ class JapanItem(models.Model):
 
     @property
     def title(self):
-        """What the item is called on screen: its name, else its club label."""
+        """What the item is called on screen: its name, else its club label (a bag: its name, else "Golf bag")."""
         return self.item_name or self.club_label or "Item"
 
     def save(self, *args, **kwargs):

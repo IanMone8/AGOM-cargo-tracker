@@ -82,8 +82,21 @@ class BoxForm(StyledMixin, forms.ModelForm):
         return data
 
 
+BAG_WORDS = {"bag", "golf bag", "caddie bag", "caddy bag", "stand bag", "cart bag"}
+BAG_OVERRIDE_LABEL = "Owner override: save even though this box doesn't have exactly one golf bag"
+
+
+def is_bag_word(text):
+    """True for a typed type like "Golf bag" – that belongs in the box's Golf bag section."""
+    return " ".join((text or "").lower().split()) in BAG_WORDS
+
+
 class BoxCreateForm(StyledMixin, forms.ModelForm):
-    """The "Add box" modal: box header fields; items come from ItemFormSet."""
+    """The "Add box" modal: box header fields; the bag comes from BagForm, the items from ItemFormSet."""
+
+    allow_no_bag = forms.BooleanField(
+        required=False, label="Save without a golf bag (owner override)",
+        help_text="Every box should hold exactly one golf bag. Only use this to fix old or unusual boxes.")
 
     class Meta:
         model = Box
@@ -94,10 +107,55 @@ class BoxCreateForm(StyledMixin, forms.ModelForm):
             "notes": forms.Textarea(attrs={"rows": 2, "placeholder": "Optional"}),
         }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
+        if user is None or not roles.is_manager(user):
+            self.fields.pop("allow_no_bag")  # the Japan sender must always record the bag
         self.fields["cargo"].empty_label = "Choose cargo company…"
         self.fields["box_no"].help_text = "Number only – shown as CODE-number, e.g. GN-3"
+
+
+class BagForm(StyledMixin, forms.ModelForm):
+    """The box's golf bag (required): stored as a JapanItem with is_bag=True, so it is
+    checked in Myanmar, linked to customer orders and attachable like any other item."""
+
+    class Meta:
+        model = JapanItem
+        fields = ["item_name", "color", "customer", "note"]
+        labels = {"item_name": "Bag name", "color": "Color", "customer": "Customer"}
+        widgets = {
+            "item_name": forms.TextInput(attrs={"placeholder": "e.g. Titleist Stand Bag", "autocomplete": "off"}),
+            "color": forms.TextInput(attrs={"placeholder": "e.g. Black / white"}),
+            "customer": forms.TextInput(attrs={"list": "customer-names", "placeholder": "Optional – who it's for",
+                                               "autocomplete": "off"}),
+            "note": forms.TextInput(attrs={"placeholder": "Optional"}),
+        }
+
+    def __init__(self, *args, optional=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.optional = optional  # owner override: the box may be saved without a bag
+        self.fields["item_name"].required = not optional
+        self.fields["item_name"].error_messages["required"] = "Every box holds one golf bag – enter the bag's name."
+
+    @property
+    def is_blank(self):
+        return not any((self.cleaned_data.get(f) or "").strip() for f in self.Meta.fields)
+
+    def clean(self):
+        data = super().clean()
+        for name in ("item_name", "color", "customer", "note"):
+            if data.get(name):
+                data[name] = " ".join(data[name].split())
+        if self.optional and not data.get("item_name") and any(data.get(f) for f in ("color", "customer", "note")):
+            self.add_error("item_name", "Enter the bag's name (or clear the bag fields).")
+        return data
+
+    def _post_clean(self):
+        super()._post_clean()
+        item = self.instance
+        item.is_bag, item.type, item.club_type, item.qty = True, JapanItem.BAG_TYPE, "", 1
+        item.loft = item.shaft_material = item.club_number = item.length_in = item.flex = ""
+        item.head_only = False
 
 
 class JapanItemForm(StyledMixin, forms.ModelForm):
@@ -109,7 +167,7 @@ class JapanItemForm(StyledMixin, forms.ModelForm):
 
     club_option = forms.CharField(required=False, widget=forms.HiddenInput)
     club_other = forms.CharField(required=False, max_length=50, label="Other club / item",
-                                 widget=forms.TextInput(attrs={"placeholder": "e.g. Putter, Golf bag"}))
+                                 widget=forms.TextInput(attrs={"placeholder": "e.g. Head cover, Chipper"}))
 
     class Meta:
         model = JapanItem
@@ -172,6 +230,8 @@ class JapanItemForm(StyledMixin, forms.ModelForm):
             self._other = " ".join((data.get("club_other") or "").split())
             if not self._other:
                 self.add_error("club_other", "Type the club or item.")
+            elif is_bag_word(self._other):
+                self.add_error("club_other", "The golf bag goes in the Golf bag section – a box holds one bag.")
         elif value:
             try:
                 self._club = ClubOption.objects.get(pk=int(value))
@@ -229,6 +289,12 @@ class CSVImportForm(StyledMixin, forms.Form):
         required=False,
         label="Replace existing Japan items in the boxes in this file",
         help_text="Deletes those boxes' current items (and their receive checks) first.",
+    )
+    allow_bag_exception = forms.BooleanField(
+        required=False,
+        label="Owner override: import boxes that don't have exactly one golf bag",
+        help_text="Normally each box needs exactly one bag row. With this ticked, such boxes are imported "
+                  "and listed as warnings so you can fix them.",
     )
 
 

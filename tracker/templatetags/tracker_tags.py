@@ -58,6 +58,9 @@ ICONS = {
     "menu": "M4 6h16M4 12h16M4 18h16",
     "inbox": "M3 13h5l1.5 3h5L16 13h5M5 5h14l2 8v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5l2-8Z",
     "play": "M8 5.5v13l11-6.5-11-6.5Z",
+    # golf bag: body with a pocket, strap and three club heads sticking out
+    "bag": "M8 8h8l-.6 12.2a1 1 0 0 1-1 .8H9.6a1 1 0 0 1-1-.8L8 8Zm1.5 0V4.5L8 3m3.5 5V3.5h1.5M14.5 8V5l1.5-1M9 13h6M16 9.5c2 .5 2.5 6 .5 8",
+    "edit": "M4 20h4L19 9l-4-4L4 16v4Zm9-13 4 4",
 }
 
 

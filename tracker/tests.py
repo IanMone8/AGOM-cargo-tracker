@@ -30,6 +30,9 @@ class BaseTest(TestCase):
         self.item1 = JapanItem.objects.create(box=self.box, type="Driver", item_name="TSR2", flex="S", qty=1)
         self.item2 = JapanItem.objects.create(box=self.box, type="Wedge", item_name="RTX 6", qty=3)
 
+    def add_bag(self, box=None, name="Titleist Stand Bag"):
+        return JapanItem.objects.create(box=box or self.box, is_bag=True, type="Golf bag", item_name=name, qty=1)
+
     def ship(self, box=None):
         """Japan sender marks the box Shipped – only then can Myanmar see it."""
         box = box or self.box
@@ -139,6 +142,10 @@ class RequestTests(BaseTest):
 
 
 class CSVImportTests(BaseTest):
+    def setUp(self):
+        super().setUp()
+        self.bag = self.add_bag()
+
     def upload(self, text, **extra):
         self.client.force_login(self.owner)
         f = SimpleUploadedFile("list.csv", text.encode("utf-8-sig"), content_type="text/csv")
@@ -148,11 +155,13 @@ class CSVImportTests(BaseTest):
         r = self.upload(
             "box,type,item_name,flex,loft,qty,condition,price_jpy,customer,note\n"
             "GN-3,Putter,Newport 2,,,1,used,\"12,000\",,\n"
+            "gn-5,Bag,Ping Hoofer,,,,,,,\n"
             "gn-5,Driver,Qi10,sr,10.5,2,new,,Ma Hnin,\n"
         )
-        self.assertContains(r, "Imported 2 item(s) into 2 box(es)")
+        self.assertContains(r, "Imported 2 item(s) and 1 golf bag(s) into 2 box(es)")
         new_box = Box.objects.get(cargo=self.cargo, box_no=5)
-        item = new_box.items.get()
+        self.assertEqual(new_box.title, "GN-5 · Ping Hoofer")
+        item = new_box.items.get(is_bag=False)
         self.assertEqual((item.flex, item.qty, item.customer), ("SR", 2, "Ma Hnin"))
         self.assertEqual(self.box.items.get(item_name="Newport 2").price_jpy, 12000)
 
@@ -160,16 +169,18 @@ class CSVImportTests(BaseTest):
         r = self.upload("box,type,item_name,flex,qty\nGN-3,Driver,X,S,1\nZZ-1,Driver,Y,XX,abc\n")
         self.assertContains(r, "Nothing was imported")
         self.assertContains(r, "Unknown cargo code")
-        self.assertEqual(JapanItem.objects.count(), 2)
+        self.assertEqual(JapanItem.objects.count(), 3)   # the two items + GN-3's bag, nothing new
 
     def test_replace(self):
-        self.upload("box,type,item_name\nGN-3,Bag,Stand bag\n", replace="on")
-        self.assertEqual(list(self.box.items.values_list("item_name", flat=True)), ["Stand bag"])
+        self.upload("box,type,item_name\nGN-3,Bag,Stand bag\nGN-3,Balls,Pro V1\n", replace="on")
+        self.assertEqual(list(self.box.items.values_list("item_name", "is_bag")), [("Stand bag", True), ("Pro V1", False)])
 
 
 class AddBoxModalTests(BaseTest):
     def post_data(self, **items):
         data = {"cargo": self.cargo.pk, "box_no": "9", "notes": "fragile",
+                "bag-item_name": "Titleist Stand Bag", "bag-color": "Black", "bag-customer": "Ko Aung",
+                "bag-note": "zip pocket",
                 "items-TOTAL_FORMS": "3", "items-INITIAL_FORMS": "0",
                 "items-MIN_NUM_FORMS": "0", "items-MAX_NUM_FORMS": "1000"}
         data.update(items)
@@ -207,7 +218,10 @@ class AddBoxModalTests(BaseTest):
         self.assertEqual(r.status_code, 204)
         self.assertEqual(r["HX-Redirect"], reverse("box_detail", args=[box.pk]))
         self.assertEqual(box.notes, "fragile")
-        iron, putter = box.items.order_by("id")
+        bag, iron, putter = box.items.all()   # the bag comes first
+        self.assertEqual((bag.is_bag, bag.item_name, bag.color, bag.customer, bag.note, bag.type, bag.qty),
+                         (True, "Titleist Stand Bag", "Black", "Ko Aung", "zip pocket", "Golf bag", 1))
+        self.assertEqual(box.title, "GN-9 · Titleist Stand Bag")
         self.assertEqual((iron.type, iron.shaft_material, iron.club_number, iron.flex, iron.note),
                          ("Iron", "graphite", "5", "R", "with covers"))
         self.assertEqual(iron.club_label, "Iron · Graphite 5")
@@ -240,7 +254,7 @@ class MyanmarCheckFlowTests(BaseTest):
         self.assertNotContains(r, "✓ Matched")
 
         r = self.client.post(reverse("box_start_check", args=[self.box.pk]))
-        self.assertRedirects(r, detail + "#items", fetch_redirect_response=False)
+        self.assertRedirects(r, detail + "#bag-section", fetch_redirect_response=False)
         self.box.refresh_from_db()
         self.assertEqual(self.box.status, Box.Status.ARRIVED)
         self.assertIsNotNone(self.box.myanmar_received_date)
@@ -297,9 +311,10 @@ class CSVNewFieldsTests(CSVImportTests):
         Cargo.objects.create(code="KL", name="KL Cargo")
         self.client.force_login(self.owner)
         template = self.client.get(reverse("csv_template")).content.decode()
-        self.assertTrue(template.startswith("box,item_name,club_option,flex,qty,customer,note"))
-        r = self.upload(template)
-        self.assertContains(r, "Imported 4 item(s) into 2 box(es)")
+        self.assertTrue(template.startswith("box,kind,item_name,color,club_option,flex,qty,customer,note"))
+        r = self.upload(template, replace="on")
+        self.assertContains(r, "Imported 4 item(s) and 2 golf bag(s) into 2 box(es)")
+        self.assertEqual(Box.objects.get(box_no=1).title, "KL-1 · Ping Hoofer")
         head = JapanItem.objects.get(item_name="", box__box_no=3)
         self.assertEqual((head.type, head.loft, head.head_only, head.qty, head.title), ("Driver", "9.5", True, 2, "Driver head 9.5°"))
         self.assertEqual(JapanItem.objects.get(item_name="Cleveland RTX 6").club_label, "Wedge 52°")
@@ -1035,9 +1050,13 @@ class ClubOptionTests(BaseTest):
                 self.assertEqual(item.title, label)       # no name typed: label is the title
 
     def test_other_free_text_and_name_only(self):
-        self.add(club_option="other", club_other="  Golf   bag ")
+        self.add(club_option="other", club_other="  Head   cover ")
         item = JapanItem.objects.latest("id")
-        self.assertEqual((item.type, item.club_label, item.loft, item.length_in), ("Golf bag", "Golf bag", "", ""))
+        self.assertEqual((item.type, item.club_label, item.loft, item.length_in), ("Head cover", "Head cover", "", ""))
+        before = JapanItem.objects.count()
+        r = self.add(club_option="other", club_other="Golf bag")   # the bag has its own section
+        self.assertContains(r, "goes in the Golf bag section")
+        self.assertEqual(JapanItem.objects.count(), before)
         self.add(item_name="Titleist Pro V1")
         self.assertEqual(JapanItem.objects.latest("id").title, "Titleist Pro V1")
 
@@ -1126,6 +1145,7 @@ class ClubOptionTests(BaseTest):
         self.assertEqual(self.client.post(reverse("item_copy", args=[self.item1.pk])).status_code, 403)
 
     def test_csv_club_option_and_old_columns(self):
+        bag = self.add_bag()
         self.client.force_login(self.owner)
         f = SimpleUploadedFile("l.csv", (
             "box,item_name,club_option,flex,qty\n"
@@ -1134,18 +1154,19 @@ class ClubOptionTests(BaseTest):
             "GN-3,Head,driver head 10,,1\n").encode(), content_type="text/csv")
         r = self.client.post(reverse("csv_import"), {"file": f})
         self.assertContains(r, "Imported 3 item(s)")
-        labels = sorted(i.club_label for i in JapanItem.objects.filter(box=self.box).exclude(pk__in=[self.item1.pk, self.item2.pk]))
+        labels = sorted(i.club_label for i in JapanItem.objects.filter(box=self.box).exclude(pk__in=[self.item1.pk, self.item2.pk, bag.pk]))
         self.assertEqual(labels, ["Driver head 10°", "Iron · Graphite 5", "Wedge 56°"])
         f = SimpleUploadedFile("l.csv", b"box,item_name,club_option\nGN-3,X,Wedge 99\n", content_type="text/csv")
         self.assertContains(self.client.post(reverse("csv_import"), {"file": f}), "Unknown club_option")
 
     def test_csv_wood_hybrid_putter(self):
+        bag = self.add_bag()
         self.client.force_login(self.owner)
         rows = ["Wood 3W", "wood 3", "Hybrid 4", "4H", "Putter 34", "Putter 34″", "hybrid 4h", "3w"]
         f = SimpleUploadedFile("l.csv", ("box,club_option\n" + "".join(f"GN-3,{r}\n" for r in rows)).encode(),
                                content_type="text/csv")
         self.assertContains(self.client.post(reverse("csv_import"), {"file": f}), "Imported 8 item(s)")
-        items = JapanItem.objects.filter(box=self.box).exclude(pk__in=[self.item1.pk, self.item2.pk]).order_by("id")
+        items = JapanItem.objects.filter(box=self.box).exclude(pk__in=[self.item1.pk, self.item2.pk, bag.pk]).order_by("id")
         self.assertEqual([i.club_label for i in items],
                          ["Wood 3W", "Wood 3W", "Hybrid 4H", "Hybrid 4H", "Putter 34″", "Putter 34″", "Hybrid 4H",
                           "Wood 3W"])
@@ -1178,3 +1199,272 @@ class ItemCardCustomerTests(BaseTest):
                          {"item_name": "TSR2", "customer": "  Ma   Hnin ", "qty": "1"}, HTTP_HX_REQUEST="true")
         self.assertEqual(JapanItem.objects.latest("id").customer, "Ma Hnin")
         self.assertTrue(Customer.objects.filter(name="Ma Hnin").exists())
+
+
+class GolfBagTests(BaseTest):
+    """Every box holds exactly one golf bag; all other items are packed inside it."""
+
+    def modal_data(self, **extra):
+        data = {"cargo": self.cargo.pk, "box_no": "12", "notes": "",
+                "bag-item_name": "", "bag-color": "", "bag-customer": "", "bag-note": "",
+                "items-TOTAL_FORMS": "1", "items-INITIAL_FORMS": "0",
+                "items-MIN_NUM_FORMS": "0", "items-MAX_NUM_FORMS": "1000",
+                "items-0-item_name": "Pro V1", "items-0-qty": "2"}
+        data.update(extra)
+        return data
+
+    def csv(self, text, **extra):
+        self.client.force_login(self.owner)
+        f = SimpleUploadedFile("l.csv", text.encode(), content_type="text/csv")
+        return self.client.post(reverse("csv_import"), {"file": f, **extra})
+
+    # --- Add box modal -------------------------------------------------------
+    def test_modal_has_required_bag_card_before_items(self):
+        self.client.force_login(self.japan)
+        html = self.client.get(reverse("box_create"), HTTP_HX_REQUEST="true").content.decode()
+        for name in ("bag-item_name", "bag-color", "bag-customer", "bag-note"):
+            self.assertIn(f'name="{name}"', html)
+        self.assertLess(html.index('name="bag-item_name"'), html.index("Items inside the bag"))
+        self.assertLess(html.index("Items inside the bag"), html.index('name="items-0-club_option"'))
+        self.assertIn('name="bag-item_name"', html)
+        self.assertRegex(html, r'name="bag-item_name"[^>]*required')
+        self.assertNotIn("allow_no_bag", html)               # no override for the Japan sender
+        self.client.force_login(self.owner)
+        self.assertContains(self.client.get(reverse("box_create"), HTTP_HX_REQUEST="true"), 'name="allow_no_bag"')
+
+    def test_box_needs_its_bag(self):
+        r = self.htmx(self.japan, reverse("box_create"), self.modal_data())
+        self.assertContains(r, "Every box holds one golf bag")
+        self.assertFalse(Box.objects.filter(box_no=12).exists())
+        # the Japan sender can't use the owner override
+        r = self.htmx(self.japan, reverse("box_create"), self.modal_data(allow_no_bag="on"))
+        self.assertFalse(Box.objects.filter(box_no=12).exists())
+        r = self.htmx(self.japan, reverse("box_create"), self.modal_data(**{"bag-item_name": "Ping  Hoofer",
+                                                                             "bag-color": "Navy"}))
+        self.assertEqual(r.status_code, 204)
+        box = Box.objects.get(box_no=12)
+        self.assertEqual([(i.title, i.is_bag) for i in box.items.all()], [("Ping Hoofer", True), ("Pro V1", False)])
+
+    def test_owner_override_saves_without_bag_with_warning(self):
+        self.client.force_login(self.owner)
+        r = self.client.post(reverse("box_create"), self.modal_data(allow_no_bag="on"), follow=True)
+        box = Box.objects.get(box_no=12)
+        self.assertFalse(box.items.filter(is_bag=True).exists())
+        self.assertContains(r, "WITHOUT a golf bag")
+        self.assertContains(r, "No bag recorded")
+        # half-filled bag with the override: the name is still needed
+        r = self.htmx(self.owner, reverse("box_create"), self.modal_data(box_no="13", allow_no_bag="on",
+                                                                         **{"bag-color": "Red"}))
+        self.assertContains(r, "Enter the bag&#x27;s name")
+
+    def test_bag_word_rejected_as_item_inside(self):
+        r = self.htmx(self.japan, reverse("box_create"), self.modal_data(**{
+            "bag-item_name": "Stand bag", "items-0-item_name": "", "items-0-club_option": "other",
+            "items-0-club_other": "Golf bag"}))
+        self.assertContains(r, "goes in the Golf bag section")
+
+    # --- Box page and lists ------------------------------------------------
+    def test_box_page_shows_bag_first_and_in_title(self):
+        bag = self.add_bag(name="Titleist Stand Bag")
+        bag.color = "Black"
+        bag.save()
+        self.client.force_login(self.owner)
+        html = self.client.get(reverse("box_detail", args=[self.box.pk])).content.decode()
+        self.assertIn("GN-3 · Titleist Stand Bag", html.replace('<span class="font-semibold text-emerald-100"> · ', " · "))
+        self.assertLess(html.index(f'id="item-{bag.pk}"'), html.index(f'id="item-{self.item1.pk}"'))
+        self.assertIn("data-bag", html)
+        self.assertIn("Items inside the bag", html)
+        self.assertNotIn("No bag recorded", html)
+        self.assertNotIn(reverse("item_copy", args=[bag.pk]), html)   # one bag per box: no copy
+        for url in (reverse("box_list"), reverse("dashboard"), reverse("cargo_history")):
+            with self.subTest(url=url):
+                self.assertContains(self.client.get(url), "Titleist Stand Bag")
+
+    def test_no_bag_and_two_bags_notes(self):
+        self.client.force_login(self.owner)
+        self.assertContains(self.client.get(reverse("box_detail", args=[self.box.pk])), "No bag recorded")
+        self.add_bag(name="A")
+        self.add_bag(name="B")
+        self.assertContains(self.client.get(reverse("box_detail", args=[self.box.pk])), "2 golf bags recorded")
+
+    def test_add_and_edit_bag_on_box_page(self):
+        self.client.force_login(self.japan)
+        r = self.client.get(reverse("box_bag", args=[self.box.pk]), HTTP_HX_REQUEST="true")
+        self.assertContains(r, 'name="bag-item_name"')
+        r = self.htmx(self.japan, reverse("box_bag", args=[self.box.pk]), {"bag-item_name": ""})
+        self.assertEqual(r["HX-Retarget"], "#bag-form-slot")
+        r = self.htmx(self.japan, reverse("box_bag", args=[self.box.pk]),
+                      {"bag-item_name": "Ping Hoofer", "bag-color": "Navy"})
+        self.assertContains(r, 'id="bag-section"')
+        self.assertContains(r, 'id="summary" hx-swap-oob="true"')
+        bag = self.box.items.get(is_bag=True)
+        self.htmx(self.japan, reverse("box_bag", args=[self.box.pk]), {"bag-item_name": "Ping Hoofer Lite"})
+        self.assertEqual(self.box.items.filter(is_bag=True).get().pk, bag.pk)   # edited, not a second bag
+        self.assertEqual(Box.objects.get(pk=self.box.pk).title, "GN-3 · Ping Hoofer Lite")
+
+    def test_bag_cannot_be_copied_or_deleted_by_japan_sender(self):
+        bag = self.add_bag()
+        self.assertEqual(self.htmx(self.japan, reverse("item_copy", args=[bag.pk])).status_code, 400)
+        self.assertEqual(self.htmx(self.japan, reverse("item_delete", args=[bag.pk])).status_code, 403)
+        r = self.htmx(self.owner, reverse("item_delete", args=[bag.pk]))
+        self.assertContains(r, "No bag recorded")
+        self.assertFalse(JapanItem.objects.filter(pk=bag.pk).exists())
+
+    def test_locked_box_bag_only_owner(self):
+        self.ship()
+        self.box.myanmar_received_date = self.box.created_at.date()
+        self.box.save()
+        self.assertEqual(self.htmx(self.japan, reverse("box_bag", args=[self.box.pk]),
+                                   {"bag-item_name": "X"}).status_code, 403)
+        self.htmx(self.owner, reverse("box_bag", args=[self.box.pk]), {"bag-item_name": "Owner fix"})
+        self.assertEqual(self.box.bag_name, "Owner fix")
+
+    # --- Myanmar check -----------------------------------------------------
+    def test_bag_checked_like_an_item(self):
+        bag = self.add_bag()
+        self.ship()
+        self.client.force_login(self.myanmar)
+        self.client.post(reverse("box_start_check", args=[self.box.pk]))
+        html = self.client.get(reverse("box_detail", args=[self.box.pk])).content.decode()
+        self.assertIn(reverse("item_check", args=[bag.pk]), html)
+        self.assertLess(html.index(reverse("item_check", args=[bag.pk])), html.index(reverse("item_check", args=[self.item1.pk])))
+        for item in (self.item1, self.item2):
+            self.htmx(self.myanmar, reverse("item_check", args=[item.pk]), {"result": "matched"})
+        self.box.refresh_from_db()
+        self.assertEqual(self.box.status, Box.Status.ARRIVED)          # the bag isn't checked yet
+        r = self.htmx(self.myanmar, reverse("item_check", args=[bag.pk]), {"result": "matched"})
+        self.assertContains(r, "3/3 checked")
+        self.box.refresh_from_db()
+        self.assertEqual(self.box.status, Box.Status.CHECKED)
+        self.htmx(self.myanmar, reverse("item_check", args=[bag.pk]), {"result": "missing"})
+        r = self.client.get(reverse("box_detail", args=[self.box.pk]))
+        self.assertContains(r, "Mismatch summary")
+        self.assertContains(r, "<b>Titleist Stand Bag</b>")
+
+    # --- Customer orders and attach ----------------------------------------
+    def test_bag_attach_and_customer_orders(self):
+        bag = self.add_bag()
+        bag.customer = "Ko Aung"
+        bag.save()
+        req = CustomerRequest.objects.create(customer="Ko Aung", item_name="Stand bag")
+        self.client.force_login(self.owner)
+        r = self.client.get(reverse("request_attach_items"), {"box": self.box.pk, "req": req.pk})
+        self.assertContains(r, f'<option value="{bag.pk}">Golf bag: Titleist Stand Bag')
+        self.client.post(reverse("request_attach", args=[req.pk]), {"japan_item": bag.pk}, HTTP_HX_REQUEST="true")
+        req.refresh_from_db()
+        self.assertEqual((req.japan_item, req.status), (bag, CustomerRequest.Status.IN_BOX))
+        from .models import Customer
+        r = self.client.get(reverse("customer_detail", args=[Customer.objects.get(name="Ko Aung").pk]))
+        self.assertContains(r, "Titleist Stand Bag")
+
+    # --- Migration of existing boxes -----------------------------------------
+    def test_migration_marks_single_bag_item(self):
+        import importlib
+        from django.apps import apps
+        mark = importlib.import_module("tracker.migrations.0008_golf_bag").mark_existing_bags
+        one = JapanItem.objects.create(box=self.box, type="Bag", item_name="Old stand bag")
+        two = Box.objects.create(cargo=self.cargo, box_no=20)
+        JapanItem.objects.create(box=two, type="Bag", item_name="A")
+        JapanItem.objects.create(box=two, type="bag", item_name="B")
+        none = Box.objects.create(cargo=self.cargo, box_no=21)
+        JapanItem.objects.create(box=none, type="Driver", item_name="Qi10")
+        mark(apps, None)
+        self.assertEqual(list(JapanItem.objects.filter(is_bag=True)), [JapanItem.objects.get(pk=one.pk)])
+        self.client.force_login(self.owner)
+        for box in (two, none):
+            self.assertContains(self.client.get(reverse("box_detail", args=[box.pk])), "No bag recorded")
+
+    # --- CSV -----------------------------------------------------------------
+    def test_csv_bag_rows(self):
+        r = self.csv("box,kind,item_name,color,club_option,qty,customer\n"
+                     "GN-5,bag,Titleist Stand Bag,Black,,1,Ko Aung\n"
+                     "GN-5,,TSR2,,Driver 10.5,1,\n"
+                     "GN-5,item,Pro V1,,,2,\n")
+        self.assertContains(r, "Imported 2 item(s) and 1 golf bag(s) into 1 box(es)")
+        box = Box.objects.get(box_no=5)
+        bag = box.items.get(is_bag=True)
+        self.assertEqual((bag.item_name, bag.color, bag.customer, bag.type, bag.qty),
+                         ("Titleist Stand Bag", "Black", "Ko Aung", "Golf bag", 1))
+        self.assertEqual(box.items.first(), bag)
+        # adding more items to a box that already has its bag needs no bag row
+        self.assertContains(self.csv("box,item_name\nGN-5,Head cover\n"), "Imported 1 item(s) into 1 box(es)")
+
+    def test_csv_rejects_zero_or_two_bags_with_row_numbers(self):
+        r = self.csv("box,kind,item_name\n"
+                     "GN-5,,TSR2\n"
+                     "GN-5,,Pro V1\n"
+                     "GN-6,bag,Bag one\n"
+                     "GN-6,,Wedge\n"
+                     "GN-6,bag,Bag two\n")
+        self.assertContains(r, "Nothing was imported")
+        self.assertContains(r, "Row 2: Box GN-5 has no golf bag – add a row with kind = bag (box GN-5 is on rows 2, 3)")
+        self.assertContains(r, "Row 4: Box GN-6 has 2 bag rows (rows 4, 6) – a box holds exactly one golf bag")
+        self.assertFalse(Box.objects.filter(box_no__in=[5, 6]).exists())
+        # GN-3 has no bag yet: adding items without a bag row is rejected too
+        self.assertContains(self.csv("box,item_name\nGN-3,Head cover\n"), "Box GN-3 has no golf bag")
+        # GN-3 with its bag: a second bag row is rejected
+        self.add_bag()
+        self.assertContains(self.csv("box,kind,item_name\nGN-3,bag,Another\n"),
+                            "Box GN-3 already has a golf bag (Titleist Stand Bag)")
+
+    def test_csv_bag_row_checks(self):
+        r = self.csv("box,kind,item_name,club_option,qty\n"
+                     "GN-5,bag,,,1\n"
+                     "GN-5,bag,X,Wedge 52,2\n"
+                     "GN-5,box,Y,,1\n")
+        for msg in ("Row 2: bag row: put the bag&#x27;s name in item_name", "Row 3: bag row: leave club_option empty",
+                    "Row 3: bag row: qty must be 1", "Row 4: kind must be bag or item"):
+            self.assertContains(r, msg)
+
+    def test_csv_owner_override(self):
+        r = self.csv("box,kind,item_name\nGN-5,,TSR2\n", allow_bag_exception="on")
+        self.assertContains(r, "Imported 1 item(s) into 1 box(es)")
+        self.assertContains(r, "Imported with the owner override")
+        self.assertContains(r, "Row 2: Box GN-5 has no golf bag")
+        self.assertTrue(Box.objects.filter(box_no=5).exists())
+
+    # --- Admin -------------------------------------------------------------
+    def admin_post(self, bags, **extra):
+        self.owner.is_staff = True
+        self.owner.save()
+        self.client.force_login(self.owner)
+        data = {"cargo": self.cargo.pk, "box_no": "3", "status": "packed", "notes": "",
+                "items-TOTAL_FORMS": "2", "items-INITIAL_FORMS": "2", "items-MIN_NUM_FORMS": "0",
+                "items-MAX_NUM_FORMS": "1000",
+                "extra_items-TOTAL_FORMS": "0", "extra_items-INITIAL_FORMS": "0",
+                "extra_items-MIN_NUM_FORMS": "0", "extra_items-MAX_NUM_FORMS": "1000"}
+        for i, item in enumerate((self.item1, self.item2)):
+            data.update({f"items-{i}-id": item.pk, f"items-{i}-box": self.box.pk, f"items-{i}-type": item.type,
+                         f"items-{i}-item_name": item.item_name, f"items-{i}-qty": item.qty,
+                         f"items-{i}-condition": "new"})
+            if i < bags:
+                data[f"items-{i}-is_bag"] = "on"
+        data.update(extra)
+        return self.client.post(f"/admin/tracker/box/{self.box.pk}/change/", data, follow=True)
+
+    def test_admin_enforces_one_bag_with_override(self):
+        self.assertContains(self.admin_post(0), "A box holds exactly one golf bag, but this box would have 0")
+        self.assertContains(self.admin_post(2), "this box would have 2")
+        self.assertFalse(JapanItem.objects.filter(is_bag=True).exists())
+        r = self.admin_post(1)
+        self.assertNotContains(r, "golf bag(s)")
+        self.assertEqual(list(JapanItem.objects.filter(is_bag=True)), [self.item1])
+        r = self.admin_post(2, allow_bag_exception="on")
+        self.assertContains(r, "Box GN-3 now has 2 golf bag(s)")
+        self.assertEqual(JapanItem.objects.filter(is_bag=True).count(), 2)
+        self.assertContains(self.client.get("/admin/tracker/box/"), "2 bags")
+
+    def test_admin_item_second_bag_rejected(self):
+        self.add_bag()
+        self.owner.is_staff = True
+        self.owner.save()
+        self.client.force_login(self.owner)
+        data = {"box": self.box.pk, "type": "Wedge", "item_name": "RTX 6", "qty": 3, "condition": "new",
+                "quantity_unit": "pcs", "is_bag": "on",
+                "receive_check-TOTAL_FORMS": "0", "receive_check-INITIAL_FORMS": "0",
+                "receive_check-MIN_NUM_FORMS": "0", "receive_check-MAX_NUM_FORMS": "1"}
+        r = self.client.post(f"/admin/tracker/japanitem/{self.item2.pk}/change/", data, follow=True)
+        self.assertContains(r, "already has a golf bag")
+        r = self.client.post(f"/admin/tracker/japanitem/{self.item2.pk}/change/", {**data, "allow_bag_exception": "on"},
+                             follow=True)
+        self.assertContains(r, "now has 2 golf bag(s)")

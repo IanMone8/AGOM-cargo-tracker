@@ -11,6 +11,7 @@ urlpatterns = [
     path("boxes/<int:pk>/edit/", views.box_edit, name="box_edit"),
     path("boxes/item-card/", views.box_item_card, name="box_item_card"),
     path("boxes/<int:pk>/ship/", views.box_mark_shipped, name="box_mark_shipped"),
+    path("boxes/<int:pk>/bag/", views.box_bag, name="box_bag"),
     path("boxes/<int:pk>/start-check/", views.box_start_check, name="box_start_check"),
     path("boxes/<int:pk>/items/add/", views.item_add, name="item_add"),
     path("boxes/<int:pk>/extras/add/", views.extra_add, name="extra_add"),

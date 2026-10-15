@@ -2,7 +2,8 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.core.exceptions import PermissionDenied
-from django.db.models import Count, Q
+from django.db.models import Count, OuterRef, Q, Subquery, Value
+from django.db.models.functions import Coalesce, NullIf
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -13,6 +14,7 @@ from django.views.decorators.http import require_POST
 from . import roles
 from .csv_import import import_japan_csv, template_csv
 from .forms import (
+    BagForm,
     BoxCreateForm,
     BoxFilterForm,
     BoxForm,
@@ -67,9 +69,18 @@ def visible_items(user):
     return qs
 
 
+def with_bag(qs):
+    """Annotate each box with its golf bag's name (for "JP-7 · Titleist Stand Bag") and bag count."""
+    bag = JapanItem.objects.filter(box=OuterRef("pk"), is_bag=True).order_by("id")
+    return qs.annotate(
+        bag_title=Subquery(bag.annotate(t=Coalesce(NullIf("item_name", Value("")), "type")).values("t")[:1]),
+        bags_annotated=Subquery(bag.order_by().values("box").annotate(n=Count("id")).values("n")[:1]),
+    )
+
+
 def boxes_with_counts(qs=None):
     qs = qs if qs is not None else Box.objects.all()
-    return qs.select_related("cargo").annotate(
+    return with_bag(qs).select_related("cargo").annotate(
         item_count=Count("items", distinct=True),
         checked_count=Count("items__receive_check", distinct=True),
         problem_count=Count(
@@ -128,22 +139,37 @@ def box_list(request):
 @login_required
 @roles.require(roles.can_edit_japan)
 def box_create(request):
-    """"Add box" – a modal over the current page when opened via HTMX."""
-    form = BoxCreateForm(request.POST or None)
-    formset = ItemFormSet(request.POST or None, prefix="items")
-    if request.method == "POST" and form.is_valid() and formset.is_valid():
+    """"Add box" – a modal over the current page when opened via HTMX.
+
+    The box, its golf bag (required: every box holds exactly one) and the items inside the bag.
+    """
+    data = request.POST or None
+    override = bool(data and roles.is_manager(request.user) and data.get("allow_no_bag"))
+    form = BoxCreateForm(data, user=request.user)
+    bag_form = BagForm(data, prefix="bag", optional=override)
+    formset = ItemFormSet(data, prefix="items")
+    if request.method == "POST" and all([form.is_valid(), bag_form.is_valid(), formset.is_valid()]):
         with transaction.atomic():
             box = form.save()
+            if not bag_form.is_blank:
+                bag = bag_form.save(commit=False)
+                bag.box = box
+                bag.save()
             formset.instance = box
             formset.save()
             box.refresh_status()
-        messages.success(request, f"Box {box.label} added with {box.items.count()} item(s).")
+        inside = box.items.filter(is_bag=False).count()
+        if bag_form.is_blank:
+            messages.warning(request, f"Box {box.label} saved WITHOUT a golf bag (owner override) with "
+                                      f"{inside} item(s). Every box should hold exactly one bag – add it on the box page.")
+        else:
+            messages.success(request, f"Box {box.title} added: the bag and {inside} item(s) inside it.")
         if is_htmx(request):
             response = HttpResponse(status=204)
             response["HX-Redirect"] = reverse("box_detail", args=[box.pk])
             return response
         return redirect("box_detail", pk=box.pk)
-    ctx = {"form": form, "formset": formset, **catalog_context()}
+    ctx = {"form": form, "bag_form": bag_form, "formset": formset, **catalog_context()}
     if is_htmx(request):
         return render(request, "tracker/partials/box_modal.html", ctx)
     return render(request, "tracker/box_create.html", ctx)
@@ -180,10 +206,15 @@ def box_edit(request, pk):
     return render(request, "tracker/box_form.html", {"form": form, "box": box})
 
 
+def bag_context(box):
+    bags = list(box.items.filter(is_bag=True).select_related("receive_check").prefetch_related("requests"))
+    return {"bags": bags, "bag_problem": "none" if not bags else ("many" if len(bags) > 1 else "")}
+
+
 @login_required
 def box_detail(request, pk):
-    box = get_object_or_404(visible_boxes(request.user).select_related("cargo"), pk=pk)
-    items = box.items.select_related("receive_check").prefetch_related("requests")
+    box = get_object_or_404(with_bag(visible_boxes(request.user)).select_related("cargo"), pk=pk)
+    items = box.items.filter(is_bag=False).select_related("receive_check").prefetch_related("requests")
     return render(request, "tracker/box_detail.html", {
         "box": box,
         "can_edit_this_box": roles.can_edit_box(request.user, box),
@@ -191,10 +222,33 @@ def box_detail(request, pk):
         "can_edit_items": roles.can_edit_box_items(request.user, box),
         "japan_locked": roles.can_edit_japan(request.user) and not roles.can_edit_box_items(request.user, box),
         "items": items,
+        **bag_context(box),
         "extras": box.extra_items.all(),
         "summary": box.summary(),
         **catalog_context(),
     })
+
+
+@login_required
+@roles.require(roles.can_edit_japan)
+def box_bag(request, pk):
+    """Add the golf bag to a box that has none (e.g. an old box), or edit its bag."""
+    box = get_object_or_404(visible_boxes(request.user), pk=pk)
+    _require_box_items(request.user, box)
+    bag = box.items.filter(is_bag=True).first()
+    form = BagForm(request.POST or None, instance=bag, prefix="bag")
+    if request.method == "POST" and form.is_valid():
+        bag = form.save(commit=False)
+        bag.box = box
+        bag.save()
+        box.refresh_status()
+        return _box_fragments(request, box, "tracker/partials/bag_saved.html", {
+            **bag_context(box), "can_edit_items": True,
+        })
+    response = render(request, "tracker/partials/bag_form.html", {"box": box, "bag_form": form, "bag": bag})
+    if request.method == "POST":  # show the errors in the open form, not over the bag section
+        response["HX-Retarget"], response["HX-Reswap"] = "#bag-form-slot", "innerHTML"
+    return response
 
 
 class ReceivedBeforeShipped(Exception):
@@ -240,8 +294,8 @@ def box_start_check(request, pk):
     except ReceivedBeforeShipped as exc:
         messages.error(request, str(exc))
         return redirect("box_detail", pk=box.pk)
-    messages.success(request, f"Myanmar check started for {box.label}. Tap each item below.")
-    return redirect(reverse("box_detail", args=[box.pk]) + "#items")
+    messages.success(request, f"Myanmar check started for {box.label}. Check the golf bag, then each item inside it.")
+    return redirect(reverse("box_detail", args=[box.pk]) + "#bag-section")
 
 
 def _box_fragments(request, box, main_template, main_ctx):
@@ -353,6 +407,8 @@ def item_copy(request, pk):
     item = get_object_or_404(visible_items(request.user).select_related("box"), pk=pk)
     box = item.box
     _require_box_items(request.user, box)
+    if item.is_bag:
+        return HttpResponse("A box holds exactly one golf bag – it can't be copied.", status=400)
     item.pk = None
     item._state.adding = True
     item.save()
@@ -368,7 +424,13 @@ def item_delete(request, pk):
     item = get_object_or_404(visible_items(request.user).select_related("box"), pk=pk)
     box = item.box
     _require_box_items(request.user, box)
+    if item.is_bag and not roles.is_manager(request.user):
+        raise PermissionDenied("Every box holds its golf bag – edit the bag instead of deleting it.")
     item.delete()
+    if item.is_bag:  # owner removed the bag: refresh the bag section too
+        return _box_fragments(request, box, "tracker/partials/bag_saved.html", {
+            **bag_context(box), "can_edit_items": True, "bag_form_closed": True,
+        })
     box.refresh_status()
     return _box_fragments(request, box, "tracker/partials/oob_only.html", {})
 
@@ -485,7 +547,7 @@ def request_attach(request, pk):
         return render(request, "tracker/partials/request_card.html", {
             "r": req, "status_choices": CustomerRequest.Status.choices,
         })
-    boxes = visible_boxes(request.user).select_related("cargo").exclude(status=Box.Status.CHECKED)
+    boxes = with_bag(visible_boxes(request.user)).select_related("cargo").exclude(status=Box.Status.CHECKED)
     return render(request, "tracker/partials/request_attach.html", {
         "r": req, "suggestions": _suggestions(req, request.user), "boxes": boxes,
     })
@@ -762,12 +824,17 @@ def csv_import(request):
     form = CSVImportForm(request.POST or None, request.FILES or None)
     result = None
     if request.method == "POST" and form.is_valid():
-        result = import_japan_csv(form.cleaned_data["file"], replace=form.cleaned_data["replace"])
+        result = import_japan_csv(form.cleaned_data["file"], replace=form.cleaned_data["replace"],
+                                  allow_bag_exception=form.cleaned_data["allow_bag_exception"])
         if not result.errors:
+            bags = f" and {result.created_bags} golf bag(s)" if result.created_bags else ""
             messages.success(
                 request,
-                f"Imported {result.created_items} item(s) into {len(result.boxes)} box(es).",
+                f"Imported {result.created_items} item(s){bags} into {len(result.boxes)} box(es).",
             )
+            if result.warnings:
+                messages.warning(request, f"{len(result.warnings)} box(es) don't have exactly one golf bag "
+                                          "(owner override) – see the list below.")
     return render(request, "tracker/csv_import.html", {"form": form, "result": result})
 
 

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% load tracker_tags %}
-{% block title %}{{ box.label }} · AGOM Cargo Tracker{% endblock %}
+{% block title %}{{ box.title }} · AGOM Cargo Tracker{% endblock %}
 {% block content %}
 <a href="{% url 'box_list' %}" class="text-sm font-semibold text-emerald-700">← Shipments</a>
 
@@ -9,7 +9,7 @@
     <div class="flex items-center gap-3">
       <div class="grid h-12 w-12 place-items-center rounded-2xl bg-white/15 text-xs font-extrabold">{{ box.cargo.code }}</div>
       <div>
-        <div class="flex items-center gap-2"><h1 class="text-2xl font-extrabold">{{ box.label }}</h1>{% include "tracker/partials/box_status.html" %}</div>
+        <div class="flex flex-wrap items-center gap-x-2 gap-y-1"><h1 class="text-2xl font-extrabold">{{ box.label }}{% if box.bag_name %}<span class="font-semibold text-emerald-100"> · {{ box.bag_name }}</span>{% endif %}</h1>{% include "tracker/partials/box_status.html" %}</div>
         <p class="text-xs text-emerald-100/80">{{ box.cargo.name }}</p>
       </div>
     </div>
@@ -60,9 +60,11 @@
 
 <div class="mt-4">{% include "tracker/partials/summary.html" %}</div>
 
-<section id="items" class="mt-6 scroll-mt-20">
-  <div class="mb-3 flex items-center justify-between">
-    <h2 class="text-lg font-bold">Japan list {% include "tracker/partials/item_count.html" %}</h2>
+{% include "tracker/partials/bag_section.html" %}
+
+<section id="items" class="mt-8 scroll-mt-20">
+  <div class="mb-3 flex items-center justify-between gap-2">
+    <h2 class="text-lg font-bold">Items inside the bag {% include "tracker/partials/item_count.html" %}</h2>
     {% if can_edit_items %}
       <button class="btn btn-soft shrink-0 whitespace-nowrap" hx-get="{% url 'item_add' box.pk %}" hx-target="#item-form-slot">{% icon "plus" %} Add item</button>
     {% endif %}
@@ -71,7 +73,7 @@
   <div id="item-list" class="space-y-3">
     {% for item in items %}{% include "tracker/partials/item_row.html" with oob=False %}{% endfor %}
   </div>
-  {% if not items %}<p class="card p-8 text-center text-sm text-stone-500">No items yet.{% if can_edit_items and can_import_csv %} Add one or use <a class="font-semibold text-emerald-700 underline" href="{% url 'csv_import' %}">CSV import</a>.{% endif %}</p>{% endif %}
+  {% if not items %}<p class="card p-8 text-center text-sm text-stone-500">No items in the bag yet.{% if can_edit_items and can_import_csv %} Add one or use <a class="font-semibold text-emerald-700 underline" href="{% url 'csv_import' %}">CSV import</a>.{% endif %}</p>{% endif %}
 </section>
 
 <section class="mt-8">
