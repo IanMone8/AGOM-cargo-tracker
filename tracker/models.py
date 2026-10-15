@@ -135,13 +135,19 @@ class Box(models.Model):
         ).distinct()
 
 
-def club_label(type_, *, head_only=False, loft="", shaft="", club_number=""):
-    """One short label for a club pick, e.g. "Driver head 9.5°", "Iron · Graphite 5", "Wedge 52°"."""
+def club_label(type_, *, head_only=False, loft="", shaft="", club_number="", length_in=""):
+    """One short label for a club pick, e.g. "Driver head 9.5°", "Iron · Graphite 5", "Wedge 52°",
+    "Wood 3W", "Hybrid 4H", "Putter 34″"."""
     base = f"{type_} head" if (type_ and head_only) else (type_ or "")
     shaft_txt = {"steel": "Steel", "graphite": "Graphite"}.get(shaft, shaft or "")
-    extra = " ".join(x for x in (shaft_txt, club_number) if x)
-    if extra:
+    if shaft_txt:
+        extra = " ".join(x for x in (shaft_txt, club_number) if x)
         return f"{base} · {extra}" if base else extra
+    if club_number:
+        return f"{base} {club_number}".strip()
+    if length_in:
+        length_in = length_in.rstrip('″"')
+        return f"{base} {length_in}″".strip()
     if loft:
         loft = loft if loft.endswith("°") else f"{loft}°"
         return f"{base} {loft}".strip()
@@ -187,6 +193,7 @@ class JapanItem(models.Model):
     flex = models.CharField(max_length=3, choices=Flex.choices, blank=True)
     shaft_material = models.CharField(max_length=10, choices=Shaft.choices, blank=True)
     head_only = models.BooleanField(default=False, help_text="Club head only (no shaft)")
+    length_in = models.CharField("Length (inches)", max_length=10, blank=True, help_text="e.g. putter length 34")
     specification = models.CharField(max_length=255, blank=True, help_text="Shaft model, length, grip…")
     color = models.CharField(max_length=40, blank=True)
     condition = models.CharField(
@@ -205,7 +212,7 @@ class JapanItem(models.Model):
     @property
     def club_label(self):
         return club_label(self.club_type or self.type, head_only=self.head_only, loft=self.loft,
-                          shaft=self.shaft_material, club_number=self.club_number)
+                          shaft=self.shaft_material, club_number=self.club_number, length_in=self.length_in)
 
     @property
     def title(self):
@@ -393,43 +400,54 @@ class Customer(models.Model):
         return JapanItem.objects.filter(customer__iexact=self.name)
 
 
-class ClubOption(models.Model):
-    """Buttons for the two-tap "Club option" picker. Editable in /admin/.
+class ClubCategory(models.Model):
+    """First tap of the Club option picker (Driver, Wood, Putter, …). Add new ones in /admin/."""
 
-    The category is the first tap, the label the second; the structured values
-    are what gets saved on the item.
+    name = models.CharField(max_length=40, unique=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    active = models.BooleanField(default=True)
+    free_text = models.BooleanField(
+        default=False, help_text="Show a text box instead of value buttons (like “Other”)")
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+        verbose_name_plural = "club categories"
+
+    def __str__(self):
+        return self.name
+
+
+class ClubOption(models.Model):
+    """Second tap of the Club option picker. Editable in /admin/.
+
+    The structured values are what gets saved on the item.
     """
 
-    class Category(models.TextChoices):
-        DRIVER = "driver", "Driver"
-        DRIVER_HEAD = "driver_head", "Driver head"
-        IRON = "iron", "Iron"
-        WEDGE = "wedge", "Wedge"
-        OTHER = "other", "Other"
-
-    category = models.CharField(max_length=20, choices=Category.choices)
-    label = models.CharField(max_length=30, help_text='Button text, e.g. "10.5", "Graphite 5", "52°"')
+    category = models.ForeignKey(ClubCategory, on_delete=models.CASCADE, related_name="options")
+    label = models.CharField(max_length=30, help_text='Button text, e.g. "10.5", "3W", "Graphite 5", "52°", "34"')
     sort_order = models.PositiveIntegerField(default=0)
     active = models.BooleanField(default=True)
     # structured values copied onto the item
-    type = models.CharField(max_length=50, help_text="Saved as the item type, e.g. Driver, Iron, Wedge")
+    type = models.CharField(max_length=50, help_text="Saved as the item type, e.g. Driver, Wood, Hybrid, Putter")
     loft = models.CharField(max_length=20, blank=True)
     shaft_material = models.CharField(max_length=10, choices=JapanItem.Shaft.choices, blank=True)
-    club_number = models.CharField(max_length=20, blank=True)
+    club_number = models.CharField(max_length=20, blank=True, help_text='e.g. "3W", "4H", "5"')
+    length_in = models.CharField("Length (inches)", max_length=10, blank=True)
     head_only = models.BooleanField(default=False)
 
     class Meta:
-        ordering = ["category", "sort_order", "id"]
+        ordering = ["category__sort_order", "sort_order", "id"]
 
     def __str__(self):
         return self.full_label
 
     @property
     def full_label(self):
-        return club_label(self.type, head_only=self.head_only, loft=self.loft,
-                          shaft=self.shaft_material, club_number=self.club_number)
+        return club_label(self.type, head_only=self.head_only, loft=self.loft, shaft=self.shaft_material,
+                          club_number=self.club_number, length_in=self.length_in)
 
     def apply_to(self, item):
         item.type, item.club_type = self.type, ""
         item.loft, item.shaft_material = self.loft, self.shaft_material
         item.club_number, item.head_only = self.club_number, self.head_only
+        item.length_in = self.length_in

@@ -124,18 +124,18 @@
       document.addEventListener('pointerleave', () => { if (active) { reset(active); active = null; } });
       window.addEventListener('blur', () => { if (active) { reset(active); active = null; } });
     })();
-    // Two-tap club option picker: category, then value (or free text for "Other").
+    // Two-tap club option picker: category, then value (or free text for categories like "Other").
     document.addEventListener('click', e => {
       const cat = e.target.closest('[data-club-cat]'), val = e.target.closest('[data-club-val]');
       if (!cat && !val) return;
       const picker = e.target.closest('[data-picker]');
       const hidden = picker.querySelector('[data-club-value]'), picked = picker.querySelector('[data-club-picked]');
       if (cat) {
-        const key = cat.dataset.clubCat;
+        const free = cat.hasAttribute('data-club-free'), key = free ? 'free' : cat.dataset.clubCat;
         picker.querySelectorAll('[data-club-cat]').forEach(b => b.setAttribute('aria-pressed', b === cat));
         picker.querySelectorAll('[data-club-panel]').forEach(p => p.hidden = p.dataset.clubPanel !== key);
         const panel = picker.querySelector(`[data-club-panel="${key}"]`);
-        if (key === 'other') {
+        if (free) {
           hidden.value = 'other';
           const other = panel.querySelector('[data-club-other]');
           picked.textContent = other.value ? '✓ ' + other.value : '';

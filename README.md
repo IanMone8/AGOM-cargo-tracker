@@ -77,10 +77,13 @@ cards on phones. Each customer has a detail page with all their requests and pac
 typed on requests, Japan items or CSV rows create the customer automatically.
 
 **Item card:** the Japan sender fills only Item name (optional), Customer (optional, suggests existing customers), **Club option**, Flex, Qty and Note.
-Club option is two taps – Driver / Driver head / Iron / Wedge / Other, then a value (Other = free text) –
-and is saved as structured data (e.g. "Iron · Graphite 5" → type Iron, shaft graphite, club number 5;
-"Driver head 9.5" → type Driver, loft 9.5, head only). The owner can add or hide options in
-**Admin → Club options**. Each card has **Copy**, and saved items have **copy** on the box page.
+Club option is two taps – a category (Driver, Driver head, Wood, Hybrid, Iron, Wedge, Putter, Other), then a value
+(Other = free text) – and is saved as structured data (e.g. "Iron · Graphite 5" → type Iron, shaft graphite, club number 5;
+"Driver head 9.5" → type Driver, loft 9.5, head only; "Wood 3W" → type Wood, club number 3W; "Hybrid 4H" → type Hybrid,
+club number 4H; "Putter 34″" → type Putter, length 34 in). The owner manages it all in `/admin/`:
+**Club categories** (add one like "Chipper", set the button order, hide it, or tick *free text* to show a text box
+like Other – values can be added on the same page) and **Club options** (the value buttons). A category with no
+active options and no free text isn't shown. Each card has **Copy**, and saved items have **copy** on the box page.
 Brand, model, price, etc. are kept for old data, CSV and admin.
 
 **Locking:** once the Myanmar check has started on a box (it has a received date, or any item is checked),
@@ -126,8 +129,9 @@ KL-1,Cleveland RTX 6,Wedge 52,,1,,
 
 * Required: `box`, plus `item_name` or `club_option` on each row. Other columns are optional.
 * `club_option` is one label from **Admin → Club options**, e.g. `Driver 10.5`, `Driver head 9.5`,
-  `Iron · Graphite 5`, `Iron Steel`, `Wedge 52°` (the `°` and `·` are optional, case doesn't matter).
-  It fills the structured columns (type, loft, shaft, club number, head only) for you.
+  `Iron · Graphite 5`, `Iron Steel`, `Wedge 52°`, `Wood 3W`, `Hybrid 4H`, `Putter 34` (the `°`, `·` and `″` are
+  optional, case doesn't matter). Woods and hybrids also accept the number alone – `wood 3`, `Hybrid 4` – or just
+  `3W` / `4H`. It fills the structured columns (type, loft, shaft, club number, length, head only) for you.
 * Older files still work: `type`, `loft`, `brand`, `model`, `club_type`, `club_number`, `shaft_material`,
   `specification`, `color`, `condition`, `price_jpy`, `quantity_unit`; friendlier headers like `name`,
   `amount`, `unit` too. If a row has both, `club_option` wins.

@@ -194,7 +194,7 @@ class AddBoxModalTests(BaseTest):
 
     def test_create_box_with_items_skips_deleted_card(self):
         from .models import ClubOption
-        graphite5 = ClubOption.objects.get(category="iron", label="Graphite 5")
+        graphite5 = ClubOption.objects.get(category__name="Iron", label="Graphite 5")
         # Card 1 was deleted in the browser: it is posted half-filled with DELETE=on.
         data = self.post_data(**{
             "items-1-item_name": "half typed", "items-1-DELETE": "on",
@@ -994,9 +994,10 @@ class ClubOptionTests(BaseTest):
         return self.client.post(reverse("item_add", args=[self.box.pk]), {"qty": "1", **fields}, HTTP_HX_REQUEST="true")
 
     def test_seeded_options_and_labels(self):
-        self.assertEqual(len(self.opt), 17)
+        self.assertEqual(len(self.opt), 36)
         for label in ("Driver 9°", "Driver 10.5°", "Driver head 8°", "Driver head 9.5°", "Iron · Graphite 5",
-                      "Iron · Steel", "Wedge 48°", "Wedge 60°"):
+                      "Iron · Steel", "Wedge 48°", "Wedge 60°", "Wood 2W", "Wood 3W", "Wood 9W", "Hybrid 2H",
+                      "Hybrid 4H", "Hybrid 7H", "Putter 32″", "Putter 34″", "Putter 38″"):
             self.assertIn(label, self.opt)
 
     def test_card_has_only_simple_fields_and_picker(self):
@@ -1007,8 +1008,12 @@ class ClubOptionTests(BaseTest):
         self.assertLess(html.index('name="customer"'), html.index('name="club_option"'))
         for gone in ("type", "loft", "brand", "model", "shaft_material", "price_jpy"):
             self.assertNotIn(f'name="{gone}"', html)
-        for cat in ("Driver", "Driver head", "Iron", "Wedge", "Other"):
-            self.assertIn(f">{cat}</button>", html)
+        cats = ["Driver", "Driver head", "Wood", "Hybrid", "Iron", "Wedge", "Putter", "Other"]
+        positions = [html.index(f">{cat}</button>") for cat in cats]
+        self.assertEqual(positions, sorted(positions))          # shown in this order
+        self.assertEqual(html.count('data-club-other'), 1)     # one free-text box
+        self.assertIn(">3W</button>", html)
+        self.assertIn('data-club-label="Putter 34″"', html)
         self.assertIn('data-club-label="Wedge 52°"', html)
         self.assertIn(">52°</button>", html)
 
@@ -1016,7 +1021,10 @@ class ClubOptionTests(BaseTest):
         cases = [("Iron · Graphite 5", dict(type="Iron", shaft_material="graphite", club_number="5", head_only=False)),
                  ("Wedge 52°", dict(type="Wedge", loft="52", head_only=False)),
                  ("Driver head 9.5°", dict(type="Driver", loft="9.5", head_only=True)),
-                 ("Driver 10.5°", dict(type="Driver", loft="10.5", head_only=False))]
+                 ("Driver 10.5°", dict(type="Driver", loft="10.5", head_only=False)),
+                 ("Wood 3W", dict(type="Wood", club_number="3W", loft="", length_in="")),
+                 ("Hybrid 4H", dict(type="Hybrid", club_number="4H", shaft_material="")),
+                 ("Putter 34″", dict(type="Putter", length_in="34", club_number="", loft=""))]
         for label, expected in cases:
             with self.subTest(label=label):
                 self.add(club_option=str(self.opt[label].pk))
@@ -1029,7 +1037,7 @@ class ClubOptionTests(BaseTest):
     def test_other_free_text_and_name_only(self):
         self.add(club_option="other", club_other="  Golf   bag ")
         item = JapanItem.objects.latest("id")
-        self.assertEqual((item.type, item.club_label, item.loft), ("Golf bag", "Golf bag", ""))
+        self.assertEqual((item.type, item.club_label, item.loft, item.length_in), ("Golf bag", "Golf bag", "", ""))
         self.add(item_name="Titleist Pro V1")
         self.assertEqual(JapanItem.objects.latest("id").title, "Titleist Pro V1")
 
@@ -1055,8 +1063,9 @@ class ClubOptionTests(BaseTest):
 
     def test_admin_can_add_option_without_code(self):
         from .models import ClubOption
-        ClubOption.objects.create(category="wedge", label="62°", type="Wedge", loft="62", sort_order=99)
-        ClubOption.objects.filter(category="driver", label="9").update(active=False)
+        ClubOption.objects.create(category=self.opt["Wedge 52°"].category, label="62°", type="Wedge", loft="62",
+                                  sort_order=99)
+        ClubOption.objects.filter(category__name="Driver", label="9").update(active=False)
         html = self.client.get(reverse("item_add", args=[self.box.pk]), HTTP_HX_REQUEST="true").content.decode()
         self.assertIn('data-club-label="Wedge 62°"', html)
         self.assertNotIn('data-club-label="Driver 9°"', html)
@@ -1064,6 +1073,33 @@ class ClubOptionTests(BaseTest):
         self.owner.is_staff = True
         self.owner.save()
         self.assertEqual(self.client.get("/admin/tracker/cluboption/").status_code, 200)
+        self.assertEqual(self.client.get("/admin/tracker/clubcategory/").status_code, 200)
+
+    def test_admin_can_add_category_without_code(self):
+        from .models import ClubCategory, ClubOption
+        chipper = ClubCategory.objects.create(name="Chipper", sort_order=55)        # between Wedge and Putter
+        ClubCategory.objects.create(name="Empty", sort_order=56)
+        opt = ClubOption.objects.create(category=chipper, label="35", type="Chipper", length_in="35")
+        ClubCategory.objects.filter(name="Driver head").update(active=False)
+        html = self.client.get(reverse("item_add", args=[self.box.pk]), HTTP_HX_REQUEST="true").content.decode()
+        self.assertLess(html.index(">Wedge</button>"), html.index(">Chipper</button>"))
+        self.assertLess(html.index(">Chipper</button>"), html.index(">Putter</button>"))
+        self.assertIn('data-club-label="Chipper 35″"', html)
+        self.assertNotIn(">Empty</button>", html)                # no options yet: no button
+        self.assertNotIn(">Driver head</button>", html)          # hidden category
+        self.add(club_option=str(opt.pk))
+        item = JapanItem.objects.latest("id")
+        self.assertEqual((item.type, item.length_in, item.club_label), ("Chipper", "35", "Chipper 35″"))
+        self.client.force_login(self.owner)
+        self.owner.is_staff = True
+        self.owner.save()
+        r = self.client.post("/admin/tracker/clubcategory/add/", {
+            "name": "Fairway finder", "sort_order": "95", "active": "on",
+            "options-TOTAL_FORMS": "1", "options-INITIAL_FORMS": "0",
+            "options-0-label": "5", "options-0-sort_order": "0", "options-0-active": "on", "options-0-type": "Wood",
+            "options-0-club_number": "5W"})
+        self.assertEqual(r.status_code, 302, getattr(r, "context", None) and r.context.get("errors"))
+        self.assertTrue(ClubOption.objects.filter(category__name="Fairway finder", club_number="5W").exists())
 
     def test_copy_saved_item(self):
         self.item1.loft, self.item1.head_only, self.item1.customer = "9.5", True, "Ko Aung"
@@ -1101,6 +1137,21 @@ class ClubOptionTests(BaseTest):
         labels = sorted(i.club_label for i in JapanItem.objects.filter(box=self.box).exclude(pk__in=[self.item1.pk, self.item2.pk]))
         self.assertEqual(labels, ["Driver head 10°", "Iron · Graphite 5", "Wedge 56°"])
         f = SimpleUploadedFile("l.csv", b"box,item_name,club_option\nGN-3,X,Wedge 99\n", content_type="text/csv")
+        self.assertContains(self.client.post(reverse("csv_import"), {"file": f}), "Unknown club_option")
+
+    def test_csv_wood_hybrid_putter(self):
+        self.client.force_login(self.owner)
+        rows = ["Wood 3W", "wood 3", "Hybrid 4", "4H", "Putter 34", "Putter 34″", "hybrid 4h", "3w"]
+        f = SimpleUploadedFile("l.csv", ("box,club_option\n" + "".join(f"GN-3,{r}\n" for r in rows)).encode(),
+                               content_type="text/csv")
+        self.assertContains(self.client.post(reverse("csv_import"), {"file": f}), "Imported 8 item(s)")
+        items = JapanItem.objects.filter(box=self.box).exclude(pk__in=[self.item1.pk, self.item2.pk]).order_by("id")
+        self.assertEqual([i.club_label for i in items],
+                         ["Wood 3W", "Wood 3W", "Hybrid 4H", "Hybrid 4H", "Putter 34″", "Putter 34″", "Hybrid 4H",
+                          "Wood 3W"])
+        self.assertEqual((items[0].type, items[0].club_number), ("Wood", "3W"))
+        self.assertEqual((items[4].type, items[4].length_in), ("Putter", "34"))
+        f = SimpleUploadedFile("l.csv", b"box,club_option\nGN-3,Wood 8\n", content_type="text/csv")
         self.assertContains(self.client.post(reverse("csv_import"), {"file": f}), "Unknown club_option")
         f = SimpleUploadedFile("l.csv", b"box,type,item_name,loft,shaft_material\nGN-3,Club,Old style,10,steel\n",
                                content_type="text/csv")

@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Box, Cargo, Catalog, ClubOption, Customer, CustomerRequest, ExtraItem, JapanItem, ReceiveCheck
+from .models import Box, Cargo, Catalog, ClubCategory, ClubOption, Customer, CustomerRequest, ExtraItem, JapanItem, ReceiveCheck
 
 
 @admin.register(Cargo)
@@ -95,21 +95,45 @@ class CustomerAdmin(admin.ModelAdmin):
     search_fields = ["name", "phone", "address"]
 
 
+class ClubOptionInline(admin.TabularInline):
+    model = ClubOption
+    extra = 1
+    fields = ["label", "sort_order", "active", "type", "loft", "shaft_material", "club_number", "length_in",
+              "head_only"]
+
+
+@admin.register(ClubCategory)
+class ClubCategoryAdmin(admin.ModelAdmin):
+    """Category buttons of the "Club option" picker (Driver, Wood, Putter…). Add one here, e.g. "Chipper"."""
+
+    list_display = ["name", "sort_order", "active", "free_text", "option_count"]
+    list_editable = ["sort_order", "active", "free_text"]
+    ordering = ["sort_order", "id"]
+    inlines = [ClubOptionInline]
+
+    @admin.display(description="Options")
+    def option_count(self, obj):
+        return obj.options.count()
+
+
 @admin.register(ClubOption)
 class ClubOptionAdmin(admin.ModelAdmin):
-    """Buttons for the "Club option" picker on the item card."""
+    """Value buttons for the "Club option" picker on the item card."""
 
     list_display = ["category", "label", "full_label", "sort_order", "active", "type", "loft", "shaft_material",
-                    "club_number", "head_only"]
+                    "club_number", "length_in", "head_only"]
     list_display_links = ["label"]
     list_editable = ["sort_order", "active"]
     list_filter = ["category", "active"]
-    ordering = ["category", "sort_order"]
+    list_select_related = ["category"]
+    ordering = ["category__sort_order", "sort_order", "id"]
     fieldsets = [
         ("Button", {"fields": ["category", "label", "sort_order", "active"]}),
-        ("Saved on the item", {"fields": ["type", "loft", "shaft_material", "club_number", "head_only"],
+        ("Saved on the item", {"fields": ["type", "loft", "shaft_material", "club_number", "length_in", "head_only"],
                                "description": 'e.g. Wedge 52°: type "Wedge", loft "52". '
-                                              'Iron Graphite 5: type "Iron", shaft graphite, club number "5".'}),
+                                              'Iron Graphite 5: type "Iron", shaft graphite, club number "5". '
+                                              'Wood 3W: type "Wood", club number "3W". '
+                                              'Putter 34″: type "Putter", length "34".'}),
     ]
 
     @admin.display(description="Shown as")

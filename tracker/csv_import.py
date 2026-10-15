@@ -31,15 +31,25 @@ TEMPLATE_ROWS = [
 
 
 def _norm_label(text):
-    """'Iron · Graphite 5', 'iron graphite 5', 'Wedge 52°' / 'wedge 52' all compare equal."""
-    return " ".join(text.lower().replace("°", " ").replace("·", " ").replace("-", " ").split())
+    """'Iron · Graphite 5', 'iron graphite 5', 'Wedge 52°' / 'wedge 52', 'Putter 34″' / 'putter 34' compare equal."""
+    for ch in "°·-″\"":
+        text = text.replace(ch, " ")
+    return " ".join(text.lower().split())
 
 
 def club_option_lookup():
+    """Label → ClubOption. Also accepts 'wood 3' / 'hybrid 4' (number without the W/H) and a bare '3W' / '4H'."""
     lookup = {}
-    for o in ClubOption.objects.filter(active=True):
+    options = ClubOption.objects.filter(active=True, category__active=True).select_related("category")
+    for o in options:
         lookup.setdefault(_norm_label(o.full_label), o)
-        lookup.setdefault(_norm_label(f"{o.get_category_display()} {o.label}"), o)
+        lookup.setdefault(_norm_label(f"{o.category.name} {o.label}"), o)
+    for o in options:
+        m = re.fullmatch(r"(\d+)\s*([a-z]+)", o.club_number.lower())
+        if m and not o.shaft_material:
+            lookup.setdefault(_norm_label(f"{o.type} {m.group(1)}"), o)
+            lookup.setdefault(_norm_label(f"{o.category.name} {m.group(1)}"), o)
+            lookup.setdefault(m.group(1) + m.group(2), o)
     return lookup
 
 

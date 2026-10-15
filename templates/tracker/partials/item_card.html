@@ -24,24 +24,26 @@
       <input type="hidden" name="{{ item_form.club_option.html_name }}" value="{{ item_form.club_option.value|default:'' }}" data-club-value>
       <div class="club-row mt-1" role="group" aria-label="Club category">
         {% for g in item_form.club_groups %}
-          <button type="button" class="club-btn" data-club-cat="{{ g.key }}" aria-pressed="{% if g.key == item_form.selected_category %}true{% else %}false{% endif %}">{{ g.name }}</button>
+          <button type="button" class="club-btn" data-club-cat="{{ g.key }}"{% if g.free_text %} data-club-free{% endif %} aria-pressed="{% if g.key == item_form.selected_category %}true{% else %}false{% endif %}">{{ g.name }}</button>
         {% endfor %}
       </div>
-      {% for g in item_form.club_groups %}
+      {% for g in item_form.club_groups %}{% if not g.free_text %}
         <div class="club-panel" data-club-panel="{{ g.key }}" {% if g.key != item_form.selected_category %}hidden{% endif %}>
-          {% if g.key == "other" %}
-            <input type="text" name="{{ item_form.club_other.html_name }}" value="{{ item_form.club_other.value|default:'' }}" maxlength="50"
-                   class="field" placeholder="e.g. Putter, Golf bag" aria-label="Other club or item" data-club-other>
-          {% else %}
-            <div class="club-row" role="group" aria-label="{{ g.name }} options">
-              {% for o in g.options %}
-                <button type="button" class="club-btn club-val" data-club-val="{{ o.pk }}" data-club-label="{{ o.full_label }}"
-                        aria-pressed="{% if item_form.club_option.value|stringformat:'s' == o.pk|stringformat:'s' %}true{% else %}false{% endif %}">{{ o.label }}</button>
-              {% empty %}<span class="text-xs text-stone-500">No options yet – add them in Admin → Club options.</span>{% endfor %}
-            </div>
-          {% endif %}
+          <div class="club-row" role="group" aria-label="{{ g.name }} options">
+            {% for o in g.options %}
+              <button type="button" class="club-btn club-val" data-club-val="{{ o.pk }}" data-club-label="{{ o.full_label }}"
+                      aria-pressed="{% if item_form.club_option.value|stringformat:'s' == o.pk|stringformat:'s' %}true{% else %}false{% endif %}">{{ o.label }}</button>
+            {% endfor %}
+          </div>
         </div>
-      {% endfor %}
+      {% endif %}{% endfor %}
+      {% if item_form.has_free_text %}
+        {# one text box shared by every free-text category (like "Other") #}
+        <div class="club-panel" data-club-panel="free" {% if not item_form.selected_free %}hidden{% endif %}>
+          <input type="text" name="{{ item_form.club_other.html_name }}" value="{{ item_form.club_other.value|default:'' }}" maxlength="50"
+                 class="field" placeholder="e.g. Golf bag, Chipper" aria-label="Other club or item" data-club-other>
+        </div>
+      {% endif %}
       <p class="mt-1.5 text-xs font-semibold text-emerald-800" data-club-picked>{% if item_form.selected_label %}✓ {{ item_form.selected_label }}{% endif %}</p>
       {% for e in item_form.club_other.errors %}<p class="text-xs font-medium text-red-600">{{ e }}</p>{% endfor %}
     </div>

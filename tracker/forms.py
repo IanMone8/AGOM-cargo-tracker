@@ -3,7 +3,7 @@ from django.forms import inlineformset_factory
 from django.utils import timezone
 
 from . import roles
-from .models import Box, Cargo, ClubOption, Customer, CustomerRequest, ExtraItem, JapanItem
+from .models import Box, Cargo, ClubCategory, ClubOption, Customer, CustomerRequest, ExtraItem, JapanItem
 
 INPUT = "field"  # styled in static/css/agom.css
 
@@ -127,25 +127,35 @@ class JapanItemForm(StyledMixin, forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["flex"].choices = [("", "—")] + list(self.fields["flex"].choices)[1:]
         self._club, self._other = None, ""
-        options = list(ClubOption.objects.filter(active=True))
-        order = [c for c, _ in ClubOption.Category.choices]
-        self.club_groups = [
-            {"key": key, "name": name, "options": sorted((o for o in options if o.category == key),
-                                                         key=lambda o: (o.sort_order, o.pk))}
-            for key, name in ClubOption.Category.choices
-        ]
-        self.club_groups.sort(key=lambda g: order.index(g["key"]))
+        # Categories and options come from /admin/, so a new category (e.g. "Chipper") needs no code.
+        options = list(ClubOption.objects.filter(active=True, category__active=True)
+                       .order_by("sort_order", "id"))
+        self.club_groups = []
+        for cat in ClubCategory.objects.filter(active=True).order_by("sort_order", "id"):
+            opts = [o for o in options if o.category_id == cat.pk]
+            if opts or cat.free_text:
+                self.club_groups.append({"key": str(cat.pk), "name": cat.name,
+                                         "free_text": cat.free_text, "options": opts})
 
     # what the picker shows as selected (also after a validation error)
     def _picked(self):
         value = (self["club_option"].value() or "").strip()
         if value == "other":
-            return "other", self["club_other"].value() or ""
+            free = next((g for g in self.club_groups if g["free_text"]), None)
+            return (free["key"] if free else ""), self["club_other"].value() or ""
         for g in self.club_groups:
             for o in g["options"]:
                 if str(o.pk) == value:
                     return g["key"], o.full_label
         return "", ""
+
+    @property
+    def has_free_text(self):
+        return any(g["free_text"] for g in self.club_groups)
+
+    @property
+    def selected_free(self):
+        return (self["club_option"].value() or "").strip() == "other"
 
     @property
     def selected_category(self):
@@ -180,6 +190,7 @@ class JapanItemForm(StyledMixin, forms.ModelForm):
         elif self._other:
             self.instance.type, self.instance.club_type = self._other, ""
             self.instance.loft = self.instance.shaft_material = self.instance.club_number = ""
+            self.instance.length_in = ""
             self.instance.head_only = False
 
 
