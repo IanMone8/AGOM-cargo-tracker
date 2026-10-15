@@ -62,7 +62,7 @@
 
 <section id="items" class="mt-6 scroll-mt-20">
   <div class="mb-3 flex items-center justify-between">
-    <h2 class="text-lg font-bold">Japan list <span class="text-sm font-medium text-stone-400">{{ items|length }} item{{ items|length|pluralize }}</span></h2>
+    <h2 class="text-lg font-bold">Japan list {% include "tracker/partials/item_count.html" %}</h2>
     {% if can_edit_items %}
       <button class="btn btn-soft shrink-0 whitespace-nowrap" hx-get="{% url 'item_add' box.pk %}" hx-target="#item-form-slot">{% icon "plus" %} Add item</button>
     {% endif %}

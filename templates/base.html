@@ -124,6 +124,52 @@
       document.addEventListener('pointerleave', () => { if (active) { reset(active); active = null; } });
       window.addEventListener('blur', () => { if (active) { reset(active); active = null; } });
     })();
+    // Two-tap club option picker: category, then value (or free text for "Other").
+    document.addEventListener('click', e => {
+      const cat = e.target.closest('[data-club-cat]'), val = e.target.closest('[data-club-val]');
+      if (!cat && !val) return;
+      const picker = e.target.closest('[data-picker]');
+      const hidden = picker.querySelector('[data-club-value]'), picked = picker.querySelector('[data-club-picked]');
+      if (cat) {
+        const key = cat.dataset.clubCat;
+        picker.querySelectorAll('[data-club-cat]').forEach(b => b.setAttribute('aria-pressed', b === cat));
+        picker.querySelectorAll('[data-club-panel]').forEach(p => p.hidden = p.dataset.clubPanel !== key);
+        const panel = picker.querySelector(`[data-club-panel="${key}"]`);
+        if (key === 'other') {
+          hidden.value = 'other';
+          const other = panel.querySelector('[data-club-other]');
+          picked.textContent = other.value ? '✓ ' + other.value : '';
+          other.focus();
+        } else if (!panel.querySelector(`[data-club-val="${hidden.value}"]`)) {
+          hidden.value = ''; picked.textContent = '';   // switched category: pick a value next
+        }
+      } else {
+        hidden.value = val.dataset.clubVal;
+        val.closest('[data-club-panel]').querySelectorAll('[data-club-val]').forEach(b => b.setAttribute('aria-pressed', b === val));
+        picked.textContent = '✓ ' + val.dataset.clubLabel;
+      }
+    });
+    document.addEventListener('input', e => {
+      if (!e.target.matches('[data-club-other]')) return;
+      const picked = e.target.closest('[data-picker]').querySelector('[data-club-picked]');
+      picked.textContent = e.target.value ? '✓ ' + e.target.value : '';
+    });
+    // "Copy" on an Add box item card: duplicate it with the next formset index.
+    function copyItemCard(btn) {
+      const card = btn.closest('.item-card'), total = document.getElementById('id_items-TOTAL_FORMS');
+      const first = card.querySelector('[name^="items-"]');
+      if (!first || !total) return;
+      const from = first.name.match(/^items-(\d+)-/)[1], to = total.value;
+      const clone = card.cloneNode(true), src = card.querySelectorAll('input, select, textarea');
+      clone.querySelectorAll('input, select, textarea').forEach((el, i) => {
+        ['name', 'id'].forEach(a => el.hasAttribute(a) && el.setAttribute(a, el.getAttribute(a).replace(`items-${from}-`, `items-${to}-`)));
+        if (el.type === 'checkbox') el.checked = src[i].checked; else el.value = src[i].value;
+        if (el.matches('[data-delete-flag]')) el.value = '';
+      });
+      document.getElementById('item-cards').append(clone);   // at the end, so saved order = screen order
+      total.value = +to + 1;
+      clone.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+    }
     function closeModal() { document.getElementById('modal').innerHTML = ''; document.body.classList.remove('overflow-hidden'); }
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
     document.body.addEventListener('htmx:afterSwap', e => {

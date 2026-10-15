@@ -180,7 +180,9 @@ class AddBoxModalTests(BaseTest):
         r = self.client.get(reverse("box_create"), HTTP_HX_REQUEST="true")
         self.assertContains(r, 'role="dialog"')
         self.assertContains(r, "Items inside")
-        self.assertContains(r, 'name="items-0-shaft_material"')
+        self.assertContains(r, 'name="items-0-club_option"')
+        for gone in ("shaft_material", "brand", "model", "loft", "items-0-type"):
+            self.assertNotContains(r, f'name="items-0-{gone}"' if "items-0" not in gone else f'name="{gone}"')
         self.assertNotContains(r, "<html")  # fragment, not a full page
 
     def test_add_item_card(self):
@@ -191,30 +193,28 @@ class AddBoxModalTests(BaseTest):
         self.assertContains(r, "Delete")
 
     def test_create_box_with_items_skips_deleted_card(self):
+        from .models import ClubOption
+        graphite5 = ClubOption.objects.get(category="iron", label="Graphite 5")
         # Card 1 was deleted in the browser: it is posted half-filled with DELETE=on.
         data = self.post_data(**{
             "items-1-item_name": "half typed", "items-1-DELETE": "on",
-            "items-0-item_name": "TSR2 Driver", "items-0-type": "Club", "items-0-qty": "1",
-            "items-0-quantity_unit": "pcs", "items-0-brand": "Titleist", "items-0-model": "TSR2",
-            "items-0-club_type": "Driver", "items-0-club_number": "1W", "items-0-loft": "10",
-            "items-0-flex": "S", "items-0-shaft_material": "graphite", "items-0-specification": "45.5in",
-            "items-0-color": "Black", "items-0-condition": "used", "items-0-price_jpy": "25000",
-            "items-2-item_name": "Pro V1", "items-2-type": "Balls", "items-2-qty": "3",
-            "items-2-quantity_unit": "dozen", "items-2-condition": "new",
+            "items-0-item_name": "Mizuno JPX 923", "items-0-club_option": str(graphite5.pk),
+            "items-0-flex": "R", "items-0-qty": "1", "items-0-note": "with covers",
+            "items-2-club_option": "other", "items-2-club_other": "Putter", "items-2-qty": "3",
         })
         r = self.htmx(self.japan, reverse("box_create"), data)
         box = Box.objects.get(cargo=self.cargo, box_no=9)
         self.assertEqual(r.status_code, 204)
         self.assertEqual(r["HX-Redirect"], reverse("box_detail", args=[box.pk]))
         self.assertEqual(box.notes, "fragile")
-        driver, balls = box.items.order_by("id")
-        self.assertEqual((driver.brand, driver.club_number, driver.shaft_material, driver.price_jpy),
-                         ("Titleist", "1W", "graphite", 25000))
-        self.assertEqual((balls.qty, balls.quantity_unit, balls.price_jpy), (3, "dozen", None))
+        iron, putter = box.items.order_by("id")
+        self.assertEqual((iron.type, iron.shaft_material, iron.club_number, iron.flex, iron.note),
+                         ("Iron", "graphite", "5", "R", "with covers"))
+        self.assertEqual(iron.club_label, "Iron · Graphite 5")
+        self.assertEqual((putter.type, putter.item_name, putter.qty, putter.title), ("Putter", "", 3, "Putter"))
 
     def test_invalid_box_rerenders_modal(self):
-        data = self.post_data(cargo="", **{"items-0-item_name": "No type", "items-0-qty": "1",
-                                           "items-0-quantity_unit": "pcs", "items-0-condition": "new"})
+        data = self.post_data(cargo="", **{"items-0-item_name": "Bag", "items-0-qty": "1"})
         r = self.htmx(self.japan, reverse("box_create"), data)
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, 'role="dialog"')
@@ -297,10 +297,12 @@ class CSVNewFieldsTests(CSVImportTests):
         Cargo.objects.create(code="KL", name="KL Cargo")
         self.client.force_login(self.owner)
         template = self.client.get(reverse("csv_template")).content.decode()
-        self.assertTrue(template.startswith("box,item_name,type,qty,quantity_unit,brand,model,club_type"))
+        self.assertTrue(template.startswith("box,item_name,club_option,flex,qty,customer,note"))
         r = self.upload(template)
-        self.assertContains(r, "Imported 3 item(s) into 2 box(es)")
-        self.assertEqual(JapanItem.objects.get(item_name="Pro V1 balls").quantity_unit, "dozen")
+        self.assertContains(r, "Imported 4 item(s) into 2 box(es)")
+        head = JapanItem.objects.get(item_name="", box__box_no=3)
+        self.assertEqual((head.type, head.loft, head.head_only, head.qty, head.title), ("Driver", "9.5", True, 2, "Driver head 9.5°"))
+        self.assertEqual(JapanItem.objects.get(item_name="Cleveland RTX 6").club_label, "Wedge 52°")
 
 
 class JapanSenderLockTests(BaseTest):
@@ -977,3 +979,128 @@ class DashboardHeroTests(BaseTest):
                 self.assertIn('class="hero-hill"', html)
                 # banner comes before the four stat cards
                 self.assertLess(html.index('class="hero"'), html.index("data-stat="))
+
+
+class ClubOptionTests(BaseTest):
+    """Simplified item card: two-tap club option saved as structured data."""
+
+    def setUp(self):
+        super().setUp()
+        from .models import ClubOption
+        self.opt = {o.full_label: o for o in ClubOption.objects.all()}
+        self.client.force_login(self.japan)
+
+    def add(self, **fields):
+        return self.client.post(reverse("item_add", args=[self.box.pk]), {"qty": "1", **fields}, HTTP_HX_REQUEST="true")
+
+    def test_seeded_options_and_labels(self):
+        self.assertEqual(len(self.opt), 17)
+        for label in ("Driver 9°", "Driver 10.5°", "Driver head 8°", "Driver head 9.5°", "Iron · Graphite 5",
+                      "Iron · Steel", "Wedge 48°", "Wedge 60°"):
+            self.assertIn(label, self.opt)
+
+    def test_card_has_only_simple_fields_and_picker(self):
+        html = self.client.get(reverse("item_add", args=[self.box.pk]), HTTP_HX_REQUEST="true").content.decode()
+        for name in ("item_name", "club_option", "club_other", "flex", "qty", "note"):
+            self.assertIn(f'name="{name}"', html)
+        for gone in ("type", "loft", "brand", "model", "shaft_material", "price_jpy", "customer"):
+            self.assertNotIn(f'name="{gone}"', html)
+        for cat in ("Driver", "Driver head", "Iron", "Wedge", "Other"):
+            self.assertIn(f">{cat}</button>", html)
+        self.assertIn('data-club-label="Wedge 52°"', html)
+        self.assertIn(">52°</button>", html)
+
+    def test_structured_save(self):
+        cases = [("Iron · Graphite 5", dict(type="Iron", shaft_material="graphite", club_number="5", head_only=False)),
+                 ("Wedge 52°", dict(type="Wedge", loft="52", head_only=False)),
+                 ("Driver head 9.5°", dict(type="Driver", loft="9.5", head_only=True)),
+                 ("Driver 10.5°", dict(type="Driver", loft="10.5", head_only=False))]
+        for label, expected in cases:
+            with self.subTest(label=label):
+                self.add(club_option=str(self.opt[label].pk))
+                item = JapanItem.objects.latest("id")
+                for field, value in expected.items():
+                    self.assertEqual(getattr(item, field), value)
+                self.assertEqual(item.club_label, label)
+                self.assertEqual(item.title, label)       # no name typed: label is the title
+
+    def test_other_free_text_and_name_only(self):
+        self.add(club_option="other", club_other="  Golf   bag ")
+        item = JapanItem.objects.latest("id")
+        self.assertEqual((item.type, item.club_label, item.loft), ("Golf bag", "Golf bag", ""))
+        self.add(item_name="Titleist Pro V1")
+        self.assertEqual(JapanItem.objects.latest("id").title, "Titleist Pro V1")
+
+    def test_validation(self):
+        before = JapanItem.objects.count()
+        r = self.add()
+        self.assertContains(r, "Pick a club option or type an item name.")
+        r = self.add(club_option="other", club_other="")
+        self.assertContains(r, "Type the club or item.")
+        r = self.add(club_option="999999")
+        self.assertContains(r, "no longer exists")
+        self.assertEqual(JapanItem.objects.count(), before)
+
+    def test_label_shown_on_box_page(self):
+        self.add(item_name="Ping G430", club_option=str(self.opt["Driver head 9.5°"].pk), flex="SR")
+        html = self.client.get(reverse("box_detail", args=[self.box.pk])).content.decode()
+        self.assertIn("Ping G430", html)
+        self.assertIn("Driver head 9.5°", html)
+        self.add(club_option=str(self.opt["Wedge 52°"].pk))   # no name: the label is the title, shown once
+        item = JapanItem.objects.latest("id")
+        row = self.client.get(reverse("item_row", args=[item.pk])).content.decode()
+        self.assertEqual(row.count("Wedge 52°"), 1)
+
+    def test_admin_can_add_option_without_code(self):
+        from .models import ClubOption
+        ClubOption.objects.create(category="wedge", label="62°", type="Wedge", loft="62", sort_order=99)
+        ClubOption.objects.filter(category="driver", label="9").update(active=False)
+        html = self.client.get(reverse("item_add", args=[self.box.pk]), HTTP_HX_REQUEST="true").content.decode()
+        self.assertIn('data-club-label="Wedge 62°"', html)
+        self.assertNotIn('data-club-label="Driver 9°"', html)
+        self.client.force_login(self.owner)
+        self.owner.is_staff = True
+        self.owner.save()
+        self.assertEqual(self.client.get("/admin/tracker/cluboption/").status_code, 200)
+
+    def test_copy_saved_item(self):
+        self.item1.loft, self.item1.head_only, self.item1.customer = "9.5", True, "Ko Aung"
+        self.item1.save()
+        CustomerRequest.objects.create(customer="Ko Aung", item_name="TSR2", japan_item=self.item1, status="in_box")
+        r = self.client.post(reverse("item_copy", args=[self.item1.pk]), HTTP_HX_REQUEST="true")
+        self.assertEqual(r.status_code, 200)
+        copy = JapanItem.objects.latest("id")
+        self.assertNotEqual(copy.pk, self.item1.pk)
+        self.assertEqual((copy.box, copy.item_name, copy.loft, copy.head_only, copy.customer),
+                         (self.box, "TSR2", "9.5", True, "Ko Aung"))
+        self.assertFalse(copy.requests.exists())               # linked requests stay on the original
+        self.assertIn(f'id="item-{copy.pk}"', r.content.decode())
+        self.assertIn('id="summary" hx-swap-oob="true"', r.content.decode())
+
+    def test_copy_blocked_for_myanmar_and_locked_box(self):
+        self.client.force_login(self.myanmar)
+        self.assertEqual(self.client.post(reverse("item_copy", args=[self.item1.pk])).status_code, 403)
+        self.ship()
+        self.box.myanmar_received_date = self.box.created_at.date()
+        self.box.status = Box.Status.ARRIVED
+        self.box.save()
+        self.client.force_login(self.japan)
+        self.assertEqual(self.client.post(reverse("item_copy", args=[self.item1.pk])).status_code, 403)
+
+    def test_csv_club_option_and_old_columns(self):
+        self.client.force_login(self.owner)
+        f = SimpleUploadedFile("l.csv", (
+            "box,item_name,club_option,flex,qty\n"
+            "GN-3,,iron graphite 5,R,1\n"
+            "GN-3,Vokey,Wedge 56°,,2\n"
+            "GN-3,Head,driver head 10,,1\n").encode(), content_type="text/csv")
+        r = self.client.post(reverse("csv_import"), {"file": f})
+        self.assertContains(r, "Imported 3 item(s)")
+        labels = sorted(i.club_label for i in JapanItem.objects.filter(box=self.box).exclude(pk__in=[self.item1.pk, self.item2.pk]))
+        self.assertEqual(labels, ["Driver head 10°", "Iron · Graphite 5", "Wedge 56°"])
+        f = SimpleUploadedFile("l.csv", b"box,item_name,club_option\nGN-3,X,Wedge 99\n", content_type="text/csv")
+        self.assertContains(self.client.post(reverse("csv_import"), {"file": f}), "Unknown club_option")
+        f = SimpleUploadedFile("l.csv", b"box,type,item_name,loft,shaft_material\nGN-3,Club,Old style,10,steel\n",
+                               content_type="text/csv")
+        self.assertContains(self.client.post(reverse("csv_import"), {"file": f}), "Imported 1 item(s)")
+        self.assertEqual(JapanItem.objects.get(item_name="Old style").shaft_material, "steel")

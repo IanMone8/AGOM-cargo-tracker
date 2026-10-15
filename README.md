@@ -76,6 +76,13 @@ Viber / Orders filters, sortable Name / Orders / Last update, 25 rows then "Load
 cards on phones. Each customer has a detail page with all their requests and packed items. Customer names
 typed on requests, Japan items or CSV rows create the customer automatically.
 
+**Item card:** the Japan sender fills only Item name (optional), **Club option**, Flex, Qty and Note.
+Club option is two taps – Driver / Driver head / Iron / Wedge / Other, then a value (Other = free text) –
+and is saved as structured data (e.g. "Iron · Graphite 5" → type Iron, shaft graphite, club number 5;
+"Driver head 9.5" → type Driver, loft 9.5, head only). The owner can add or hide options in
+**Admin → Club options**. Each card has **Copy**, and saved items have **copy** on the box page.
+Brand, model, price, customer, etc. are kept for old data, CSV and admin.
+
 **Locking:** once the Myanmar check has started on a box (it has a received date, or any item is checked),
 the Japan sender can no longer edit that box or add or delete its items.
 Owner and Admin can still correct it, and the Myanmar checker can still edit the Myanmar side.
@@ -110,17 +117,20 @@ Run the tests with `python manage.py test`.
 ## CSV format for Japan lists
 
 ```
-box,item_name,type,qty,quantity_unit,brand,model,club_type,club_number,loft,flex,shaft_material,specification,color,condition,price_jpy,customer,note
-GN-3,Titleist TSR2 Driver,Club,1,pcs,Titleist,TSR2,Driver,1W,10,S,graphite,"Tour AD UB-6, 45.5in",Black,used,25000,Ko Aung,with cover
-GN-3,Mizuno JPX 923 Irons,Club,1,set,Mizuno,JPX 923,Iron set,5-P,,R,steel,N.S.PRO 950,Silver,new,98000,,
-KL-1,Pro V1 balls,Balls,2,dozen,Titleist,Pro V1,,,,,,,White,new,,,
+box,item_name,club_option,flex,qty,customer,note
+GN-3,Titleist TSR2,Driver 10.5°,S,1,Ko Aung,with cover
+GN-3,,Driver head 9.5,,2,,
+GN-3,Mizuno JPX 923,Iron · Graphite 5,R,1,,
+KL-1,Cleveland RTX 6,Wedge 52,,1,,
 ```
 
-* Required: `box`, `type`, `item_name`. All other columns are optional and may be left out of the file.
-* `type` is the category (Club, Bag, Balls…); `club_type` is the club / item type (Driver, Iron set, Putter…).
-* `qty` defaults to 1, `quantity_unit` to `pcs` (pcs, set, pair, dozen, box), `condition` (Japan condition) to `new` (new / used).
-* `shaft_material` is `steel`, `graphite` or empty. `price_jpy` is the optional amount.
-* Friendlier headers also work: `name`, `amount`, `unit`, `japan condition`, `club type` (case and spaces don't matter).
+* Required: `box`, plus `item_name` or `club_option` on each row. Other columns are optional.
+* `club_option` is one label from **Admin → Club options**, e.g. `Driver 10.5`, `Driver head 9.5`,
+  `Iron · Graphite 5`, `Iron Steel`, `Wedge 52°` (the `°` and `·` are optional, case doesn't matter).
+  It fills the structured columns (type, loft, shaft, club number, head only) for you.
+* Older files still work: `type`, `loft`, `brand`, `model`, `club_type`, `club_number`, `shaft_material`,
+  `specification`, `color`, `condition`, `price_jpy`, `quantity_unit`; friendlier headers like `name`,
+  `amount`, `unit` too. If a row has both, `club_option` wins.
 * `box` is the cargo code plus the number (`GN-3`). The cargo company must already exist; missing boxes are created.
 * `flex` is `L`, `A`, `R`, `SR`, `S`, `X` or empty. `price_jpy` may contain `¥` and commas.
 * UTF-8 (including Excel's "CSV UTF-8") and Shift-JIS files are accepted.

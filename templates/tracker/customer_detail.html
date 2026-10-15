@@ -65,8 +65,8 @@
     {% for item in items %}
       <a href="{% url 'box_detail' item.box_id %}" class="flex items-center gap-3 p-4 hover:bg-stone-50">
         <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-900 text-[0.65rem] font-extrabold text-white">{{ item.box.label }}</span>
-        <span class="min-w-0 flex-1"><b class="block truncate">{{ item.item_name }}</b>
-          <span class="block truncate text-xs text-stone-500">{{ item.details|default:item.type }} · ×{{ item.qty }} {{ item.get_quantity_unit_display }}</span></span>
+        <span class="min-w-0 flex-1"><b class="block truncate">{{ item.title }}</b>
+          <span class="block truncate text-xs text-stone-500">{{ item.club_label|default:item.details }} · ×{{ item.qty }} {{ item.get_quantity_unit_display }}</span></span>
         <span class="shrink-0 text-right text-xs">
           <span class="{{ item.box.status|badge }}">{{ item.box.get_status_display }}</span>
           {% if item.receive_check %}<span class="mt-1 block {{ item.receive_check.result|badge }}">{{ item.receive_check.get_result_display }}</span>{% endif %}

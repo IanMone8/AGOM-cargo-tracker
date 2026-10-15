@@ -11,27 +11,36 @@ from dataclasses import dataclass, field
 
 from django.db import transaction
 
-from .models import Box, Cargo, Customer, JapanItem
+from .models import Box, Cargo, ClubOption, Customer, JapanItem
 
-COLUMNS = [
-    "box", "item_name", "type", "qty", "quantity_unit", "brand", "model", "club_type",
-    "club_number", "loft", "flex", "shaft_material", "specification", "color",
-    "condition", "price_jpy", "customer", "note",
-]
-REQUIRED = ["box", "type", "item_name"]
+# Template columns (simple). Older files may also use: type, quantity_unit, brand, model,
+# club_type, club_number, loft, shaft_material, specification, color, condition, price_jpy.
+COLUMNS = ["box", "item_name", "club_option", "flex", "qty", "customer", "note"]
+REQUIRED = ["box"]
 # Friendlier header names that map onto the real columns.
 ALIASES = {"name": "item_name", "amount": "price_jpy", "unit": "quantity_unit",
            "japan_condition": "condition", "shaft": "shaft_material"}
 BOX_RE = re.compile(r"^\s*([A-Za-z]+)\s*-?\s*(\d+)\s*$")
 
 TEMPLATE_ROWS = [
-    ["GN-3", "Titleist TSR2 Driver", "Club", "1", "pcs", "Titleist", "TSR2", "Driver", "1W",
-     "10", "S", "graphite", "Tour AD UB-6, 45.5in", "Black", "used", "25000", "Ko Aung", "with cover"],
-    ["GN-3", "Mizuno JPX 923 Irons", "Club", "1", "set", "Mizuno", "JPX 923", "Iron set", "5-P",
-     "", "R", "steel", "N.S.PRO 950", "Silver", "new", "98000", "", ""],
-    ["KL-1", "Pro V1 balls", "Balls", "2", "dozen", "Titleist", "Pro V1", "", "",
-     "", "", "", "", "White", "new", "", "", ""],
+    ["GN-3", "Titleist TSR2", "Driver 10.5°", "S", "1", "Ko Aung", "with cover"],
+    ["GN-3", "", "Driver head 9.5", "", "2", "", ""],
+    ["GN-3", "Mizuno JPX 923", "Iron · Graphite 5", "R", "1", "", ""],
+    ["KL-1", "Cleveland RTX 6", "Wedge 52", "", "1", "", ""],
 ]
+
+
+def _norm_label(text):
+    """'Iron · Graphite 5', 'iron graphite 5', 'Wedge 52°' / 'wedge 52' all compare equal."""
+    return " ".join(text.lower().replace("°", " ").replace("·", " ").replace("-", " ").split())
+
+
+def club_option_lookup():
+    lookup = {}
+    for o in ClubOption.objects.filter(active=True):
+        lookup.setdefault(_norm_label(o.full_label), o)
+        lookup.setdefault(_norm_label(f"{o.get_category_display()} {o.label}"), o)
+    return lookup
 
 
 @dataclass
@@ -40,6 +49,16 @@ class ImportResult:
     created_boxes: list = field(default_factory=list)
     boxes: list = field(default_factory=list)
     errors: list = field(default_factory=list)  # (row number, message)
+
+
+class _Fields:
+    """Lets ClubOption.apply_to() write into a plain dict of item fields."""
+
+    def __init__(self, data):
+        object.__setattr__(self, "_data", data)
+
+    def __setattr__(self, name, value):
+        self._data[name] = value
 
 
 def template_csv():
@@ -93,6 +112,7 @@ def import_japan_csv(uploaded_file, replace=False):
     reader.fieldnames = headers
 
     cargos = {c.code: c for c in Cargo.objects.all()}
+    club_options = club_option_lookup()
     flex_ok = set(JapanItem.Flex.values)
     cond_ok = set(JapanItem.Condition.values)
     unit_ok = set(JapanItem.Unit.values)
@@ -111,9 +131,14 @@ def import_japan_csv(uploaded_file, replace=False):
         code, box_no = box
         if code not in cargos:
             errors.append((row_no, f"Unknown cargo code '{code}' – add it in admin first"))
-        for req in ("type", "item_name"):
-            if not row.get(req):
-                errors.append((row_no, f"{req} is required"))
+        option = None
+        if row.get("club_option"):
+            option = club_options.get(_norm_label(row["club_option"]))
+            if option is None:
+                errors.append((row_no, f"Unknown club_option '{row['club_option']}' – use a label like 'Wedge 52°' "
+                                       "(see Admin → Club options)"))
+        if not (row.get("item_name") or row.get("club_option") or row.get("type")):
+            errors.append((row_no, "item_name or club_option is required"))
         flex = row.get("flex", "").upper()
         if flex and flex not in flex_ok:
             errors.append((row_no, f"flex must be one of {', '.join(JapanItem.Flex.values)}, got '{flex}'"))
@@ -146,7 +171,10 @@ def import_japan_csv(uploaded_file, replace=False):
             price_jpy=price,
             customer=row.get("customer", "")[:100],
             note=row.get("note", "")[:255],
+            head_only=False,
         )))
+        if option:  # the single label wins over the old separate columns
+            option.apply_to(_Fields(parsed[-1][2]))
 
     if not parsed and not result.errors:
         result.errors.append((0, "The file has no data rows."))

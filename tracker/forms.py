@@ -3,7 +3,7 @@ from django.forms import inlineformset_factory
 from django.utils import timezone
 
 from . import roles
-from .models import Box, Cargo, Customer, CustomerRequest, ExtraItem, JapanItem
+from .models import Box, Cargo, ClubOption, Customer, CustomerRequest, ExtraItem, JapanItem
 
 INPUT = "field"  # styled in static/css/agom.css
 
@@ -101,30 +101,82 @@ class BoxCreateForm(StyledMixin, forms.ModelForm):
 
 
 class JapanItemForm(StyledMixin, forms.ModelForm):
+    """Japan sender's item card: name, two-tap club option, flex, qty, note.
+
+    Other columns (brand, model, shaft, price, customer…) stay in the database
+    for old data, CSV import and /admin/, but aren't on the card.
+    """
+
+    club_option = forms.CharField(required=False, widget=forms.HiddenInput)
+    club_other = forms.CharField(required=False, max_length=50, label="Other club / item",
+                                 widget=forms.TextInput(attrs={"placeholder": "e.g. Putter, Golf bag"}))
+
     class Meta:
         model = JapanItem
-        fields = [
-            "item_name", "type", "qty", "quantity_unit", "brand", "model", "club_type",
-            "club_number", "loft", "flex", "shaft_material", "specification", "color",
-            "condition", "price_jpy", "customer", "note",
-        ]
+        fields = ["item_name", "flex", "qty", "note"]
+        labels = {"item_name": "Item name"}
         widgets = {
-            "item_name": forms.TextInput(attrs={"list": "catalog-models", "placeholder": "e.g. Titleist TSR2 Driver"}),
-            "type": forms.TextInput(attrs={"list": "item-categories", "placeholder": "Club, Bag, Balls…"}),
-            "brand": forms.TextInput(attrs={"list": "brands"}),
-            "club_type": forms.TextInput(attrs={"list": "catalog-types"}),
-            "club_number": forms.TextInput(attrs={"placeholder": "1W, 7, 5-P"}),
-            "loft": forms.TextInput(attrs={"list": "catalog-lofts", "inputmode": "decimal"}),
+            "item_name": forms.TextInput(attrs={"list": "catalog-models", "placeholder": "Optional, e.g. Titleist TSR2"}),
             "qty": forms.NumberInput(attrs={"min": 1, "inputmode": "numeric"}),
-            "price_jpy": forms.NumberInput(attrs={"inputmode": "numeric", "placeholder": "Optional"}),
+            "note": forms.TextInput(attrs={"placeholder": "Optional"}),
         }
-
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for name in ("flex", "shaft_material"):
-            choices = list(self.fields[name].choices)
-            self.fields[name].choices = [("", "Select…")] + choices[1:]
+        self.fields["flex"].choices = [("", "—")] + list(self.fields["flex"].choices)[1:]
+        self._club, self._other = None, ""
+        options = list(ClubOption.objects.filter(active=True))
+        order = [c for c, _ in ClubOption.Category.choices]
+        self.club_groups = [
+            {"key": key, "name": name, "options": sorted((o for o in options if o.category == key),
+                                                         key=lambda o: (o.sort_order, o.pk))}
+            for key, name in ClubOption.Category.choices
+        ]
+        self.club_groups.sort(key=lambda g: order.index(g["key"]))
+
+    # what the picker shows as selected (also after a validation error)
+    def _picked(self):
+        value = (self["club_option"].value() or "").strip()
+        if value == "other":
+            return "other", self["club_other"].value() or ""
+        for g in self.club_groups:
+            for o in g["options"]:
+                if str(o.pk) == value:
+                    return g["key"], o.full_label
+        return "", ""
+
+    @property
+    def selected_category(self):
+        return self._picked()[0]
+
+    @property
+    def selected_label(self):
+        return self._picked()[1]
+
+    def clean(self):
+        data = super().clean()
+        value = (data.get("club_option") or "").strip()
+        if value == "other":
+            self._other = " ".join((data.get("club_other") or "").split())
+            if not self._other:
+                self.add_error("club_other", "Type the club or item.")
+        elif value:
+            try:
+                self._club = ClubOption.objects.get(pk=int(value))
+            except (ValueError, ClubOption.DoesNotExist):
+                self.add_error(None, "That club option no longer exists – pick another.")
+        if not (data.get("item_name") or value):
+            self.add_error(None, "Pick a club option or type an item name.")
+        return data
+
+    def _post_clean(self):
+        super()._post_clean()
+        if self._club:
+            self._club.apply_to(self.instance)
+        elif self._other:
+            self.instance.type, self.instance.club_type = self._other, ""
+            self.instance.loft = self.instance.shaft_material = self.instance.club_number = ""
+            self.instance.head_only = False
 
 
 ItemFormSet = inlineformset_factory(

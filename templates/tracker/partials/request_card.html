@@ -6,7 +6,7 @@
       <div class="text-sm">{{ r.type }} {{ r.item_name }}{% if r.flex %} · {{ r.flex }}{% endif %}{% if r.loft %} · {{ r.loft }}°{% endif %} <b>×{{ r.qty }}</b></div>
       {% if r.note %}<div class="text-xs italic text-stone-500">{{ r.note }}</div>{% endif %}
       {% if r.japan_item %}
-        <div class="mt-1 text-xs text-violet-700">📦 In <a class="font-semibold underline" href="{% url 'box_detail' r.box_id %}">{{ r.box.label }}</a>: {{ r.japan_item.item_name }} ×{{ r.japan_item.qty }}
+        <div class="mt-1 text-xs text-violet-700">📦 In <a class="font-semibold underline" href="{% url 'box_detail' r.box_id %}">{{ r.box.label }}</a>: {{ r.japan_item.title }} ×{{ r.japan_item.qty }}
           <button class="ml-1 text-stone-500 underline" hx-post="{% url 'request_detach' r.pk %}" hx-target="#request-{{ r.pk }}" hx-swap="outerHTML">detach</button></div>
       {% endif %}
     </div>

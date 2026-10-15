@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Box, Cargo, Catalog, Customer, CustomerRequest, ExtraItem, JapanItem, ReceiveCheck
+from .models import Box, Cargo, Catalog, ClubOption, Customer, CustomerRequest, ExtraItem, JapanItem, ReceiveCheck
 
 
 @admin.register(Cargo)
@@ -47,7 +47,7 @@ class ReceiveCheckInline(admin.StackedInline):
 
 @admin.register(JapanItem)
 class JapanItemAdmin(admin.ModelAdmin):
-    list_display = ["box", "type", "item_name", "flex", "loft", "qty", "condition", "price_jpy", "customer"]
+    list_display = ["box", "__str__", "type", "loft", "head_only", "flex", "qty", "customer"]
     list_filter = ["box__cargo", "condition", "flex", "type"]
     search_fields = ["item_name", "customer", "note"]
     list_select_related = ["box__cargo"]
@@ -93,3 +93,25 @@ class CustomerAdmin(admin.ModelAdmin):
     list_display = ["name", "phone", "viber_member", "favourite", "address"]
     list_filter = ["viber_member", "favourite"]
     search_fields = ["name", "phone", "address"]
+
+
+@admin.register(ClubOption)
+class ClubOptionAdmin(admin.ModelAdmin):
+    """Buttons for the "Club option" picker on the item card."""
+
+    list_display = ["category", "label", "full_label", "sort_order", "active", "type", "loft", "shaft_material",
+                    "club_number", "head_only"]
+    list_display_links = ["label"]
+    list_editable = ["sort_order", "active"]
+    list_filter = ["category", "active"]
+    ordering = ["category", "sort_order"]
+    fieldsets = [
+        ("Button", {"fields": ["category", "label", "sort_order", "active"]}),
+        ("Saved on the item", {"fields": ["type", "loft", "shaft_material", "club_number", "head_only"],
+                               "description": 'e.g. Wedge 52°: type "Wedge", loft "52". '
+                                              'Iron Graphite 5: type "Iron", shaft graphite, club number "5".'}),
+    ]
+
+    @admin.display(description="Shown as")
+    def full_label(self, obj):
+        return obj.full_label

@@ -347,6 +347,22 @@ def item_add(request, pk):
 @login_required
 @roles.require(roles.can_edit_japan)
 @require_POST
+def item_copy(request, pk):
+    """Duplicate a Japan list item (without its check or linked requests)."""
+    item = get_object_or_404(visible_items(request.user).select_related("box"), pk=pk)
+    box = item.box
+    _require_box_items(request.user, box)
+    item.pk = None
+    item._state.adding = True
+    item.save()
+    box.refresh_status()
+    new = JapanItem.objects.select_related("box").get(pk=item.pk)
+    return _box_fragments(request, box, "tracker/partials/item_copied.html", {"item": new})
+
+
+@login_required
+@roles.require(roles.can_edit_japan)
+@require_POST
 def item_delete(request, pk):
     item = get_object_or_404(visible_items(request.user).select_related("box"), pk=pk)
     box = item.box

@@ -17,7 +17,7 @@
       <h3 class="mb-1 text-sm font-bold text-red-700">Mismatch summary</h3>
       <ul class="space-y-1 text-sm">
         {% for c in summary.problems %}
-          <li>• <b>{{ c.japan_item.item_name }}</b> {{ c.japan_item.spec }} — expected {{ c.japan_item.qty }}, got {{ c.received_qty }} <span class="text-stone-500">({{ c.get_result_display }}{% if c.note %}: {{ c.note }}{% endif %})</span></li>
+          <li>• <b>{{ c.japan_item.title }}</b>{% if c.japan_item.item_name %} {{ c.japan_item.club_label }}{% endif %} — expected {{ c.japan_item.qty }}, got {{ c.received_qty }} <span class="text-stone-500">({{ c.get_result_display }}{% if c.note %}: {{ c.note }}{% endif %})</span></li>
         {% endfor %}
         {% for e in box.extra_items.all %}
           <li>• <b>{{ e.description }}</b> ×{{ e.qty }} <span class="text-stone-500">(extra, not on Japan list)</span></li>

@@ -19,6 +19,7 @@ urlpatterns = [
     path("items/<int:pk>/check/clear/", views.item_check_clear, name="item_check_clear"),
     path("items/<int:pk>/check/wrong-qty/", views.item_wrong_qty_form, name="item_wrong_qty"),
     path("items/<int:pk>/delete/", views.item_delete, name="item_delete"),
+    path("items/<int:pk>/copy/", views.item_copy, name="item_copy"),
     path("extras/<int:pk>/delete/", views.extra_delete, name="extra_delete"),
     path("cargo-history/", views.cargo_history, name="cargo_history"),
     path("customers/", views.customer_list, name="customer_list"),

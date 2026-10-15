@@ -1,37 +1,54 @@
-{% load tracker_tags %}{# One item card. Context: item_form, optional removable #}
+{% load tracker_tags %}{# One item card. Context: item_form, optional removable (= card in the Add box formset) #}
 <div class="item-card card p-4" {% if item_form.DELETE.value %}style="display:none"{% endif %}>
-  <div class="mb-3 flex items-center justify-between">
+  <div class="mb-3 flex items-center justify-between gap-2">
     <div class="flex items-center gap-2">
       <span class="grid h-7 w-7 place-items-center rounded-full bg-emerald-900 text-xs font-bold text-white"><span class="item-num"></span></span>
       <span class="text-sm font-bold">Item</span>
     </div>
     {% if removable %}
-      <button type="button" class="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50"
-              onclick="deleteItemCard(this)" aria-label="Delete item">{% icon "trash" "w-4 h-4" %} Delete</button>
+      <div class="flex items-center gap-1">
+        <button type="button" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-50"
+                onclick="copyItemCard(this)" aria-label="Copy item">{% icon "copy" "w-4 h-4" %} Copy</button>
+        <button type="button" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50"
+                onclick="deleteItemCard(this)" aria-label="Delete item">{% icon "trash" "w-4 h-4" %} Delete</button>
+      </div>
     {% endif %}
   </div>
   {% for e in item_form.non_field_errors %}<p class="mb-2 text-xs font-medium text-red-600">{{ e }}</p>{% endfor %}
-  <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+  <div class="grid grid-cols-2 gap-3">
     <div class="col-span-2">{% include "tracker/_field.html" with field=item_form.item_name %}</div>
-    <div class="col-span-2 sm:col-span-1">{% include "tracker/_field.html" with field=item_form.type %}</div>
-    <div class="col-span-2 grid grid-cols-2 gap-2 sm:col-span-1">
-      {% include "tracker/_field.html" with field=item_form.qty %}
-      {% include "tracker/_field.html" with field=item_form.quantity_unit %}
+
+    <div class="col-span-2 club-picker" data-picker>
+      <span class="block text-[0.8rem] font-semibold text-stone-600">Club option</span>
+      <input type="hidden" name="{{ item_form.club_option.html_name }}" value="{{ item_form.club_option.value|default:'' }}" data-club-value>
+      <div class="club-row mt-1" role="group" aria-label="Club category">
+        {% for g in item_form.club_groups %}
+          <button type="button" class="club-btn" data-club-cat="{{ g.key }}" aria-pressed="{% if g.key == item_form.selected_category %}true{% else %}false{% endif %}">{{ g.name }}</button>
+        {% endfor %}
+      </div>
+      {% for g in item_form.club_groups %}
+        <div class="club-panel" data-club-panel="{{ g.key }}" {% if g.key != item_form.selected_category %}hidden{% endif %}>
+          {% if g.key == "other" %}
+            <input type="text" name="{{ item_form.club_other.html_name }}" value="{{ item_form.club_other.value|default:'' }}" maxlength="50"
+                   class="field" placeholder="e.g. Putter, Golf bag" aria-label="Other club or item" data-club-other>
+          {% else %}
+            <div class="club-row" role="group" aria-label="{{ g.name }} options">
+              {% for o in g.options %}
+                <button type="button" class="club-btn club-val" data-club-val="{{ o.pk }}" data-club-label="{{ o.full_label }}"
+                        aria-pressed="{% if item_form.club_option.value|stringformat:'s' == o.pk|stringformat:'s' %}true{% else %}false{% endif %}">{{ o.label }}</button>
+              {% empty %}<span class="text-xs text-stone-500">No options yet – add them in Admin → Club options.</span>{% endfor %}
+            </div>
+          {% endif %}
+        </div>
+      {% endfor %}
+      <p class="mt-1.5 text-xs font-semibold text-emerald-800" data-club-picked>{% if item_form.selected_label %}✓ {{ item_form.selected_label }}{% endif %}</p>
+      {% for e in item_form.club_other.errors %}<p class="text-xs font-medium text-red-600">{{ e }}</p>{% endfor %}
     </div>
-    <div>{% include "tracker/_field.html" with field=item_form.brand %}</div>
-    <div>{% include "tracker/_field.html" with field=item_form.model %}</div>
-    <div>{% include "tracker/_field.html" with field=item_form.club_type %}</div>
-    <div>{% include "tracker/_field.html" with field=item_form.club_number %}</div>
-    <div>{% include "tracker/_field.html" with field=item_form.loft %}</div>
+
     <div>{% include "tracker/_field.html" with field=item_form.flex %}</div>
-    <div>{% include "tracker/_field.html" with field=item_form.shaft_material %}</div>
-    <div>{% include "tracker/_field.html" with field=item_form.color %}</div>
-    <div class="col-span-2 sm:col-span-4">{% include "tracker/_field.html" with field=item_form.specification %}</div>
-    <div>{% include "tracker/_field.html" with field=item_form.condition %}</div>
-    <div>{% include "tracker/_field.html" with field=item_form.price_jpy %}</div>
-    <div>{% include "tracker/_field.html" with field=item_form.customer %}</div>
-    <div>{% include "tracker/_field.html" with field=item_form.note %}</div>
+    <div>{% include "tracker/_field.html" with field=item_form.qty %}</div>
+    <div class="col-span-2">{% include "tracker/_field.html" with field=item_form.note %}</div>
   </div>
-  {% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
+  {% for hidden in item_form.hidden_fields %}{% if hidden.name != "club_option" %}{{ hidden }}{% endif %}{% endfor %}
   {% if item_form.DELETE %}<input type="hidden" name="{{ item_form.DELETE.html_name }}" value="{% if item_form.DELETE.value %}on{% endif %}" data-delete-flag>{% endif %}
 </div>

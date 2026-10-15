@@ -29,13 +29,13 @@
 
 <div class="card mt-6 p-5 text-sm">
   <h2 class="font-semibold">File format</h2>
-  <p class="mt-1 text-stone-600">UTF-8 or Shift-JIS CSV with a header row. One file can hold several boxes. Required columns: <code>box</code>, <code>type</code>, <code>item_name</code>.</p>
-  <div class="mt-2 overflow-x-auto"><code class="whitespace-nowrap text-xs">box,item_name,type,qty,quantity_unit,brand,model,club_type,club_number,loft,flex,shaft_material,specification,color,condition,price_jpy,customer,note</code></div>
+  <p class="mt-1 text-stone-600">UTF-8 or Shift-JIS CSV with a header row. One file can hold several boxes. Required: <code>box</code>, plus <code>item_name</code> or <code>club_option</code> on each row.</p>
+  <div class="mt-2 overflow-x-auto"><code class="whitespace-nowrap text-xs">box,item_name,club_option,flex,qty,customer,note</code></div>
   <ul class="mt-2 list-disc space-y-0.5 pl-5 text-stone-600">
     <li><b>box</b>: cargo code + number, e.g. <code>GN-3</code>. The cargo must exist; new boxes are created.</li>
-    <li><b>flex</b>: L, A, R, SR, S, X or empty · <b>shaft_material</b>: steel / graphite or empty</li>
-    <li><b>condition</b> (Japan condition): new / used (default new) · <b>qty</b>: default 1 · <b>quantity_unit</b>: pcs, set, pair, dozen, box (default pcs)</li>
-    <li><b>price_jpy</b> is the optional amount. Headers <code>name</code>, <code>amount</code> and <code>unit</code> also work.</li>
+    <li><b>club_option</b>: one label, e.g. <code>Driver 10.5</code>, <code>Driver head 9.5</code>, <code>Iron · Graphite 5</code>, <code>Iron Steel</code>, <code>Wedge 52°</code> (the ° and · are optional). Labels come from Admin → Club options.</li>
+    <li><b>flex</b>: L, A, R, SR, S, X or empty · <b>qty</b>: default 1</li>
+    <li>Older files still work: <code>type</code>, <code>loft</code>, <code>brand</code>, <code>model</code>, <code>shaft_material</code>, <code>club_number</code>, <code>condition</code>, <code>price_jpy</code>, <code>quantity_unit</code>, <code>color</code>, <code>specification</code>.</li>
   </ul>
   <a href="{% url 'csv_template' %}" class="btn btn-soft mt-3">⬇ Download template</a>
 </div>
