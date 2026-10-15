@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.validators import RegexValidator
 from django.db import models
 from django.db.models import Q
 
@@ -334,7 +335,11 @@ class Customer(models.Model):
 
     name = models.CharField(max_length=100, unique=True)
     address = models.TextField(blank=True)
-    phone = models.CharField(max_length=40, blank=True)
+    phone = models.CharField(
+        max_length=20, blank=True,
+        validators=[RegexValidator(r"^\d{6,15}$", "Phone number: digits only (6–15), e.g. 09771234567.")],
+        help_text="Digits only, e.g. 09771234567",
+    )
     viber_member = models.BooleanField("Viber channel member", default=False)
     favourite = models.BooleanField(default=False, help_text="Starred customers sort to the top")
     note = models.TextField(blank=True)

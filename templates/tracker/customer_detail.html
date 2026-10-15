@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% load tracker_tags %}
 {% block title %}{{ customer.name }} · AGOM Cargo Tracker{% endblock %}
+{% block datalists %}{% include "tracker/_datalists.html" %}{% endblock %}
 {% block content %}
 <a href="{% url 'customer_list' %}" class="text-sm font-semibold text-emerald-700">← Customers</a>
 
@@ -30,8 +31,28 @@
   <div class="card p-3"><div class="text-2xl font-extrabold text-emerald-700">{{ items|length }}</div><div class="text-xs font-semibold text-stone-500">Items in boxes</div></div>
 </div>
 
-<section class="mt-6">
-  <h2 class="mb-3 text-lg font-bold">Orders (customer requests)</h2>
+<section id="orders" class="mt-6 scroll-mt-20">
+  <div class="mb-3 flex items-center justify-between gap-2">
+    <h2 class="text-lg font-bold">Orders (customer requests)</h2>
+    <button type="button" class="btn btn-primary shrink-0" onclick="document.getElementById('new-order').classList.toggle('hidden'); document.getElementById('id_item_name').focus()">{% icon "plus" %} New order</button>
+  </div>
+  <form id="new-order" method="post" action="{% url 'customer_new_order' customer.pk %}" class="{% if not show_order_form %}hidden{% endif %} card mb-3 space-y-3 p-4">
+    {% csrf_token %}
+    <p class="text-sm font-semibold text-stone-600">New order for <b class="text-stone-900">{{ customer.name }}</b></p>
+    {% for e in order_form.non_field_errors %}<p class="text-sm text-red-600">{{ e }}</p>{% endfor %}
+    <div class="grid grid-cols-2 gap-3 sm:grid-cols-6">
+      <div class="col-span-2 sm:col-span-3">{% include "tracker/_field.html" with field=order_form.item_name %}</div>
+      <div class="col-span-2 sm:col-span-3">{% include "tracker/_field.html" with field=order_form.type %}</div>
+      <div>{% include "tracker/_field.html" with field=order_form.flex %}</div>
+      <div>{% include "tracker/_field.html" with field=order_form.loft %}</div>
+      <div>{% include "tracker/_field.html" with field=order_form.qty %}</div>
+      <div class="col-span-2 sm:col-span-3">{% include "tracker/_field.html" with field=order_form.note %}</div>
+    </div>
+    <div class="flex gap-2">
+      <button class="btn btn-primary flex-1 py-3 sm:flex-none sm:px-8">Save order</button>
+      <button type="button" class="btn btn-ghost" onclick="document.getElementById('new-order').classList.add('hidden')">Cancel</button>
+    </div>
+  </form>
   <div class="space-y-3">
     {% for r in requests %}{% include "tracker/partials/request_card.html" %}{% empty %}
       <p class="card p-6 text-center text-sm text-stone-500">No requests from {{ customer.name }} yet.</p>{% endfor %}

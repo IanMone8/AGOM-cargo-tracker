@@ -19,6 +19,7 @@ from .forms import (
     ItemFormSet,
     CSVImportForm,
     CustomerForm,
+    CustomerOrderForm,
     CustomerRequestForm,
     ExtraItemForm,
     JapanItemForm,
@@ -641,7 +642,7 @@ def customer_favourite(request, pk):
 
 @login_required
 @roles.require(roles.can_use_customers)
-def customer_detail(request, pk):
+def customer_detail(request, pk, order_form=None):
     customer = get_object_or_404(Customer, pk=pk)
     reqs = customer.requests().select_related("box__cargo", "japan_item")
     items = (visible_items(request.user).filter(customer__iexact=customer.name)
@@ -653,7 +654,27 @@ def customer_detail(request, pk):
         "open_count": reqs.exclude(status=CustomerRequest.Status.FULFILLED).count(),
         "fulfilled_count": reqs.filter(status=CustomerRequest.Status.FULFILLED).count(),
         "status_choices": CustomerRequest.Status.choices,
+        "order_form": order_form or CustomerOrderForm(),
+        "show_order_form": order_form is not None or request.GET.get("new_order") == "1",
+        **catalog_context(),
     })
+
+
+@login_required
+@roles.require(roles.can_use_customers)
+@require_POST
+def customer_new_order(request, pk):
+    """"+ New order" on the customer page: a customer request already linked to them."""
+    customer = get_object_or_404(Customer, pk=pk)
+    form = CustomerOrderForm(request.POST)
+    if form.is_valid():
+        order = form.save(commit=False)
+        order.customer = customer.name
+        order.status = CustomerRequest.Status.OPEN
+        order.save()
+        messages.success(request, f"New order for {customer.name}: {order.item_name} ×{order.qty}.")
+        return redirect(reverse("customer_detail", args=[customer.pk]) + "#orders")
+    return customer_detail(request, pk, order_form=form)
 
 
 @login_required

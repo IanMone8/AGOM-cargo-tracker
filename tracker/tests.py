@@ -661,7 +661,7 @@ class CustomerPageTests(BaseTest):
         self.Customer = Customer
         self.ship()
         self.ko = Customer.objects.create(name="Ko Aung", address="No. 12, Bahan, Yangon",
-                                          phone="09 7712 3456", viber_member=True)
+                                          phone="0977123456", viber_member=True)
 
     def test_japan_sender_has_no_customer_pages(self):
         self.client.force_login(self.japan)
@@ -673,7 +673,7 @@ class CustomerPageTests(BaseTest):
         self.assertEqual(self.client.post(reverse("customer_list"), {"name": "X"}).status_code, 403)
 
     def test_search_and_viber_filter(self):
-        self.Customer.objects.create(name="Ma Hnin", phone="09 111", viber_member=False)
+        self.Customer.objects.create(name="Ma Hnin", phone="09111222", viber_member=False)
         self.client.force_login(self.owner)
         r = self.client.get(reverse("customer_list"), {"q": "bahan"}, HTTP_HX_REQUEST="true",
                             HTTP_HX_TARGET="customer-results")
@@ -704,14 +704,14 @@ class CustomerPageTests(BaseTest):
 
     def test_create_edit_and_rename_keeps_orders(self):
         self.client.force_login(self.owner)
-        r = self.client.post(reverse("customer_list"), {"name": "  Ma   Hnin ", "phone": "09 222", "viber_member": "on"})
+        r = self.client.post(reverse("customer_list"), {"name": "  Ma   Hnin ", "phone": "09222333", "viber_member": "on"})
         ma = self.Customer.objects.get(name="Ma Hnin")
         self.assertRedirects(r, reverse("customer_detail", args=[ma.pk]))
         self.assertTrue(ma.viber_member)
         r = self.client.post(reverse("customer_list"), {"name": "ma hnin"})
         self.assertContains(r, "already exists")
         CustomerRequest.objects.create(customer="Ma Hnin", item_name="G430")
-        self.client.post(reverse("customer_edit", args=[ma.pk]), {"name": "Daw Hnin", "phone": "09 222"})
+        self.client.post(reverse("customer_edit", args=[ma.pk]), {"name": "Daw Hnin", "phone": "09222333"})
         ma.refresh_from_db()
         self.assertEqual(ma.name, "Daw Hnin")
         self.assertEqual(CustomerRequest.objects.get(item_name="G430").customer, "Daw Hnin")
@@ -773,8 +773,8 @@ class CustomerTableTests(BaseTest):
         self.Customer = Customer
         self.ship()
         self.ko = Customer.objects.create(name="Ko Aung", address="No. 12, Inya Road, Bahan Township, Yangon",
-                                          phone="09 7712 3456", viber_member=True)
-        self.ma = Customer.objects.create(name="Ma Hnin", phone="09 222")
+                                          phone="0977123456", viber_member=True)
+        self.ma = Customer.objects.create(name="Ma Hnin", phone="09222333")
         self.tun = Customer.objects.create(name="U Tun")
         self.zaw = Customer.objects.create(name="Ko Zaw")
         CustomerRequest.objects.create(customer="Ko Aung", item_name="Qi10")                      # open -> Waiting
@@ -802,7 +802,7 @@ class CustomerTableTests(BaseTest):
         self.assertIn('crm-tag-delivered"><i></i>All delivered', html)
         self.assertIn('crm-tag-none"><i></i>No orders', html)
         self.assertIn("just now", html)                                     # last update
-        for label in (">Open<", ">Edit<", ">Call 09 7712 3456<"):
+        for label in (">Open<", ">Edit<", ">Call 0977123456<"):
             self.assertIn(label, html)
 
     def test_orders_count_and_sorting(self):
@@ -853,3 +853,62 @@ class CustomerTableTests(BaseTest):
         self.assertEqual(page2.count('class="crm-link"'), 9)
         self.assertNotIn("Load more", page2)
         self.assertIn('<span id="crm-shown" hx-swap-oob="true">34</span>', page2)
+
+
+class CustomerPhoneAndOrderTests(BaseTest):
+    def setUp(self):
+        super().setUp()
+        from .models import Customer
+        self.Customer = Customer
+        self.ko = Customer.objects.create(name="Ko Aung", phone="0977123456")
+        self.client.force_login(self.myanmar)
+
+    def test_phone_digits_only(self):
+        r = self.client.post(reverse("customer_list"), {"name": "Ma Su", "phone": "09-77 abc"})
+        self.assertContains(r, "Use digits only")
+        r = self.client.post(reverse("customer_list"), {"name": "Ma Su", "phone": "12345"})
+        self.assertContains(r, "digits only (6–15)")
+        self.assertFalse(self.Customer.objects.filter(name="Ma Su").exists())
+        self.client.post(reverse("customer_list"), {"name": "Ma Su", "phone": " 09 4455 1122 "})  # pasted spaces
+        self.assertEqual(self.Customer.objects.get(name="Ma Su").phone, "0944551122")
+        r = self.client.post(reverse("customer_edit", args=[self.ko.pk]), {"name": "Ko Aung", "phone": "+95 9 7712"})
+        self.assertContains(r, "Use digits only")
+        html = self.client.get(reverse("customer_list")).content.decode()
+        self.assertIn('inputmode="numeric"', html)
+        self.assertIn('pattern="[0-9]{6,15}"', html)
+
+    def test_model_rejects_non_digits_for_admin_too(self):
+        from django.core.exceptions import ValidationError
+        self.ko.phone = "09 7712"
+        with self.assertRaises(ValidationError):
+            self.ko.full_clean()
+
+    def test_new_order_from_customer_page(self):
+        detail = reverse("customer_detail", args=[self.ko.pk])
+        r = self.client.get(detail)
+        self.assertContains(r, "New order")
+        self.assertContains(r, reverse("customer_new_order", args=[self.ko.pk]))
+        r = self.client.post(reverse("customer_new_order", args=[self.ko.pk]),
+                             {"item_name": "Ping G430 Max", "type": "Driver", "flex": "SR", "loft": "10.5", "qty": "2"})
+        self.assertRedirects(r, detail + "#orders")
+        order = CustomerRequest.objects.get(item_name="Ping G430 Max")
+        self.assertEqual((order.customer, order.status, order.qty, order.flex), ("Ko Aung", "open", 2, "SR"))
+        r = self.client.get(detail)
+        self.assertContains(r, "Ping G430 Max")
+        row = self.client.get(reverse("customer_list")).content.decode()
+        self.assertIn("crm-tag-waiting", row)
+
+    def test_new_order_validation_keeps_form_open(self):
+        r = self.client.post(reverse("customer_new_order", args=[self.ko.pk]), {"item_name": "", "qty": "1"})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "This field is required")
+        self.assertNotContains(r, 'id="new-order" method="post" action="/customers/%d/orders/new/" class="hidden' % self.ko.pk)
+        self.assertFalse(CustomerRequest.objects.exists())
+
+    def test_menu_has_new_order_and_japan_blocked(self):
+        html = self.client.get(reverse("customer_list")).content.decode()
+        self.assertIn(reverse("customer_detail", args=[self.ko.pk]) + "?new_order=1#orders", html)
+        self.client.force_login(self.japan)
+        r = self.client.post(reverse("customer_new_order", args=[self.ko.pk]), {"item_name": "X", "qty": "1"})
+        self.assertEqual(r.status_code, 403)
+        self.assertFalse(CustomerRequest.objects.exists())

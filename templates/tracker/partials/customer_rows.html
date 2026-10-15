@@ -30,6 +30,7 @@
         <summary aria-label="Actions for {{ c.name }}">{% icon "dots" "w-5 h-5" %}</summary>
         <div class="crm-menu-panel" role="menu">
           <a role="menuitem" href="{% url 'customer_detail' c.pk %}">Open</a>
+          <a role="menuitem" href="{% url 'customer_detail' c.pk %}?new_order=1#orders">New order</a>
           <a role="menuitem" href="{% url 'customer_edit' c.pk %}">Edit</a>
           {% if c.phone %}<a role="menuitem" href="tel:{{ c.phone|cut:' ' }}">Call {{ c.phone }}</a>{% else %}<span class="opacity-40">Call (no phone)</span>{% endif %}
         </div>

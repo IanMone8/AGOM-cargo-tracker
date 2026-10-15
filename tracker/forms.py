@@ -170,10 +170,21 @@ class CustomerForm(StyledMixin, forms.ModelForm):
         model = Customer
         fields = ["name", "phone", "viber_member", "address", "note"]
         widgets = {
-            "phone": forms.TextInput(attrs={"inputmode": "tel", "autocomplete": "tel", "placeholder": "09…"}),
+            # digits only: number keypad on phones, anything else is removed while typing
+            "phone": forms.TextInput(attrs={
+                "inputmode": "numeric", "autocomplete": "tel", "placeholder": "09771234567",
+                "pattern": "[0-9]{6,15}", "maxlength": "15", "title": "Digits only, e.g. 09771234567",
+                "oninput": "this.value = this.value.replace(/\\D/g, '')",
+            }),
             "address": forms.Textarea(attrs={"rows": 2}),
             "note": forms.Textarea(attrs={"rows": 2}),
         }
+
+    def clean_phone(self):
+        phone = "".join(self.cleaned_data["phone"].split())  # tolerate pasted spaces
+        if phone and not phone.isdigit():
+            raise forms.ValidationError("Use digits only, e.g. 09771234567.")
+        return phone
 
     def clean_name(self):
         name = " ".join(self.cleaned_data["name"].split())
@@ -181,3 +192,19 @@ class CustomerForm(StyledMixin, forms.ModelForm):
         if clash.exists():
             raise forms.ValidationError("A customer with this name already exists.")
         return name
+
+
+class CustomerOrderForm(StyledMixin, forms.ModelForm):
+    """New order (customer request) started from a customer's page."""
+
+    class Meta:
+        model = CustomerRequest
+        fields = ["item_name", "type", "flex", "loft", "qty", "note"]
+        labels = {"item_name": "Item"}
+        widgets = {
+            "item_name": forms.TextInput(attrs={"list": "catalog-models", "placeholder": "e.g. Ping G430 Max Driver"}),
+            "type": forms.TextInput(attrs={"list": "catalog-types", "placeholder": "Driver, Iron set…"}),
+            "loft": forms.TextInput(attrs={"list": "catalog-lofts"}),
+            "qty": forms.NumberInput(attrs={"min": 1, "inputmode": "numeric"}),
+            "note": forms.TextInput(attrs={"placeholder": "Optional"}),
+        }
