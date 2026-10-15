@@ -912,3 +912,52 @@ class CustomerPhoneAndOrderTests(BaseTest):
         r = self.client.post(reverse("customer_new_order", args=[self.ko.pk]), {"item_name": "X", "qty": "1"})
         self.assertEqual(r.status_code, 403)
         self.assertFalse(CustomerRequest.objects.exists())
+
+
+class AttachItemSelectTests(BaseTest):
+    """Regression: items for "pick a box and item" must arrive inside a real <select>."""
+
+    def setUp(self):
+        super().setUp()
+        self.ship()
+        self.req = CustomerRequest.objects.create(customer="Ma Hnin", item_name="Wedge")
+        self.client.force_login(self.myanmar)
+
+    def test_item_response_is_a_select_with_all_options_inside(self):
+        import re
+        r = self.client.get(reverse("request_attach_items"), {"box": self.box.pk, "req": self.req.pk},
+                            HTTP_HX_REQUEST="true")
+        html = r.content.decode()
+        m = re.fullmatch(r'\s*(?:\{#.*?#\})?\s*<select id="attach-items-%d" name="japan_item"[^>]*>(.*)</select>\s*' % self.req.pk,
+                         html, re.S)
+        self.assertIsNotNone(m, "response must be exactly one <select> element")
+        inner = m.group(1)
+        self.assertEqual(inner.count("<option"), 3)          # placeholder + 2 items
+        self.assertIn(f'<option value="{self.item1.pk}">', inner)
+        self.assertNotIn("</select>", inner)
+        self.assertNotIn("disabled", html.split(">")[0])     # enabled once a box is picked
+
+    def test_box_select_replaces_the_item_select(self):
+        html = self.client.get(reverse("request_attach", args=[self.req.pk]), HTTP_HX_REQUEST="true").content.decode()
+        box_select = html[html.index('<select name="box"'):].split(">")[0]
+        self.assertIn(f'hx-target="#attach-items-{self.req.pk}"', box_select)
+        self.assertIn('hx-swap="outerHTML"', box_select)      # explicit, not inherited from the form
+        self.assertIn(f'id="attach-items-{self.req.pk}"', html)
+        self.assertIn("Choose a box first", html)
+
+    def test_empty_box_and_unknown_box(self):
+        from .models import Box as BoxModel
+        empty = BoxModel.objects.create(cargo=self.cargo, box_no=9, status="shipped")
+        html = self.client.get(reverse("request_attach_items"), {"box": empty.pk, "req": self.req.pk}).content.decode()
+        self.assertIn("No items in this box", html)
+        self.assertIn("<select", html)
+        html = self.client.get(reverse("request_attach_items"), {"box": 99999, "req": self.req.pk}).content.decode()
+        self.assertIn("<select", html)
+        self.assertIn("Choose a box first", html)
+
+    def test_attach_links_request_and_sets_in_box(self):
+        r = self.client.post(reverse("request_attach", args=[self.req.pk]),
+                             {"box": self.box.pk, "japan_item": self.item2.pk}, HTTP_HX_REQUEST="true")
+        self.assertContains(r, "In box")
+        self.req.refresh_from_db()
+        self.assertEqual((self.req.status, self.req.japan_item, self.req.box), ("in_box", self.item2, self.box))

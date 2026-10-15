@@ -15,14 +15,13 @@
   {% endif %}
   <form hx-post="{% url 'request_attach' r.pk %}" hx-target="#request-{{ r.pk }}" hx-swap="outerHTML" class="space-y-2">
     <div class="text-xs font-semibold text-violet-900">Or pick a box and item</div>
-    <select name="box" hx-get="{% url 'request_attach_items' %}" hx-target="#attach-items-{{ r.pk }}"
-            class="w-full field">
+    {# hx-swap must be explicit: the surrounding form's outerHTML swap would otherwise be inherited #}
+    <select name="box" aria-label="Box" hx-get="{% url 'request_attach_items' %}" hx-vals='{"req": "{{ r.pk }}"}'
+            hx-target="#attach-items-{{ r.pk }}" hx-swap="outerHTML" class="w-full field">
       <option value="">Choose box…</option>
       {% for b in boxes %}<option value="{{ b.pk }}">{{ b.label }} ({{ b.get_status_display }})</option>{% endfor %}
     </select>
-    <select id="attach-items-{{ r.pk }}" name="japan_item" required class="w-full field">
-      <option value="">Choose item…</option>
-    </select>
+    {% include "tracker/partials/attach_item_options.html" with items=None req_pk=r.pk %}
     <div class="flex gap-2">
       <button class="btn flex-1 bg-violet-600 text-white hover:bg-violet-700">Attach</button>
       <button type="button" class="btn btn-ghost" onclick="this.closest('[id^=attach-]').innerHTML=''">Cancel</button>

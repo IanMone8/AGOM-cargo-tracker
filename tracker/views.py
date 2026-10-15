@@ -478,8 +478,11 @@ def request_attach(request, pk):
 @roles.require(roles.can_use_requests)
 def request_attach_items(request):
     box = visible_boxes(request.user).filter(pk=request.GET.get("box") or 0).first()
-    items = box.items.all() if box else []
-    return render(request, "tracker/partials/attach_item_options.html", {"items": items})
+    req_pk = request.GET.get("req", "")
+    return render(request, "tracker/partials/attach_item_options.html", {
+        "items": list(box.items.all()) if box else None,
+        "req_pk": req_pk if req_pk.isdigit() else "",
+    })
 
 
 @login_required
