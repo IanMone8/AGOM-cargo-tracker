@@ -772,7 +772,7 @@ def web_manifest(request):
         "scope": "/",
         "display": "standalone",
         "background_color": "#f4f6ef",
-        "theme_color": "#0f3b2c",
+        "theme_color": "#C4E6C9",
         "icons": [
             {"src": static("img/display/app-icon-192.png"), "sizes": "192x192", "type": "image/png", "purpose": "any"},
             {"src": static("img/display/app-icon-512.png"), "sizes": "512x512", "type": "image/png", "purpose": "any"},
