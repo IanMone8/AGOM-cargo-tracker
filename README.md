@@ -37,6 +37,13 @@ The look is "3D-styled": raised cards with a light top edge and darker bottom ed
 thick edge and press down when tapped, sunken inputs, and stat/box cards that tilt toward the mouse with a
 soft glare (desktop only; turned off when the device asks for reduced motion).
 
+**Login page ("Fairway at dawn"):** an inline-SVG golf scene (sky, drifting clouds, three hills, a putting green
+with cup and flag) drawn with the colour tokens only (`templates/registration/login.html`, `static/css/login.css`).
+On load a ball flies in on a dotted arc, bounces twice, rolls and drops into the cup, the flag waves and a ripple
+appears (~2.5 s, transform/opacity only); afterwards just the flag sways and clouds drift. With *reduce motion* the
+finished scene is shown, and after a wrong password the intro doesn't replay. The card floats left-centre on desktop;
+on phones the scene fills the top ~40 % and the card sits below. Password has a show/hide toggle.
+
 **Logo:** `static/img/3D logo.png` (shown from its small copy in `static/img/display/`). The sidebar, phone header, login page and
 favicon use it. Until the file exists the image is simply hidden.
 

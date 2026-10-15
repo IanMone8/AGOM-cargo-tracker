@@ -17,6 +17,7 @@
   <script src="{% static_v 'js/tw-theme.js' %}"></script>
   <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"></script>
   <link rel="stylesheet" href="{% static_v 'css/agom.css' %}">
+  {% block head %}{% endblock %}
 </head>
 <body class="min-h-screen antialiased" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
 {% if user.is_authenticated %}

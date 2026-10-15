@@ -1561,3 +1561,55 @@ class PaletteTests(TestCase):
         self.assertEqual(badge("in_box"), "pill pill-info")      # was purple
         self.assertEqual(badge("missing"), "pill pill-danger")
         self.assertEqual(badge("checked"), "pill pill-ok")
+
+
+class LoginPageTests(BaseTest):
+    """Login page: "Fairway at dawn" scene (inline SVG + CSS), floating card, same login logic."""
+
+    def css(self):
+        from pathlib import Path
+        return (Path(__file__).resolve().parent.parent / "static/css/login.css").read_text()
+
+    def test_scene_and_card(self):
+        r = self.client.get(reverse("login"))
+        html = r.content.decode()
+        for part in ('class="login-scene" aria-hidden="true"', 'class="putting-green"', 'class="cup"', 'class="flag"',
+                     'class="ball"', 'class="trail"', 'class="ripple"', "cloud-a", "hill-back", "hill-mid", "hill-front",
+                     'login-page scene-animate', "css/login.css"):
+            self.assertIn(part, html)
+        self.assertIn('src="/static/img/display/3d-logo.png', html)
+        self.assertIn("AGOM Cargo Tracker", html)
+        self.assertIn("Japan → Myanmar golf shipments", html)
+        self.assertIn("Take with Trust · Play with Confidence · Get Achievements", html)
+        self.assertIn('class="pw-toggle" aria-label="Show password" aria-pressed="false" aria-controls="id_password"', html)
+        self.assertIn('autocapitalize="none"', html)          # phones don't capitalise the username
+        self.assertIn("csrfmiddlewaretoken", html)
+        self.assertIn('class="btn btn-primary w-full', html)
+        self.assertNotRegex(html, r"<img[^>]+src=\"http")     # no external images
+
+    def test_wrong_password_shows_danger_message_without_replaying_intro(self):
+        r = self.client.post(reverse("login"), {"username": "owner", "password": "nope"})
+        html = r.content.decode()
+        self.assertIn('role="alert"', html)
+        self.assertIn("bg-danger-bg", html)
+        self.assertIn("text-danger-ink", html)
+        self.assertIn("Wrong username or password.", html)
+        self.assertNotIn("scene-animate", html)               # scene shown finished, no distraction
+        self.assertIn('value="owner"', html)
+
+    def test_login_still_works_and_redirects(self):
+        r = self.client.post(reverse("login") + "?next=/boxes/", {"username": "owner", "password": "pw-12345-x",
+                                                                  "next": "/boxes/"})
+        self.assertRedirects(r, "/boxes/", fetch_redirect_response=False)
+
+    def test_animation_only_transform_and_opacity_and_reduced_motion(self):
+        import re
+        css = self.css()
+        self.assertIn("@media (prefers-reduced-motion: no-preference)", css)
+        animated = css[css.index("@media (prefers-reduced-motion: no-preference)"):]
+        for block in re.findall(r"@keyframes [\w-]+ \{(.*?)\n\}", animated, re.S):
+            props = set(re.findall(r"([a-z-]+)\s*:", re.sub(r"\d+(\.\d+)?%|from|to", "", block)))
+            self.assertLessEqual(props, {"transform", "opacity"}, props)
+        # the default (no-motion) state is the final scene: ball in the cup
+        self.assertIn(".ball { transform: translate(1120px, 666px) scale(.82); }", css)
+        self.assertNotRegex(css, r"#[0-9A-Fa-f]{3,6}\b")    # colours only from the agom.css tokens
