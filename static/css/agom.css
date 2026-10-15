@@ -43,14 +43,12 @@ body {
     linear-gradient(180deg, #13462f 0%, var(--fairway-900) 45%, var(--fairway-950) 100%);
   box-shadow: inset -1px 0 0 rgba(255, 255, 255, .06), 10px 0 34px -14px rgba(0, 0, 0, .45);
 }
-/* Menu bar (sidebar + phone top bar): light green #C4E6C9 with dark-green text. */
+/* Menu bar (sidebar + phone top bar): #F4F7E9 → #C4E6C9 gradient with dark-green text. */
 .menubar {
-  background:
-    radial-gradient(120% 50% at 0% 0%, rgba(255, 255, 255, .35), transparent 60%),
-    #C4E6C9;
+  background: linear-gradient(180deg, #F4F7E9 0%, #C4E6C9 100%);
   box-shadow: inset -1px 0 0 rgba(15, 59, 44, .08), 8px 0 28px -16px rgba(15, 59, 44, .35);
 }
-header.menubar { box-shadow: inset 0 -1px 0 rgba(15, 59, 44, .1), 0 8px 18px -12px rgba(15, 59, 44, .35); }
+header.menubar { background: linear-gradient(90deg, #F4F7E9 0%, #C4E6C9 100%); box-shadow: inset 0 -1px 0 rgba(15, 59, 44, .1), 0 8px 18px -12px rgba(15, 59, 44, .35); }
 .sidebar-link { display: flex; align-items: center; gap: .75rem; padding: .65rem .9rem; border-radius: .9rem; color: #1d4a37; font-weight: 600; font-size: .925rem; transition: transform .15s ease, background .15s ease, box-shadow .15s ease; }
 .sidebar-link:hover { background: rgba(255, 255, 255, .45); color: #0b2a1f; transform: translateX(2px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6); }
 .sidebar-link.active {
@@ -85,6 +83,15 @@ textarea.field { resize: vertical; }
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28), 0 4px 0 #0f4029, 0 12px 20px -10px rgba(15, 59, 44, .7); text-shadow: 0 1px 0 rgba(0, 0, 0, .2); }
 .btn-primary:hover { background: linear-gradient(180deg, #23875a 0%, var(--fairway-800) 100%); }
 .btn-primary:active { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2), 0 1px 0 #0f4029, 0 4px 8px -4px rgba(15, 59, 44, .6); }
+/* "Add box" form: header bar and Save button in the menu colors (#F4F7E9 → #C4E6C9). */
+.modal-head { background: linear-gradient(90deg, #F4F7E9 0%, #C4E6C9 100%); color: #0f3b2c;
+  box-shadow: inset 0 -1px 0 rgba(15, 59, 44, .1); }
+.modal-head .modal-icon { background: rgba(255, 255, 255, .7); color: var(--fairway-800);
+  box-shadow: inset 0 1px 0 #fff, 0 2px 0 rgba(15, 59, 44, .15); }
+.btn-save { background: linear-gradient(180deg, #F4F7E9 0%, #C4E6C9 100%); color: #0f3b2c; font-weight: 700;
+  box-shadow: inset 0 1px 0 #fff, 0 4px 0 #9cc8a4, 0 12px 20px -10px rgba(15, 59, 44, .5); }
+.btn-save:hover { background: linear-gradient(180deg, #eef3df 0%, #b6dfbc 100%); }
+.btn-save:active { box-shadow: inset 0 1px 0 #fff, 0 1px 0 #9cc8a4, 0 4px 8px -4px rgba(15, 59, 44, .4); }
 .btn-soft { background: linear-gradient(180deg, #f5faf5, var(--green-50)); color: var(--fairway-800);
   box-shadow: inset 0 1px 0 #fff, 0 3px 0 #c9dfcf, 0 8px 14px -10px rgba(15, 59, 44, .35); }
 .btn-soft:hover { background: linear-gradient(180deg, #eef7f0, #e0efe3); }
