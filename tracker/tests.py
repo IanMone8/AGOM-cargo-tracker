@@ -1001,9 +1001,11 @@ class ClubOptionTests(BaseTest):
 
     def test_card_has_only_simple_fields_and_picker(self):
         html = self.client.get(reverse("item_add", args=[self.box.pk]), HTTP_HX_REQUEST="true").content.decode()
-        for name in ("item_name", "club_option", "club_other", "flex", "qty", "note"):
+        for name in ("item_name", "customer", "club_option", "club_other", "flex", "qty", "note"):
             self.assertIn(f'name="{name}"', html)
-        for gone in ("type", "loft", "brand", "model", "shaft_material", "price_jpy", "customer"):
+        self.assertLess(html.index('name="item_name"'), html.index('name="customer"'))   # right below Item name
+        self.assertLess(html.index('name="customer"'), html.index('name="club_option"'))
+        for gone in ("type", "loft", "brand", "model", "shaft_material", "price_jpy"):
             self.assertNotIn(f'name="{gone}"', html)
         for cat in ("Driver", "Driver head", "Iron", "Wedge", "Other"):
             self.assertIn(f">{cat}</button>", html)
@@ -1104,3 +1106,24 @@ class ClubOptionTests(BaseTest):
                                content_type="text/csv")
         self.assertContains(self.client.post(reverse("csv_import"), {"file": f}), "Imported 1 item(s)")
         self.assertEqual(JapanItem.objects.get(item_name="Old style").shaft_material, "steel")
+
+
+class ItemCardCustomerTests(BaseTest):
+    def test_customer_field_autocomplete_and_save(self):
+        from .models import Customer
+        Customer.objects.create(name="Ko Aung")
+        self.client.force_login(self.japan)
+        # the Add box modal and the box page both carry the customer suggestions
+        modal = self.client.get(reverse("box_create"), HTTP_HX_REQUEST="true").content.decode()
+        self.assertIn('list="customer-names"', modal)
+        self.assertIn('<datalist id="customer-names"><option value="Ko Aung">', modal)
+        page = self.client.get(reverse("box_detail", args=[self.box.pk])).content.decode()
+        self.assertIn('<datalist id="customer-names"><option value="Ko Aung">', page)
+        # optional: an item without a customer saves fine
+        self.client.post(reverse("item_add", args=[self.box.pk]), {"item_name": "Bag", "qty": "1"}, HTTP_HX_REQUEST="true")
+        self.assertEqual(JapanItem.objects.latest("id").customer, "")
+        # a new name is saved on the item and creates the customer
+        self.client.post(reverse("item_add", args=[self.box.pk]),
+                         {"item_name": "TSR2", "customer": "  Ma   Hnin ", "qty": "1"}, HTTP_HX_REQUEST="true")
+        self.assertEqual(JapanItem.objects.latest("id").customer, "Ma Hnin")
+        self.assertTrue(Customer.objects.filter(name="Ma Hnin").exists())

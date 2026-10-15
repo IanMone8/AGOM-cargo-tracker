@@ -76,12 +76,12 @@ Viber / Orders filters, sortable Name / Orders / Last update, 25 rows then "Load
 cards on phones. Each customer has a detail page with all their requests and packed items. Customer names
 typed on requests, Japan items or CSV rows create the customer automatically.
 
-**Item card:** the Japan sender fills only Item name (optional), **Club option**, Flex, Qty and Note.
+**Item card:** the Japan sender fills only Item name (optional), Customer (optional, suggests existing customers), **Club option**, Flex, Qty and Note.
 Club option is two taps – Driver / Driver head / Iron / Wedge / Other, then a value (Other = free text) –
 and is saved as structured data (e.g. "Iron · Graphite 5" → type Iron, shaft graphite, club number 5;
 "Driver head 9.5" → type Driver, loft 9.5, head only). The owner can add or hide options in
 **Admin → Club options**. Each card has **Copy**, and saved items have **copy** on the box page.
-Brand, model, price, customer, etc. are kept for old data, CSV and admin.
+Brand, model, price, etc. are kept for old data, CSV and admin.
 
 **Locking:** once the Myanmar check has started on a box (it has a received date, or any item is checked),
 the Japan sender can no longer edit that box or add or delete its items.

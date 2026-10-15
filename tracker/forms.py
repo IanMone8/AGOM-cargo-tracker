@@ -113,10 +113,12 @@ class JapanItemForm(StyledMixin, forms.ModelForm):
 
     class Meta:
         model = JapanItem
-        fields = ["item_name", "flex", "qty", "note"]
-        labels = {"item_name": "Item name"}
+        fields = ["item_name", "customer", "flex", "qty", "note"]
+        labels = {"item_name": "Item name", "customer": "Customer"}
         widgets = {
             "item_name": forms.TextInput(attrs={"list": "catalog-models", "placeholder": "Optional, e.g. Titleist TSR2"}),
+            "customer": forms.TextInput(attrs={"list": "customer-names", "placeholder": "Optional – who it's for",
+                                               "autocomplete": "off"}),
             "qty": forms.NumberInput(attrs={"min": 1, "inputmode": "numeric"}),
             "note": forms.TextInput(attrs={"placeholder": "Optional"}),
         }
@@ -165,6 +167,8 @@ class JapanItemForm(StyledMixin, forms.ModelForm):
                 self._club = ClubOption.objects.get(pk=int(value))
             except (ValueError, ClubOption.DoesNotExist):
                 self.add_error(None, "That club option no longer exists – pick another.")
+        if data.get("customer"):
+            data["customer"] = " ".join(data["customer"].split())
         if not (data.get("item_name") or value):
             self.add_error(None, "Pick a club option or type an item name.")
         return data

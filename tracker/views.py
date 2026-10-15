@@ -47,6 +47,7 @@ def catalog_context():
         "catalog_models": [c.brand_model for c in entries],
         "catalog_lofts": lofts,
         "item_categories": ITEM_CATEGORIES,
+        "customer_names": list(Customer.objects.values_list("name", flat=True)),
         "brands": BRANDS,
     }
 
