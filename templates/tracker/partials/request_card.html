@@ -10,7 +10,6 @@
           <button class="ml-1 text-stone-500 underline" hx-post="{% url 'request_detach' r.pk %}" hx-target="#request-{{ r.pk }}" hx-swap="outerHTML">detach</button></div>
       {% endif %}
     </div>
-    <a href="{% url 'request_edit' r.pk %}" class="shrink-0 text-xs text-stone-500 underline">edit</a>
   </div>
   <div class="mt-2 flex flex-wrap items-center gap-2">
     <select name="status" hx-post="{% url 'request_status' r.pk %}" hx-target="#request-{{ r.pk }}" hx-swap="outerHTML"

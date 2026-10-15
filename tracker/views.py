@@ -22,7 +22,6 @@ from .forms import (
     CSVImportForm,
     CustomerForm,
     CustomerOrderForm,
-    CustomerRequestForm,
     ExtraItemForm,
     JapanItemForm,
 )
@@ -102,7 +101,6 @@ def dashboard(request):
             Q(status=Box.Status.ARRIVED) | Q(pk__in=Box.with_mismatches().values("pk"))
         )
     )
-    open_requests = CustomerRequest.objects.filter(status=CustomerRequest.Status.OPEN)
     return render(request, "tracker/dashboard.html", {
         "cargo_count": Cargo.objects.count(),
         "total_box_count": boxes.count(),
@@ -110,8 +108,6 @@ def dashboard(request):
         "mismatch_count": boxes.filter(pk__in=Box.with_mismatches().values("pk")).count(),
         "in_transit": in_transit,
         "needs_review": needs_review,
-        "open_requests": open_requests[:8],
-        "open_request_count": open_requests.count(),
         "recent": boxes_with_counts(boxes.order_by("-updated_at"))[:5],
     })
 
@@ -462,52 +458,7 @@ def extra_delete(request, pk):
     return _box_fragments(request, box, "tracker/partials/oob_only.html", {})
 
 
-# --- Customer requests -------------------------------------------------------
-@login_required
-@roles.require(roles.can_use_requests)
-def request_list(request):
-    status = request.GET.get("status", "active")
-    qs = CustomerRequest.objects.select_related("box__cargo", "japan_item")
-    if status == "active":
-        qs = qs.exclude(status=CustomerRequest.Status.FULFILLED)
-    elif status in CustomerRequest.Status.values:
-        qs = qs.filter(status=status)
-    q = request.GET.get("q", "").strip()
-    if q:
-        qs = qs.filter(Q(customer__icontains=q) | Q(item_name__icontains=q))
-
-    form = CustomerRequestForm(request.POST or None)
-    if request.method == "POST" and form.is_valid():
-        req = form.save()
-        messages.success(request, f"Request for {req.customer} added.")
-        return redirect("request_list")
-
-    ctx = {
-        "requests": qs,
-        "form": form,
-        "status": status,
-        "q": q,
-        "status_choices": CustomerRequest.Status.choices,
-        "show_form": request.method == "POST",
-        **catalog_context(),
-    }
-    if is_htmx(request) and request.headers.get("HX-Target") == "request-results":
-        return render(request, "tracker/partials/request_results.html", ctx)
-    return render(request, "tracker/request_list.html", ctx)
-
-
-@login_required
-@roles.require(roles.can_use_requests)
-def request_edit(request, pk):
-    req = get_object_or_404(CustomerRequest, pk=pk)
-    form = CustomerRequestForm(request.POST or None, instance=req)
-    if form.is_valid():
-        form.save()
-        messages.success(request, "Request saved.")
-        return redirect("request_list")
-    return render(request, "tracker/request_form.html", {"form": form, "req": req, **catalog_context()})
-
-
+# --- Customer orders (requests, managed from the customer page) --------------
 @login_required
 @roles.require(roles.can_use_requests)
 @require_POST

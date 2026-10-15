@@ -16,12 +16,11 @@ It uses SQLite in development and Postgres in production (via `DATABASE_URL`).
 | **Add box** (modal) | Cargo company, Box ID, box note, the required **Golf bag** card, then **Items inside the bag**. **Add item** adds another item card; each card has **Copy** and **Delete** |
 | **Box detail** | "GN-3 · Titleist Stand Bag" header, the golf bag first, then the items inside it, **Start Myanmar check**, then one-tap **✓ Matched / ✗ Missing / ± Wrong qty**, undo, extra items and a live mismatch summary |
 | **Cargo history** | One card per cargo company (boxes, in transit, checked, issues, average transit days) and its box history, newest first |
-| **Requests** | Customer requests: create, change status inline, **attach to a Japan box item** (suggested matches or pick box → item) |
 | **CSV import** | (Owner / Admin) Import Japan packing lists (several boxes per file), all-or-nothing validation, template download |
 | **Admin** | Every model is registered at `/admin/` |
 
 ### Look and layout
-Green golf theme with a left sidebar (Dashboard, Shipments, Cargo history, Customer requests, CSV import).
+Green golf theme with a left sidebar (Dashboard, Shipments, Cargo history, Customers, CSV import).
 On phones the sidebar becomes a slide-in menu and **Add box** is the ＋ in the top bar.
 Theme styles live in `static/css/agom.css`; Tailwind (CDN) handles layout.
 The look is "3D-styled": raised cards with a light top edge and darker bottom edge, buttons that sit on a
@@ -54,15 +53,16 @@ You can still pick a status by hand on the *Edit* page. A manual choice override
 | --- | --- | --- |
 | `admin` | Superuser | Everything, including `/admin/`, users and the catalog |
 | `owner` | Group **Owner** (staff) | Everything in the app, plus tracker data in `/admin/` |
-| `japan` | Group **Japan Sender** | Add boxes, edit boxes (Japan side, status Packed / Shipped only), add/delete Japan items – until the Myanmar check starts. No CSV import, no customer requests |
-| `myanmar` | Group **Myanmar Checker** | Start Myanmar check, set the received date, receive checks, extra items, customer requests |
+| `japan` | Group **Japan Sender** | Add boxes, edit boxes (Japan side, status Packed / Shipped only), add/delete Japan items – until the Myanmar check starts. No CSV import, no customers |
+| `myanmar` | Group **Myanmar Checker** | Start Myanmar check, set the received date, receive checks, extra items, customers and their orders |
 
 Everyone can view the dashboard, shipments and cargo history. **CSV import** is for Owner and Admin only.
-**Customer requests** are for Owner, Admin and the Myanmar checker; the Japan sender doesn't see them
-(no sidebar link, no dashboard card, and the pages return "forbidden").
+There is no separate Customer requests page: customer orders are added and tracked on each customer's page
+(**+ New order**, status, attach to a box item). Customers are for Owner, Admin and the Myanmar checker; the
+Japan sender doesn't see them.
 
 **Shipped boxes only for Myanmar:** the Myanmar checker doesn't see a box (dashboard, Shipments,
-Cargo history, request attach lists, or by direct link) until the Japan sender sets it to **Shipped** – with the one-tap **Mark as shipped** button on the box page
+Cargo history, order attach lists, or by direct link) until the Japan sender sets it to **Shipped** – with the one-tap **Mark as shipped** button on the box page
 (or Edit box → Status → Shipped → Save).
 
 **Dates:** *Received in Myanmar* can't be before *Shipped from Japan* (same day is allowed) – checked in the

@@ -110,7 +110,7 @@ class PageTests(BaseTest):
     def test_pages_render(self):
         self.client.force_login(self.owner)
         for name, args in [("dashboard", []), ("box_list", []), ("box_detail", [self.box.pk]),
-                           ("box_edit", [self.box.pk]), ("box_create", []), ("request_list", []),
+                           ("box_edit", [self.box.pk]), ("box_create", []),
                            ("csv_import", []), ("csv_template", []), ("cargo_history", [])]:
             with self.subTest(name=name):
                 self.assertEqual(self.client.get(reverse(name, args=args)).status_code, 200)
@@ -388,8 +388,7 @@ class JapanSenderHiddenPagesTests(BaseTest):
     def test_japan_cannot_use_csv_or_requests(self):
         req = CustomerRequest.objects.create(customer="Ko Aung", item_name="TSR2")
         self.client.force_login(self.japan)
-        for name, args in [("csv_import", []), ("csv_template", []), ("request_list", []),
-                           ("request_edit", [req.pk]), ("request_attach", [req.pk])]:
+        for name, args in [("csv_import", []), ("csv_template", []), ("request_attach", [req.pk])]:
             with self.subTest(name=name):
                 self.assertEqual(self.client.get(reverse(name, args=args)).status_code, 403)
         for name in ("request_status", "request_detach"):
@@ -406,20 +405,18 @@ class JapanSenderHiddenPagesTests(BaseTest):
         self.client.force_login(self.japan)
         r = self.client.get(reverse("dashboard"))
         self.assertNotContains(r, reverse("csv_import"))
-        self.assertNotContains(r, reverse("request_list"))
-        self.assertNotContains(r, "Open requests")
+        self.assertNotContains(r, "Customer requests")
         self.assertNotContains(r, "Ko Aung")
         self.assertContains(r, "Add box")  # still can add boxes
 
     def test_other_roles_keep_access(self):
         self.client.force_login(self.myanmar)
         r = self.client.get(reverse("dashboard"))
-        self.assertContains(r, reverse("request_list"))
+        self.assertContains(r, reverse("customer_list"))
         self.assertNotContains(r, reverse("csv_import"))
-        self.assertEqual(self.client.get(reverse("request_list")).status_code, 200)
         self.client.force_login(self.owner)
         r = self.client.get(reverse("dashboard"))
-        self.assertContains(r, reverse("request_list"))
+        self.assertContains(r, reverse("customer_list"))
         self.assertContains(r, reverse("csv_import"))
 
 
@@ -748,7 +745,7 @@ class CustomerPageTests(BaseTest):
     def test_customer_name_links(self):
         req = CustomerRequest.objects.create(customer="Ko Aung", item_name="Qi10")
         self.client.force_login(self.myanmar)
-        r = self.client.get(reverse("request_list"))
+        r = self.client.get(reverse("customer_detail", args=[self.ko.pk]))   # orders are on the customer page
         self.assertContains(r, reverse("customer_by_name") + "?name=Ko%20Aung")
         r = self.client.get(reverse("customer_by_name"), {"name": "Ko Aung"})
         self.assertRedirects(r, reverse("customer_detail", args=[self.ko.pk]))
@@ -1468,3 +1465,28 @@ class GolfBagTests(BaseTest):
         r = self.client.post(f"/admin/tracker/japanitem/{self.item2.pk}/change/", {**data, "allow_bag_exception": "on"},
                              follow=True)
         self.assertContains(r, "now has 2 golf bag(s)")
+
+
+class CustomerRequestsPageRemovedTests(BaseTest):
+    """The separate Customer requests page is gone; orders live on each customer's page."""
+
+    def test_no_requests_page_menu_or_dashboard_section(self):
+        CustomerRequest.objects.create(customer="Ko Aung", item_name="TSR2")
+        for user in (self.owner, self.myanmar):
+            self.client.force_login(user)
+            r = self.client.get(reverse("dashboard"))
+            self.assertNotContains(r, "Customer requests")
+            self.assertNotContains(r, "Open customer requests")
+            self.assertEqual(self.client.get("/requests/").status_code, 404)
+
+    def test_orders_still_work_on_customer_page(self):
+        from .models import Customer
+        self.client.force_login(self.owner)
+        ko = Customer.ensure("Ko Aung")
+        self.client.post(reverse("customer_new_order", args=[ko.pk]), {"item_name": "Qi10", "qty": "1"})
+        req = CustomerRequest.objects.get(item_name="Qi10")
+        r = self.client.get(reverse("customer_detail", args=[ko.pk]))
+        self.assertContains(r, f'id="request-{req.pk}"')
+        self.htmx(self.owner, reverse("request_attach", args=[req.pk]), {"japan_item": self.item1.pk})
+        req.refresh_from_db()
+        self.assertEqual(req.japan_item, self.item1)

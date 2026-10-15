@@ -266,8 +266,7 @@ class ExtraItemForm(StyledMixin, forms.ModelForm):
         widgets = {"qty": forms.NumberInput(attrs={"min": 1, "inputmode": "numeric"})}
 
 
-class CustomerRequestForm(StyledMixin, forms.ModelForm):
-    class Meta:
+class Meta:
         model = CustomerRequest
         fields = ["customer", "type", "item_name", "flex", "loft", "qty", "note", "status"]
         widgets = {

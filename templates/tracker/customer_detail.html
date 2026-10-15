@@ -33,7 +33,7 @@
 
 <section id="orders" class="mt-6 scroll-mt-20">
   <div class="mb-3 flex items-center justify-between gap-2">
-    <h2 class="text-lg font-bold">Orders (customer requests)</h2>
+    <h2 class="text-lg font-bold">Orders</h2>
     <button type="button" class="btn btn-primary shrink-0" onclick="document.getElementById('new-order').classList.toggle('hidden'); document.getElementById('id_item_name').focus()">{% icon "plus" %} New order</button>
   </div>
   <form id="new-order" method="post" action="{% url 'customer_new_order' customer.pk %}" class="{% if not show_order_form %}hidden{% endif %} card mb-3 space-y-3 p-4">
