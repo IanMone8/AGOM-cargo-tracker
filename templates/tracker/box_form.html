@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 {% block content %}
-<a href="{% if box %}{% url 'box_detail' box.pk %}{% else %}{% url 'box_list' %}{% endif %}" class="text-sm font-semibold text-emerald-700">← Back</a>
+<a href="{% if box %}{% url 'box_detail' box.pk %}{% else %}{% url 'box_list' %}{% endif %}" class="text-sm font-semibold text-primary">← Back</a>
 <h1 class="mb-4 mt-1 text-2xl font-extrabold">{% if box %}Edit {{ box.label }}{% else %}New box{% endif %}</h1>
 <form method="post" class="card space-y-4 p-5">
   {% csrf_token %}
-  {% for e in form.non_field_errors %}<p class="text-sm text-red-600">{{ e }}</p>{% endfor %}
+  {% for e in form.non_field_errors %}<p class="text-sm text-danger-ink">{{ e }}</p>{% endfor %}
   <div class="grid gap-4 sm:grid-cols-2">
     {% for field in form %}{% include "tracker/_field.html" %}{% endfor %}
   </div>
-  <p class="text-xs text-stone-500">Status moves forward automatically: a ship date → Shipped, a received date → Arrived, all items checked → Checked. Choosing a status here overrides that.</p>
+  <p class="text-xs text-ink-muted">Status moves forward automatically: a ship date → Shipped, a received date → Arrived, all items checked → Checked. Choosing a status here overrides that.</p>
   <button class="btn btn-primary w-full py-3 sm:w-auto sm:px-8">Save</button>
 </form>
 <script>

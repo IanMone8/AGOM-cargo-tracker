@@ -3,32 +3,32 @@
 {% block title %}{{ customer.name }} · AGOM Cargo Tracker{% endblock %}
 {% block datalists %}{% include "tracker/_datalists.html" %}{% endblock %}
 {% block content %}
-<a href="{% url 'customer_list' %}" class="text-sm font-semibold text-emerald-700">← Customers</a>
+<a href="{% url 'customer_list' %}" class="text-sm font-semibold text-primary">← Customers</a>
 
 <div class="card mt-2 overflow-hidden">
-  <div class="sidebar flex flex-wrap items-center justify-between gap-3 px-5 py-4 text-white">
+  <div class="grad-head flex flex-wrap items-center justify-between gap-3 px-5 py-4">
     <div class="flex min-w-0 items-center gap-3">
-      <div class="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white/15 text-lg font-extrabold uppercase">{{ customer.name|slice:":1" }}</div>
+      <div class="grid h-12 w-12 shrink-0 place-items-center head-chip rounded-2xl text-lg font-extrabold uppercase">{{ customer.name|slice:":1" }}</div>
       <div class="min-w-0">
         <h1 class="truncate text-2xl font-extrabold">{{ customer.name }}</h1>
-        {% if customer.viber_member %}<span class="mt-0.5 inline-flex rounded-full bg-violet-200 px-2.5 py-0.5 text-xs font-bold text-violet-900">Viber channel member</span>
-        {% else %}<span class="text-xs text-emerald-100/80">Not in Viber channel</span>{% endif %}
+        {% if customer.viber_member %}<span class="pill pill-viber mt-0.5">Viber channel member</span>
+        {% else %}<span class="text-xs text-ink">Not in Viber channel</span>{% endif %}
       </div>
     </div>
-    <a href="{% url 'customer_edit' customer.pk %}" class="btn bg-white/15 text-white hover:bg-white/25">Edit</a>
+    <a href="{% url 'customer_edit' customer.pk %}" class="btn btn-ghost">Edit</a>
   </div>
-  <dl class="grid gap-px bg-stone-100 text-sm sm:grid-cols-2">
-    <div class="bg-white px-5 py-3"><dt class="text-xs text-stone-500">Phone</dt>
-      <dd class="font-semibold">{% if customer.phone %}<a href="tel:{{ customer.phone }}" class="text-emerald-800">{{ customer.phone }}</a>{% else %}—{% endif %}</dd></div>
-    <div class="bg-white px-5 py-3"><dt class="text-xs text-stone-500">Address</dt><dd class="whitespace-pre-line font-medium">{{ customer.address|default:"—" }}</dd></div>
-    {% if customer.note %}<div class="bg-white px-5 py-3 sm:col-span-2"><dt class="text-xs text-stone-500">Note</dt><dd class="whitespace-pre-line">{{ customer.note }}</dd></div>{% endif %}
+  <dl class="grid gap-px bg-line text-sm sm:grid-cols-2">
+    <div class="bg-card px-5 py-3"><dt class="text-xs text-ink-muted">Phone</dt>
+      <dd class="font-semibold">{% if customer.phone %}<a href="tel:{{ customer.phone }}" class="text-primary-hover">{{ customer.phone }}</a>{% else %}—{% endif %}</dd></div>
+    <div class="bg-card px-5 py-3"><dt class="text-xs text-ink-muted">Address</dt><dd class="whitespace-pre-line font-medium">{{ customer.address|default:"—" }}</dd></div>
+    {% if customer.note %}<div class="bg-card px-5 py-3 sm:col-span-2"><dt class="text-xs text-ink-muted">Note</dt><dd class="whitespace-pre-line">{{ customer.note }}</dd></div>{% endif %}
   </dl>
 </div>
 
 <div class="mt-4 grid grid-cols-3 gap-3 text-center">
-  <div class="card p-3"><div class="text-2xl font-extrabold">{{ requests|length }}</div><div class="text-xs font-semibold text-stone-500">Requests</div></div>
-  <div class="card p-3"><div class="text-2xl font-extrabold text-rose-600">{{ open_count }}</div><div class="text-xs font-semibold text-stone-500">Not fulfilled</div></div>
-  <div class="card p-3"><div class="text-2xl font-extrabold text-emerald-700">{{ items|length }}</div><div class="text-xs font-semibold text-stone-500">Items in boxes</div></div>
+  <div class="card p-3"><div class="text-2xl font-extrabold">{{ requests|length }}</div><div class="text-xs font-semibold text-ink-muted">Requests</div></div>
+  <div class="card p-3"><div class="text-2xl font-extrabold text-danger-ink">{{ open_count }}</div><div class="text-xs font-semibold text-ink-muted">Not fulfilled</div></div>
+  <div class="card p-3"><div class="text-2xl font-extrabold text-primary">{{ items|length }}</div><div class="text-xs font-semibold text-ink-muted">Items in boxes</div></div>
 </div>
 
 <section id="orders" class="mt-6 scroll-mt-20">
@@ -38,8 +38,8 @@
   </div>
   <form id="new-order" method="post" action="{% url 'customer_new_order' customer.pk %}" class="{% if not show_order_form %}hidden{% endif %} card mb-3 space-y-3 p-4">
     {% csrf_token %}
-    <p class="text-sm font-semibold text-stone-600">New order for <b class="text-stone-900">{{ customer.name }}</b></p>
-    {% for e in order_form.non_field_errors %}<p class="text-sm text-red-600">{{ e }}</p>{% endfor %}
+    <p class="text-sm font-semibold text-ink-muted">New order for <b class="text-ink">{{ customer.name }}</b></p>
+    {% for e in order_form.non_field_errors %}<p class="text-sm text-danger-ink">{{ e }}</p>{% endfor %}
     <div class="grid grid-cols-2 gap-3 sm:grid-cols-6">
       <div class="col-span-2 sm:col-span-3">{% include "tracker/_field.html" with field=order_form.item_name %}</div>
       <div class="col-span-2 sm:col-span-3">{% include "tracker/_field.html" with field=order_form.type %}</div>
@@ -55,25 +55,25 @@
   </form>
   <div class="space-y-3">
     {% for r in requests %}{% include "tracker/partials/request_card.html" %}{% empty %}
-      <p class="card p-6 text-center text-sm text-stone-500">No requests from {{ customer.name }} yet.</p>{% endfor %}
+      <p class="card p-6 text-center text-sm text-ink-muted">No requests from {{ customer.name }} yet.</p>{% endfor %}
   </div>
 </section>
 
 <section class="mt-6">
   <h2 class="mb-3 text-lg font-bold">Items packed for {{ customer.name }}</h2>
-  <div class="card divide-y divide-stone-100">
+  <div class="card divide-y divide-line">
     {% for item in items %}
-      <a href="{% url 'box_detail' item.box_id %}" class="flex items-center gap-3 p-4 hover:bg-stone-50">
-        <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-900 text-[0.65rem] font-extrabold text-white">{{ item.box.label }}</span>
+      <a href="{% url 'box_detail' item.box_id %}" class="flex items-center gap-3 p-4 hover:bg-sage">
+        <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary text-[0.65rem] font-extrabold text-white">{{ item.box.label }}</span>
         <span class="min-w-0 flex-1"><b class="block truncate">{{ item.title }}</b>
-          <span class="block truncate text-xs text-stone-500">{{ item.club_label|default:item.details }} · ×{{ item.qty }} {{ item.get_quantity_unit_display }}</span></span>
+          <span class="block truncate text-xs text-ink-muted">{{ item.club_label|default:item.details }} · ×{{ item.qty }} {{ item.get_quantity_unit_display }}</span></span>
         <span class="shrink-0 text-right text-xs">
           <span class="{{ item.box.status|badge }}">{{ item.box.get_status_display }}</span>
           {% if item.receive_check %}<span class="mt-1 block {{ item.receive_check.result|badge }}">{{ item.receive_check.get_result_display }}</span>{% endif %}
         </span>
       </a>
     {% empty %}
-      <p class="p-6 text-center text-sm text-stone-500">No items in any box for {{ customer.name }}.</p>
+      <p class="p-6 text-center text-sm text-ink-muted">No items in any box for {{ customer.name }}.</p>
     {% endfor %}
   </div>
 </section>

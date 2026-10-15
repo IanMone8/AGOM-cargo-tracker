@@ -2,31 +2,31 @@
 {% load tracker_tags %}
 {% block title %}{{ box.title }} · AGOM Cargo Tracker{% endblock %}
 {% block content %}
-<a href="{% url 'box_list' %}" class="text-sm font-semibold text-emerald-700">← Shipments</a>
+<a href="{% url 'box_list' %}" class="text-sm font-semibold text-primary">← Shipments</a>
 
 <div class="card mt-2 overflow-hidden">
-  <div class="sidebar flex flex-wrap items-center justify-between gap-3 px-5 py-4 text-white">
+  <div class="grad-head flex flex-wrap items-center justify-between gap-3 px-5 py-4">
     <div class="flex items-center gap-3">
-      <div class="grid h-12 w-12 place-items-center rounded-2xl bg-white/15 text-xs font-extrabold">{{ box.cargo.code }}</div>
+      <div class="code-tile grid h-12 w-12 place-items-center rounded-2xl text-xs font-extrabold">{{ box.cargo.code }}</div>
       <div>
-        <div class="flex flex-wrap items-center gap-x-2 gap-y-1"><h1 class="text-2xl font-extrabold">{{ box.label }}{% if box.bag_name %}<span class="font-semibold text-emerald-100"> · {{ box.bag_name }}</span>{% endif %}</h1>{% include "tracker/partials/box_status.html" %}</div>
-        <p class="text-xs text-emerald-100/80">{{ box.cargo.name }}</p>
+        <div class="flex flex-wrap items-center gap-x-2 gap-y-1"><h1 class="text-2xl font-extrabold">{{ box.label }}{% if box.bag_name %}<span class="font-semibold text-primary-hover"> · {{ box.bag_name }}</span>{% endif %}</h1>{% include "tracker/partials/box_status.html" %}</div>
+        <p class="text-xs text-ink">{{ box.cargo.name }}</p>
       </div>
     </div>
-    {% if can_edit_this_box %}<a href="{% url 'box_edit' box.pk %}" class="btn bg-white/15 text-white hover:bg-white/25">Edit box</a>{% endif %}
+    {% if can_edit_this_box %}<a href="{% url 'box_edit' box.pk %}" class="btn btn-ghost">Edit box</a>{% endif %}
   </div>
-  <dl class="grid grid-cols-2 gap-px bg-stone-100 text-sm sm:grid-cols-3">
-    <div class="bg-white px-5 py-3"><dt class="text-xs text-stone-500">Shipped from Japan</dt><dd class="font-semibold">{{ box.japan_ship_date|date:"j M Y"|default:"—" }}</dd></div>
-    <div class="bg-white px-5 py-3"><dt class="text-xs text-stone-500">Received in Myanmar</dt><dd class="font-semibold">{{ box.myanmar_received_date|date:"j M Y"|default:"—" }}</dd></div>
-    <div class="col-span-2 bg-white px-5 py-3 sm:col-span-1"><dt class="text-xs text-stone-500">Note</dt><dd class="whitespace-pre-line font-medium">{{ box.notes|default:"—" }}</dd></div>
+  <dl class="grid grid-cols-2 gap-px bg-line text-sm sm:grid-cols-3">
+    <div class="bg-card px-5 py-3"><dt class="text-xs text-ink-muted">Shipped from Japan</dt><dd class="font-semibold">{{ box.japan_ship_date|date:"j M Y"|default:"—" }}</dd></div>
+    <div class="bg-card px-5 py-3"><dt class="text-xs text-ink-muted">Received in Myanmar</dt><dd class="font-semibold">{{ box.myanmar_received_date|date:"j M Y"|default:"—" }}</dd></div>
+    <div class="col-span-2 bg-card px-5 py-3 sm:col-span-1"><dt class="text-xs text-ink-muted">Note</dt><dd class="whitespace-pre-line font-medium">{{ box.notes|default:"—" }}</dd></div>
   </dl>
 </div>
 
 {% if can_edit_items and box.status == 'packed' %}
-  <div class="card mt-4 flex flex-col items-start gap-3 border-l-4 border-l-sky-400 p-5 sm:flex-row sm:items-center sm:justify-between">
+  <div class="card mt-4 flex flex-col items-start gap-3 border-l-4 border-l-info p-5 sm:flex-row sm:items-center sm:justify-between">
     <div>
       <h2 class="font-bold">Ready to send?</h2>
-      <p class="text-sm text-stone-500">The Myanmar checker can't see this box until it is marked as shipped.</p>
+      <p class="text-sm text-ink-muted">The Myanmar checker can't see this box until it is marked as shipped.</p>
     </div>
     <form method="post" action="{% url 'box_mark_shipped' box.pk %}" class="w-full sm:w-auto">{% csrf_token %}
       <button class="btn btn-primary w-full py-3 sm:w-auto">{% icon "ship" %} Mark as shipped</button>
@@ -35,22 +35,22 @@
 {% endif %}
 
 {% if japan_locked %}
-  <div class="card mt-4 flex items-center gap-3 border-l-4 border-l-stone-300 p-4 text-sm text-stone-600">
-    <span class="text-stone-400">{% icon "alert" %}</span>
-    <span><b class="text-stone-800">Locked.</b> The Myanmar check has started, so this box and its Japan list can no longer be edited. Ask the owner if something needs fixing.</span>
+  <div class="card mt-4 flex items-center gap-3 border-l-4 border-l-line-strong p-4 text-sm text-ink-muted">
+    <span class="text-ink-muted">{% icon "alert" %}</span>
+    <span><b class="text-ink">Locked.</b> The Myanmar check has started, so this box and its Japan list can no longer be edited. Ask the owner if something needs fixing.</span>
   </div>
 {% endif %}
 
 {% if can_check and not box.myanmar_received_date and ships_later %}
-  <div class="card mt-4 border-l-4 border-l-sky-400 p-5 text-sm text-stone-600">
-    <b class="text-stone-800">Not shipped yet.</b> This box leaves Japan on {{ box.japan_ship_date|date:"j M Y" }}.
+  <div class="card mt-4 border-l-4 border-l-info p-5 text-sm text-ink-muted">
+    <b class="text-ink">Not shipped yet.</b> This box leaves Japan on {{ box.japan_ship_date|date:"j M Y" }}.
     The Myanmar check opens from that date.
   </div>
 {% elif can_check and not box.myanmar_received_date %}
-  <div class="card mt-4 flex flex-col items-start gap-3 border-l-4 border-l-amber-400 p-5 sm:flex-row sm:items-center sm:justify-between">
+  <div class="card mt-4 flex flex-col items-start gap-3 border-l-4 border-l-warn p-5 sm:flex-row sm:items-center sm:justify-between">
     <div>
       <h2 class="font-bold">Box arrived in Myanmar?</h2>
-      <p class="text-sm text-stone-500">Start the check to record today's arrival and tick off each item against the Japan list.</p>
+      <p class="text-sm text-ink-muted">Start the check to record today's arrival and tick off each item against the Japan list.</p>
     </div>
     <form method="post" action="{% url 'box_start_check' box.pk %}" class="w-full sm:w-auto">{% csrf_token %}
       <button class="btn btn-primary w-full py-3 sm:w-auto">{% icon "play" %} Start Myanmar check</button>
@@ -73,12 +73,12 @@
   <div id="item-list" class="space-y-3">
     {% for item in items %}{% include "tracker/partials/item_row.html" with oob=False %}{% endfor %}
   </div>
-  {% if not items %}<p class="card p-8 text-center text-sm text-stone-500">No items in the bag yet.{% if can_edit_items and can_import_csv %} Add one or use <a class="font-semibold text-emerald-700 underline" href="{% url 'csv_import' %}">CSV import</a>.{% endif %}</p>{% endif %}
+  {% if not items %}<p class="card p-8 text-center text-sm text-ink-muted">No items in the bag yet.{% if can_edit_items and can_import_csv %} Add one or use <a class="font-semibold text-primary underline" href="{% url 'csv_import' %}">CSV import</a>.{% endif %}</p>{% endif %}
 </section>
 
 <section class="mt-8">
   <div class="mb-3 flex items-center justify-between gap-2">
-    <div><h2 class="text-lg font-bold">Extra items</h2><p class="text-xs text-stone-500">Found in Myanmar but not on the Japan list</p></div>
+    <div><h2 class="text-lg font-bold">Extra items</h2><p class="text-xs text-ink-muted">Found in Myanmar but not on the Japan list</p></div>
     {% if can_check and box.myanmar_received_date %}
       <button class="btn btn-soft shrink-0 whitespace-nowrap" hx-get="{% url 'extra_add' box.pk %}" hx-target="#extra-form-slot">{% icon "plus" %} Extra item</button>
     {% endif %}

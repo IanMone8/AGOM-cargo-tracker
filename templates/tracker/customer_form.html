@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<a href="{% url 'customer_detail' customer.pk %}" class="text-sm font-semibold text-emerald-700">← {{ customer.name }}</a>
+<a href="{% url 'customer_detail' customer.pk %}" class="text-sm font-semibold text-primary">← {{ customer.name }}</a>
 <h1 class="mb-4 mt-1 text-2xl font-extrabold">Edit customer</h1>
 <form method="post" class="card space-y-4 p-5">
   {% csrf_token %}
@@ -8,10 +8,10 @@
     {% include "tracker/_field.html" with field=form.name %}
     {% include "tracker/_field.html" with field=form.phone %}
     <div class="sm:col-span-2">{% include "tracker/_field.html" with field=form.address %}</div>
-    <label class="flex items-center gap-2 text-sm font-semibold text-stone-700">{{ form.viber_member }} {{ form.viber_member.label }}</label>
+    <label class="flex items-center gap-2 text-sm font-semibold text-ink">{{ form.viber_member }} {{ form.viber_member.label }}</label>
     <div class="sm:col-span-2">{% include "tracker/_field.html" with field=form.note %}</div>
   </div>
-  <p class="text-xs text-stone-500">Renaming also updates the name on this customer's requests and items.</p>
+  <p class="text-xs text-ink-muted">Renaming also updates the name on this customer's requests and items.</p>
   <button class="btn btn-primary w-full py-3 sm:w-auto sm:px-8">Save</button>
 </form>
 {% endblock %}

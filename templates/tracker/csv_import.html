@@ -5,33 +5,33 @@
   {% csrf_token %}
   {% include "tracker/_field.html" with field=form.file %}
   <label class="flex items-start gap-2 text-sm">{{ form.replace }}
-    <span><span class="font-medium">{{ form.replace.label }}</span><br><span class="text-xs text-stone-500">{{ form.replace.help_text }}</span></span></label>
-  <label class="flex items-start gap-2 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{{ form.allow_bag_exception }}
+    <span><span class="font-medium">{{ form.replace.label }}</span><br><span class="text-xs text-ink-muted">{{ form.replace.help_text }}</span></span></label>
+  <label class="flex items-start gap-2 rounded-xl bg-warn-bg p-3 text-sm text-warn-ink">{{ form.allow_bag_exception }}
     <span><span class="font-medium">{{ form.allow_bag_exception.label }}</span><br><span class="text-xs">{{ form.allow_bag_exception.help_text }}</span></span></label>
   <button class="btn btn-primary w-full py-3 sm:w-auto sm:px-8">Import</button>
 </form>
 
 {% if result %}
   {% if result.errors %}
-    <div class="mt-4 rounded-2xl bg-red-50 p-4 ring-1 ring-red-200">
-      <h2 class="font-semibold text-red-800">Nothing was imported. Fix these rows and try again:</h2>
-      <ul class="mt-2 space-y-1 text-sm text-red-800">
+    <div class="mt-4 rounded-2xl bg-danger-bg p-4 ring-1 ring-danger">
+      <h2 class="font-semibold text-danger-ink">Nothing was imported. Fix these rows and try again:</h2>
+      <ul class="mt-2 space-y-1 text-sm text-danger-ink">
         {% for row, msg in result.errors %}<li>{% if row %}Row {{ row }}: {% endif %}{{ msg }}</li>{% endfor %}
       </ul>
     </div>
   {% else %}
     {% if result.warnings %}
-      <div class="mt-4 rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-300">
-        <h2 class="font-semibold text-amber-900">⚠ Imported with the owner override – these boxes don't have exactly one golf bag:</h2>
-        <ul class="mt-2 space-y-1 text-sm text-amber-900">
+      <div class="mt-4 rounded-2xl bg-warn-bg p-4 ring-1 ring-warn">
+        <h2 class="font-semibold text-warn-ink">⚠ Imported with the owner override – these boxes don't have exactly one golf bag:</h2>
+        <ul class="mt-2 space-y-1 text-sm text-warn-ink">
           {% for row, msg in result.warnings %}<li>Row {{ row }}: {{ msg }}</li>{% endfor %}
         </ul>
       </div>
     {% endif %}
-    <div class="mt-4 rounded-2xl bg-emerald-50 p-4 ring-1 ring-emerald-200">
-      <h2 class="font-semibold text-emerald-900">Imported into:</h2>
+    <div class="mt-4 rounded-2xl bg-mint p-4 ring-1 ring-line-strong">
+      <h2 class="font-semibold text-primary-hover">Imported into:</h2>
       <div class="mt-2 flex flex-wrap gap-2">
-        {% for box in result.boxes %}<a href="{% url 'box_detail' box.pk %}" class="rounded-lg bg-white px-3 py-1.5 text-sm font-semibold ring-1 ring-emerald-300">{{ box.title }}{% if box in result.created_boxes %} (new){% endif %}</a>{% endfor %}
+        {% for box in result.boxes %}<a href="{% url 'box_detail' box.pk %}" class="rounded-lg bg-card px-3 py-1.5 text-sm font-semibold ring-1 ring-line-strong">{{ box.title }}{% if box in result.created_boxes %} (new){% endif %}</a>{% endfor %}
       </div>
     </div>
   {% endif %}
@@ -39,9 +39,9 @@
 
 <div class="card mt-6 p-5 text-sm">
   <h2 class="font-semibold">File format</h2>
-  <p class="mt-1 text-stone-600">UTF-8 or Shift-JIS CSV with a header row. One file can hold several boxes. Required: <code>box</code>, plus <code>item_name</code> or <code>club_option</code> on each row.</p>
+  <p class="mt-1 text-ink-muted">UTF-8 or Shift-JIS CSV with a header row. One file can hold several boxes. Required: <code>box</code>, plus <code>item_name</code> or <code>club_option</code> on each row.</p>
   <div class="mt-2 overflow-x-auto"><code class="whitespace-nowrap text-xs">box,kind,item_name,color,club_option,flex,qty,customer,note</code></div>
-  <ul class="mt-2 list-disc space-y-0.5 pl-5 text-stone-600">
+  <ul class="mt-2 list-disc space-y-0.5 pl-5 text-ink-muted">
     <li><b>box</b>: cargo code + number, e.g. <code>GN-3</code>. The cargo must exist; new boxes are created.</li>
     <li><b>kind</b>: <code>bag</code> for the box's golf bag (bag name in <code>item_name</code>, plus <code>color</code>, <code>customer</code>, <code>note</code>); empty for the items inside the bag. <b>Each box needs exactly one bag row</b> (or already has its bag when you add items to it); a box with no bag or two bags is rejected with its row numbers.</li>
     <li><b>club_option</b>: one label, e.g. <code>Driver 10.5</code>, <code>Driver head 9.5</code>, <code>Iron · Graphite 5</code>, <code>Iron Steel</code>, <code>Wedge 52°</code>, <code>Wood 3W</code> (or <code>wood 3</code>, <code>3W</code>), <code>Hybrid 4</code> (or <code>4H</code>), <code>Putter 34</code> (the °, · and ″ are optional). Labels come from Admin → Club options.</li>

@@ -1,9 +1,9 @@
 {% load tracker_tags %}
 <div class="mb-6 flex flex-wrap items-end justify-between gap-3">
   <div>
-    {% if eyebrow %}<p class="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">{{ eyebrow }}</p>{% endif %}
-    <h1 class="text-2xl font-extrabold tracking-tight text-stone-900 sm:text-3xl">{{ title }}</h1>
-    {% if subtitle %}<p class="mt-1 text-sm text-stone-500">{{ subtitle }}</p>{% endif %}
+    {% if eyebrow %}<p class="text-xs font-bold uppercase tracking-[0.16em] text-primary">{{ eyebrow }}</p>{% endif %}
+    <h1 class="text-2xl font-extrabold tracking-tight text-ink sm:text-3xl">{{ title }}</h1>
+    {% if subtitle %}<p class="mt-1 text-sm text-ink-muted">{{ subtitle }}</p>{% endif %}
   </div>
   {% if show_add and can_edit_japan %}
     <button class="btn btn-primary" hx-get="{% url 'box_create' %}" hx-target="#modal">{% icon "plus" %} Add box</button>

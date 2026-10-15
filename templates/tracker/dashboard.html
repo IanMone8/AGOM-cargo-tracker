@@ -7,30 +7,30 @@
 
 <div class="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
   {% url 'cargo_history' as cargo_url %}{% url 'box_list' as boxes_url %}
-  {% include "tracker/partials/stat_card.html" with tone="peach" href=cargo_url title="Cargos" value=cargo_count caption="Sent from Japan" icon_file="plane.webp" %}
-  {% include "tracker/partials/stat_card.html" with tone="lavender" href=boxes_url title="Total boxes" value=total_box_count caption="Across all cargos" icon_file="boxes.webp" %}
-  {% include "tracker/partials/stat_card.html" with tone="green" href=boxes_url|add:"?status=checked" title="Checked in Myanmar" value=checked_box_count total=total_box_count caption="Finished box checks" icon_file="box-checked.webp" %}
-  {% include "tracker/partials/stat_card.html" with tone="cream" href="#needs-review" title="Needs review" value=mismatch_count caption="Boxes with differences" icon_file="warning.webp" %}
+  {% include "tracker/partials/stat_card.html" with tone="sage" href=cargo_url title="Cargos" value=cargo_count caption="Sent from Japan" icon_file="plane.webp" %}
+  {% include "tracker/partials/stat_card.html" with tone="mint" href=boxes_url title="Total boxes" value=total_box_count caption="Across all cargos" icon_file="boxes.webp" %}
+  {% include "tracker/partials/stat_card.html" with tone="cream" href=boxes_url|add:"?status=checked" title="Checked in Myanmar" value=checked_box_count total=total_box_count caption="Finished box checks" icon_file="box-checked.webp" %}
+  {% include "tracker/partials/stat_card.html" with tone="sand" href="#needs-review" title="Needs review" value=mismatch_count caption="Boxes with differences" icon_file="warning.webp" %}
 </div>
 
 <div class="mt-6 grid gap-6 lg:grid-cols-5">
   <section id="needs-review" class="min-w-0 lg:col-span-3">
     <div class="mb-3 flex items-center justify-between">
       <h2 class="text-lg font-bold">Waiting for check or review</h2>
-      <a href="{% url 'box_list' %}?status=arrived" class="text-sm font-semibold text-emerald-700">View all</a>
+      <a href="{% url 'box_list' %}?status=arrived" class="text-sm font-semibold text-primary">View all</a>
     </div>
     <div class="space-y-3">{% for box in needs_review %}{% include "tracker/partials/box_card.html" %}{% empty %}
-      <div class="card p-6 text-center text-sm text-stone-500">Nothing to review – every arrived box is checked. ⛳</div>{% endfor %}</div>
+      <div class="card p-6 text-center text-sm text-ink-muted">Nothing to review – every arrived box is checked. ⛳</div>{% endfor %}</div>
 
     <h2 class="mb-3 mt-6 text-lg font-bold">In transit</h2>
     <div class="space-y-3">{% for box in in_transit %}{% include "tracker/partials/box_card.html" %}{% empty %}
-      <div class="card p-6 text-center text-sm text-stone-500">No boxes on the way.</div>{% endfor %}</div>
+      <div class="card p-6 text-center text-sm text-ink-muted">No boxes on the way.</div>{% endfor %}</div>
   </section>
 
   <section class="min-w-0 lg:col-span-2">
     <h2 class="mb-3 text-lg font-bold">Recently updated</h2>
     <div class="space-y-3">{% for box in recent %}{% include "tracker/partials/box_card.html" with compact=True %}{% empty %}
-      <div class="card p-6 text-center text-sm text-stone-500">No boxes yet.</div>{% endfor %}</div>
+      <div class="card p-6 text-center text-sm text-ink-muted">No boxes yet.</div>{% endfor %}</div>
   </section>
 </div>
 {% endblock %}

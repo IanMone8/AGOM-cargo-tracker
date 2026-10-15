@@ -1,19 +1,19 @@
-<form id="item-{{ item.pk }}" class="card border-l-4 border-l-orange-400 p-4"
+<form id="item-{{ item.pk }}" class="card border-l-4 border-l-warn p-4"
       hx-post="{% url 'item_check' item.pk %}" hx-target="this" hx-swap="outerHTML">
   <input type="hidden" name="result" value="wrong_qty">
-  <div class="font-bold">{{ item.title }} <span class="font-medium text-stone-500">expected ×{{ item.qty }}</span></div>
-  {% if error %}<p class="mt-1 text-sm text-red-600">{{ error }}</p>{% endif %}
+  <div class="font-bold">{{ item.title }} <span class="font-medium text-ink-muted">expected ×{{ item.qty }}</span></div>
+  {% if error %}<p class="mt-1 text-sm text-danger-ink">{{ error }}</p>{% endif %}
   <div class="mt-3 grid grid-cols-3 gap-2">
-    <label class="text-[0.8rem] font-semibold text-stone-600">Received
+    <label class="text-[0.8rem] font-semibold text-ink-muted">Received
       <input type="number" name="received_qty" min="0" inputmode="numeric" required autofocus
              value="{{ item.receive_check.received_qty|default_if_none:'' }}" class="field mt-1">
     </label>
-    <label class="col-span-2 text-[0.8rem] font-semibold text-stone-600">Note
+    <label class="col-span-2 text-[0.8rem] font-semibold text-ink-muted">Note
       <input name="note" value="{{ item.receive_check.note|default:'' }}" class="field mt-1">
     </label>
   </div>
   <div class="mt-3 flex gap-2">
-    <button class="btn flex-1 bg-orange-500 text-white hover:bg-orange-600">Save</button>
+    <button class="btn btn-save flex-1">Save</button>
     <button type="button" class="btn btn-ghost" hx-get="{% url 'item_row' item.pk %}" hx-target="#item-{{ item.pk }}" hx-swap="outerHTML">Cancel</button>
   </div>
 </form>

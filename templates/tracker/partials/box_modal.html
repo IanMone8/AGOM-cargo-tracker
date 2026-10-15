@@ -1,19 +1,19 @@
 {% load tracker_tags %}
 <div class="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="modal-title">
   <div class="modal-backdrop absolute inset-0" onclick="closeModal()"></div>
-  <form class="modal-panel relative flex max-h-[94vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-3xl bg-[#f4f6ef] shadow-2xl sm:rounded-3xl"
+  <form class="modal-panel relative flex max-h-[94vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-3xl bg-page shadow-2xl sm:rounded-3xl"
         hx-post="{% url 'box_create' %}" hx-target="#modal">
     <div class="modal-head flex items-center justify-between px-5 py-4">
       <div class="flex items-center gap-3">
         <div class="modal-icon grid h-10 w-10 place-items-center rounded-xl">{% icon "box" %}</div>
-        <div><h2 id="modal-title" class="text-lg font-bold leading-tight">Add box</h2><p class="text-xs text-emerald-900/70">Japan packing list</p></div>
+        <div><h2 id="modal-title" class="text-lg font-bold leading-tight">Add box</h2><p class="text-xs text-ink">Japan packing list</p></div>
       </div>
       <button type="button" class="rounded-lg p-2 hover:bg-white/50" onclick="closeModal()" aria-label="Close">{% icon "x" "w-6 h-6" %}</button>
     </div>
     <div class="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
       {% include "tracker/partials/box_form_body.html" %}
     </div>
-    <div class="flex gap-2 border-t border-stone-200 bg-white px-4 py-3 sm:px-6">
+    <div class="flex gap-2 border-t border-line bg-card px-4 py-3 sm:px-6">
       <button type="button" class="btn btn-ghost flex-1 sm:flex-none" onclick="closeModal()">Cancel</button>
       <button class="btn btn-save flex-1">{% icon "check" %} Save box</button>
     </div>

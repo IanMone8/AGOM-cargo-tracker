@@ -9,27 +9,26 @@ register = template.Library()
 
 BADGES = {
     # box status
-    "packed": "bg-slate-100 text-slate-700",
-    "shipped": "bg-sky-100 text-sky-800",
-    "arrived": "bg-amber-100 text-amber-800",
-    "checked": "bg-emerald-100 text-emerald-800",
+    "packed": "pill-neutral",
+    "shipped": "pill-info",
+    "arrived": "pill-warn",
+    "checked": "pill-ok",
     # check result
-    "matched": "bg-emerald-100 text-emerald-800",
-    "missing": "bg-red-100 text-red-800",
-    "wrong_qty": "bg-orange-100 text-orange-800",
-    # request status
-    "open": "bg-rose-100 text-rose-800",
-    "ordered": "bg-sky-100 text-sky-800",
-    "in_box": "bg-violet-100 text-violet-800",
-    "fulfilled": "bg-emerald-100 text-emerald-800",
+    "matched": "pill-ok",
+    "missing": "pill-danger",
+    "wrong_qty": "pill-warn",
+    # order (customer request) status
+    "open": "pill-warn",
+    "ordered": "pill-info",
+    "in_box": "pill-info",
+    "fulfilled": "pill-ok",
 }
 
 
 @register.filter
 def badge(value):
-    return "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold " + BADGES.get(
-        value, "bg-slate-100 text-slate-700"
-    )
+    """Status pill; colours come from the tokens in css/agom.css (all pass WCAG AA)."""
+    return "pill " + BADGES.get(value, "pill-neutral")
 
 
 # Outline icons (24x24, stroke) used in the sidebar, cards and buttons.
@@ -87,9 +86,10 @@ def static_v(path):
     return url
 
 
+# Customer avatars: the palette's tints with their AA text colour.
 AVATAR_COLORS = [
-    ("#dcfce7", "#166534"), ("#e0e7ff", "#3730a3"), ("#fef3c7", "#92400e"), ("#fce7f3", "#9d174d"),
-    ("#cffafe", "#155e75"), ("#ede9fe", "#5b21b6"), ("#ffedd5", "#9a3412"), ("#e2e8f0", "#334155"),
+    ("var(--mint)", "var(--ok-ink)"), ("var(--sage)", "var(--text)"), ("var(--cream)", "var(--warn-ink)"),
+    ("var(--sand)", "var(--warn-ink)"), ("var(--info-bg)", "var(--info-ink)"), ("var(--grad-to)", "var(--text)"),
 ]
 
 

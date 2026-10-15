@@ -1,30 +1,30 @@
 <section id="summary" {% if oob %}hx-swap-oob="true"{% endif %} class="card p-5">
   <div class="mb-2 flex items-center justify-between text-sm">
     <span class="font-bold">Myanmar check</span>
-    <span class="font-semibold text-stone-500">{{ summary.checked }}/{{ summary.total }} checked{% if summary.bags %} <span class="font-normal">(bag + {{ summary.inside }} item{{ summary.inside|pluralize }})</span>{% endif %}</span>
+    <span class="font-semibold text-ink-muted">{{ summary.checked }}/{{ summary.total }} checked{% if summary.bags %} <span class="font-normal">(bag + {{ summary.inside }} item{{ summary.inside|pluralize }})</span>{% endif %}</span>
   </div>
-  <div class="h-2.5 w-full overflow-hidden rounded-full bg-stone-100">
-    <div class="h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-700 transition-all" style="width: {% widthratio summary.checked summary.total|default:1 100 %}%"></div>
+  <div class="progress h-2.5 w-full overflow-hidden rounded-full">
+    <div class="h-full rounded-full transition-all" style="width: {% widthratio summary.checked summary.total|default:1 100 %}%"></div>
   </div>
-  <div class="mt-4 grid grid-cols-4 gap-2 text-center text-[0.7rem] font-semibold text-stone-600 sm:text-xs">
-    <div class="rounded-2xl bg-emerald-50 py-2.5"><div class="text-xl font-extrabold text-emerald-700">{{ summary.matched }}</div>Matched</div>
-    <div class="rounded-2xl bg-red-50 py-2.5"><div class="text-xl font-extrabold text-red-600">{{ summary.missing }}</div>Missing</div>
-    <div class="rounded-2xl bg-orange-50 py-2.5"><div class="text-xl font-extrabold text-orange-600">{{ summary.wrong_qty }}</div>Wrong qty</div>
-    <div class="rounded-2xl bg-violet-50 py-2.5"><div class="text-xl font-extrabold text-violet-600">{{ summary.extras }}</div>Extra</div>
+  <div class="mt-4 grid grid-cols-4 gap-2 text-center text-[0.7rem] font-semibold text-ink-muted sm:text-xs">
+    <div class="rounded-2xl bg-mint py-2.5"><div class="text-xl font-extrabold text-primary">{{ summary.matched }}</div>Matched</div>
+    <div class="rounded-2xl bg-danger-bg py-2.5"><div class="text-xl font-extrabold text-danger-ink">{{ summary.missing }}</div>Missing</div>
+    <div class="rounded-2xl bg-warn-bg py-2.5"><div class="text-xl font-extrabold text-warn-ink">{{ summary.wrong_qty }}</div>Wrong qty</div>
+    <div class="rounded-2xl bg-info-bg py-2.5"><div class="text-xl font-extrabold text-info-ink">{{ summary.extras }}</div>Extra</div>
   </div>
   {% if summary.problems or summary.extras %}
-    <div class="mt-4 border-t border-stone-100 pt-3">
-      <h3 class="mb-1 text-sm font-bold text-red-700">Mismatch summary</h3>
+    <div class="mt-4 border-t border-line pt-3">
+      <h3 class="mb-1 text-sm font-bold text-danger-ink">Mismatch summary</h3>
       <ul class="space-y-1 text-sm">
         {% for c in summary.problems %}
-          <li>• <b>{{ c.japan_item.title }}</b>{% if c.japan_item.item_name %} {{ c.japan_item.club_label }}{% endif %} — expected {{ c.japan_item.qty }}, got {{ c.received_qty }} <span class="text-stone-500">({{ c.get_result_display }}{% if c.note %}: {{ c.note }}{% endif %})</span></li>
+          <li>• <b>{{ c.japan_item.title }}</b>{% if c.japan_item.item_name %} {{ c.japan_item.club_label }}{% endif %} — expected {{ c.japan_item.qty }}, got {{ c.received_qty }} <span class="text-ink-muted">({{ c.get_result_display }}{% if c.note %}: {{ c.note }}{% endif %})</span></li>
         {% endfor %}
         {% for e in box.extra_items.all %}
-          <li>• <b>{{ e.description }}</b> ×{{ e.qty }} <span class="text-stone-500">(extra, not on Japan list)</span></li>
+          <li>• <b>{{ e.description }}</b> ×{{ e.qty }} <span class="text-ink-muted">(extra, not on Japan list)</span></li>
         {% endfor %}
       </ul>
     </div>
   {% elif summary.total and not summary.unchecked %}
-    <p class="mt-4 text-sm font-semibold text-emerald-700">✅ Everything matched.</p>
+    <p class="mt-4 text-sm font-semibold text-primary">✅ Everything matched.</p>
   {% endif %}
 </section>

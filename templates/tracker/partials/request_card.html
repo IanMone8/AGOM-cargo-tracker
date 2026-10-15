@@ -2,12 +2,12 @@
 <div id="request-{{ r.pk }}" class="card p-4">
   <div class="flex items-start justify-between gap-3">
     <div class="min-w-0">
-      <div class="flex items-center gap-2"><a href="{% url 'customer_by_name' %}?name={{ r.customer|urlencode }}" class="font-semibold text-emerald-800 underline-offset-2 hover:underline">{{ r.customer }}</a><span class="{{ r.status|badge }}">{{ r.get_status_display }}</span></div>
+      <div class="flex items-center gap-2"><a href="{% url 'customer_by_name' %}?name={{ r.customer|urlencode }}" class="font-semibold text-primary-hover underline-offset-2 hover:underline">{{ r.customer }}</a><span class="{{ r.status|badge }}">{{ r.get_status_display }}</span></div>
       <div class="text-sm">{{ r.type }} {{ r.item_name }}{% if r.flex %} · {{ r.flex }}{% endif %}{% if r.loft %} · {{ r.loft }}°{% endif %} <b>×{{ r.qty }}</b></div>
-      {% if r.note %}<div class="text-xs italic text-stone-500">{{ r.note }}</div>{% endif %}
+      {% if r.note %}<div class="text-xs italic text-ink-muted">{{ r.note }}</div>{% endif %}
       {% if r.japan_item %}
-        <div class="mt-1 text-xs text-violet-700">📦 In <a class="font-semibold underline" href="{% url 'box_detail' r.box_id %}">{{ r.box.title }}</a>: {{ r.japan_item.title }} ×{{ r.japan_item.qty }}
-          <button class="ml-1 text-stone-500 underline" hx-post="{% url 'request_detach' r.pk %}" hx-target="#request-{{ r.pk }}" hx-swap="outerHTML">detach</button></div>
+        <div class="mt-1 text-xs text-info-ink">📦 In <a class="font-semibold underline" href="{% url 'box_detail' r.box_id %}">{{ r.box.title }}</a>: {{ r.japan_item.title }} ×{{ r.japan_item.qty }}
+          <button class="ml-1 text-ink-muted underline" hx-post="{% url 'request_detach' r.pk %}" hx-target="#request-{{ r.pk }}" hx-swap="outerHTML">detach</button></div>
       {% endif %}
     </div>
   </div>
@@ -17,7 +17,7 @@
       {% for value, label in status_choices %}<option value="{{ value }}" {% if r.status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
     </select>
     {% if not r.japan_item %}
-      <button class="btn bg-violet-50 !py-1.5 text-violet-800 hover:bg-violet-100"
+      <button class="btn btn-info-soft !py-1.5"
               hx-get="{% url 'request_attach' r.pk %}" hx-target="#attach-{{ r.pk }}">📦 Attach to box item</button>
     {% endif %}
   </div>

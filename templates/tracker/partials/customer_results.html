@@ -13,7 +13,7 @@
   </div>
   <div role="rowgroup" class="crm-body">
     {% include "tracker/partials/customer_rows.html" %}
-    {% if not customers %}<p class="px-4 py-10 text-center text-sm text-stone-500">No customers match.</p>{% endif %}
+    {% if not customers %}<p class="px-4 py-10 text-center text-sm text-ink-muted">No customers match.</p>{% endif %}
   </div>
 </div>
-<p class="mt-2 px-1 text-xs font-medium text-stone-500">Showing <span id="crm-shown">{{ shown_count }}</span> of {{ match_count }}</p>
+<p class="mt-2 px-1 text-xs font-medium text-ink-muted">Showing <span id="crm-shown">{{ shown_count }}</span> of {{ match_count }}</p>

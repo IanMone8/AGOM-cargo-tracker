@@ -1,11 +1,11 @@
 {% load tracker_tags %}{# The golf bag card (Add box modal and the box page). Context: bag_form, optional form (box form, for the owner override) #}
-<div class="bag-card card border-l-4 border-l-emerald-600 p-4">
+<div class="bag-card card border-l-4 border-l-ok p-4">
   <div class="mb-3 flex flex-wrap items-center gap-2">
-    <span class="grid h-8 w-8 place-items-center rounded-full bg-emerald-900 text-white">{% icon "bag" "w-[1.1rem] h-[1.1rem]" %}</span>
+    <span class="grid h-8 w-8 place-items-center rounded-full bg-primary text-white">{% icon "bag" "w-[1.1rem] h-[1.1rem]" %}</span>
     <span class="text-sm font-bold">Golf bag</span>
-    <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[0.7rem] font-semibold text-emerald-800">1 per box</span>
+    <span class="rounded-full bg-mint px-2 py-0.5 text-[0.7rem] font-semibold text-primary-hover">1 per box</span>
   </div>
-  {% for e in bag_form.non_field_errors %}<p class="mb-2 text-xs font-medium text-red-600">{{ e }}</p>{% endfor %}
+  {% for e in bag_form.non_field_errors %}<p class="mb-2 text-xs font-medium text-danger-ink">{{ e }}</p>{% endfor %}
   <div class="grid grid-cols-2 gap-3">
     <div class="col-span-2">{% include "tracker/_field.html" with field=bag_form.item_name %}</div>
     <div class="col-span-2 sm:col-span-1">{% include "tracker/_field.html" with field=bag_form.color %}</div>
@@ -13,7 +13,7 @@
     <div class="col-span-2">{% include "tracker/_field.html" with field=bag_form.note %}</div>
   </div>
   {% if form.allow_no_bag %}
-    <label class="mt-3 flex items-start gap-2 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">
+    <label class="mt-3 flex items-start gap-2 rounded-xl bg-warn-bg p-3 text-xs text-warn-ink">
       {{ form.allow_no_bag }}
       <span><b>{{ form.allow_no_bag.label }}</b><br>{{ form.allow_no_bag.help_text }}</span>
     </label>

@@ -435,7 +435,7 @@ class DashboardStatCardTests(BaseTest):
         self.assertNotIn("{#", html)  # no template comment leaking into the page
         self.assertNotIn("Dashboard stat card", html)
         cards = re.findall(r'<a href="[^"]*" data-stat="(\w+)".*?</a>', html, re.S)
-        self.assertEqual(cards, ["peach", "lavender", "green", "cream"])
+        self.assertEqual(cards, ["sage", "mint", "cream", "sand"])
         expected = [("Cargos", "2", "Sent from Japan", "plane"),
                     ("Total boxes", "2", "Across all cargos", "boxes"),
                     ("Checked in Myanmar", "1", "Finished box checks", "box-checked"),
@@ -452,7 +452,7 @@ class DashboardStatCardTests(BaseTest):
                 self.assertIn("object-contain", block)
                 self.assertIn("onerror=\"this.style.display='none'\"", block)
         # "1 / 2" with a smaller, muted total only on the Checked card
-        self.assertRegex(blocks[2], r'class="stat-total[^"]*text-stone-900/35[^"]*">/ 2</span>')
+        self.assertRegex(blocks[2], r'class="stat-total[^"]*text-ink-muted[^"]*">/ 2</span>')
         self.assertNotIn("stat-total", blocks[0] + blocks[1] + blocks[3])
 
 
@@ -1267,7 +1267,7 @@ class GolfBagTests(BaseTest):
         bag.save()
         self.client.force_login(self.owner)
         html = self.client.get(reverse("box_detail", args=[self.box.pk])).content.decode()
-        self.assertIn("GN-3 · Titleist Stand Bag", html.replace('<span class="font-semibold text-emerald-100"> · ', " · "))
+        self.assertIn("GN-3 · Titleist Stand Bag", html.replace('<span class="font-semibold text-primary-hover"> · ', " · "))
         self.assertLess(html.index(f'id="item-{bag.pk}"'), html.index(f'id="item-{self.item1.pk}"'))
         self.assertIn("data-bag", html)
         self.assertIn("Items inside the bag", html)
@@ -1490,3 +1490,74 @@ class CustomerRequestsPageRemovedTests(BaseTest):
         self.htmx(self.owner, reverse("request_attach", args=[req.pk]), {"japan_item": self.item1.pk})
         req.refresh_from_db()
         self.assertEqual(req.japan_item, self.item1)
+
+
+class PaletteTests(TestCase):
+    """One colour palette: tokens in agom.css, used everywhere, readable (WCAG AA)."""
+
+    BASE = __import__("pathlib").Path(__file__).resolve().parent.parent
+
+    def tokens(self):
+        import re
+        css = (self.BASE / "static/css/agom.css").read_text()
+        root = css[css.index(":root {"):css.index("}", css.index(":root {"))]
+        return dict(re.findall(r"--([\w-]+):\s*(#[0-9A-Fa-f]{6})", root))
+
+    @staticmethod
+    def contrast(a, b):
+        def lum(h):
+            c = [int(h[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+            c = [x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4 for x in c]
+            return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+        hi, lo = sorted([lum(a), lum(b)], reverse=True)
+        return (hi + 0.05) / (lo + 0.05)
+
+    def test_requested_tokens(self):
+        t = {k: v.upper() for k, v in self.tokens().items()}
+        expected = {"bg": "#F7F9F0", "card": "#FFFFFF", "card-border": "#E3EEDB", "grad-from": "#F4F7E9",
+                    "grad-to": "#C4E6C9", "primary": "#3A7D52", "primary-hover": "#2F6B45", "text": "#1F3A2B",
+                    "text-muted": "#5B6B60", "sage": "#EEF5E3", "mint": "#E3F1E6", "cream": "#F6F4E6",
+                    "sand": "#F6ECDD", "ok": "#3A7D52", "ok-bg": "#E3F1E6", "warn": "#9A6B22", "warn-bg": "#F7EEDB",
+                    "danger": "#B4473B", "danger-bg": "#F6E3E0", "info": "#2F7A72", "info-bg": "#E1F0EE"}
+        for name, value in expected.items():
+            self.assertEqual(t.get(name), value, name)
+
+    def test_text_contrast_aa(self):
+        t = self.tokens()
+        white = "#FFFFFF"
+        pairs = {
+            # pills and tinted check buttons: ink on tint
+            "ok pill": ("ok-ink", "ok-bg"), "warn pill": ("warn-ink", "warn-bg"),
+            "danger pill": ("danger-ink", "danger-bg"), "info pill": ("info-ink", "info-bg"),
+            "neutral pill": ("text-muted", "sage"), "viber pill": ("viber-ink", "viber-bg"),
+            # body text
+            "text on bg": ("text", "bg"), "muted on card": ("text-muted", "card"), "muted on bg": ("text-muted", "bg"),
+            "link on card": ("primary", "card"), "link on bg": ("primary", "bg"),
+            "muted on stat tints": ("text-muted", "sand"), "text on gradient": ("text", "grad-to"),
+            "soft button": ("primary-hover", "mint"),
+        }
+        for name, (fg, bg) in pairs.items():
+            with self.subTest(name):
+                self.assertGreaterEqual(self.contrast(t[fg], t[bg]), 4.5)
+        for fill in ("primary", "primary-hover", "ok", "warn", "danger", "info"):   # white text on solid buttons
+            with self.subTest(fill):
+                self.assertGreaterEqual(self.contrast(white, t[fill]), 4.5)
+
+    def test_templates_use_tokens_not_hard_coded_colours(self):
+        import re
+        bad = re.compile(r"(?<![\w-])(?:bg|text|border|border-l|ring|from|to|via|divide|accent)-"
+                         r"(?:emerald|red|violet|purple|amber|orange|sky|stone|slate|rose|indigo|pink|blue)-\d")
+        for path in (self.BASE / "templates").rglob("*.html"):
+            html = path.read_text()
+            with self.subTest(path.name):
+                self.assertIsNone(bad.search(html))
+                hexes = [h for h in re.findall(r"#[0-9A-Fa-f]{6}\b", html) if path.name != "base.html"]
+                self.assertEqual(hexes, [])
+        tags = (self.BASE / "tracker/templatetags/tracker_tags.py").read_text()
+        self.assertNotRegex(tags, r"violet|purple|indigo|#[0-9a-fA-F]{6}")
+
+    def test_badges_use_status_pills(self):
+        from .templatetags.tracker_tags import badge
+        self.assertEqual(badge("in_box"), "pill pill-info")      # was purple
+        self.assertEqual(badge("missing"), "pill pill-danger")
+        self.assertEqual(badge("checked"), "pill pill-ok")

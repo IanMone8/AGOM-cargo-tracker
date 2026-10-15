@@ -7,13 +7,13 @@
     </div>
     <div role="cell" class="crm-c-phone">
       {% if c.phone %}<a href="tel:{{ c.phone|cut:' ' }}" class="crm-pill crm-pill-phone">{% icon "phone" "w-3.5 h-3.5" %}{{ c.phone }}</a>
-      {% else %}<span class="text-xs text-stone-400">—</span>{% endif %}
+      {% else %}<span class="text-xs text-ink-muted">—</span>{% endif %}
 {% if page > 1 %}<span id="crm-shown" hx-swap-oob="true">{{ shown_count }}</span>{% endif %}
     </div>
     <div role="cell" class="crm-c-address crm-col-address" title="{{ c.address }}">{{ c.address|default:"—" }}</div>
     <div role="cell" class="crm-c-viber crm-col-viber">
-      {% if c.viber_member %}<span class="crm-pill bg-violet-100 text-violet-700"><span class="xl:hidden">Viber</span><span class="hidden xl:inline">Viber member</span></span>
-      {% else %}<span class="crm-pill bg-stone-100 text-stone-500"><span class="xl:hidden">No</span><span class="hidden xl:inline">Not member</span></span>{% endif %}
+      {% if c.viber_member %}<span class="crm-pill pill-viber"><span class="xl:hidden">Viber</span><span class="hidden xl:inline">Viber member</span></span>
+      {% else %}<span class="crm-pill bg-sage text-ink-muted"><span class="xl:hidden">No</span><span class="hidden xl:inline">Not member</span></span>{% endif %}
     </div>
     <div role="cell" class="crm-c-orders" title="{{ c.request_count }} request{{ c.request_count|pluralize }} + {{ c.item_count }} item{{ c.item_count|pluralize }} packed">{{ c.order_count }}</div>
     <div role="cell" class="crm-c-status"><span class="crm-tag crm-tag-{{ c.tag.0 }}"><i></i>{{ c.tag.1 }}</span></div>
@@ -41,7 +41,7 @@
 {% if more_url %}
   <div class="crm-more">
     <button type="button" class="btn btn-soft" hx-get="{{ more_url }}" hx-target="closest .crm-more" hx-swap="outerHTML">
-      Load more <span class="text-stone-500">({{ shown_count }} of {{ match_count }})</span>
+      Load more <span class="text-ink-muted">({{ shown_count }} of {{ match_count }})</span>
     </button>
   </div>
 {% endif %}

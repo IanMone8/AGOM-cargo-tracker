@@ -23,6 +23,16 @@ It uses SQLite in development and Postgres in production (via `DATABASE_URL`).
 Green golf theme with a left sidebar (Dashboard, Shipments, Cargo history, Customers, CSV import).
 On phones the sidebar becomes a slide-in menu and **Add box** is the ＋ in the top bar.
 Theme styles live in `static/css/agom.css`; Tailwind (CDN) handles layout.
+
+**Colours:** one palette, defined once as CSS variables at the top of `static/css/agom.css`
+(`--bg`, `--card`, `--card-border`, `--grad-from`/`--grad-to`, `--primary`/`--primary-hover`, `--text`/`--text-muted`,
+stat tints `--sage`/`--mint`/`--cream`/`--sand`, and status `--ok`/`--warn`/`--danger`/`--info` with a `-bg` tint and an
+`-ink` text shade). `static/js/tw-theme.js` exposes them to Tailwind, so templates write `text-ink-muted`, `bg-ok-bg`,
+`border-l-warn`… instead of hard-coded colours. Status pills use the `badge` filter (`pill pill-ok` etc.). The `-ink`
+shades exist because the status colours as given reach only ~4.1–4.35:1 as small text on their tints; the inks are the
+same hues darkened just enough for WCAG AA (≥ 4.5:1). Main action buttons are solid `--primary` with white text; the light
+gradient is for the menu, modal/page headers, the banner and Save buttons. Purple is only used for the Viber badge
+(Viber brand colour). `PaletteTests` checks the tokens, AA contrast and that templates use no hard-coded colours.
 The look is "3D-styled": raised cards with a light top edge and darker bottom edge, buttons that sit on a
 thick edge and press down when tapped, sunken inputs, and stat/box cards that tilt toward the mouse with a
 soft glare (desktop only; turned off when the device asks for reduced motion).

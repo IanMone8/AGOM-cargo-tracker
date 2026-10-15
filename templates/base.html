@@ -14,6 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <script src="{% static_v 'js/tw-theme.js' %}"></script>
   <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"></script>
   <link rel="stylesheet" href="{% static_v 'css/agom.css' %}">
 </head>
@@ -22,17 +23,17 @@
 {% with name=request.resolver_match.url_name %}
   <!-- Sidebar: fixed on desktop, slide-in drawer on phones -->
   <div id="sidebar-overlay" class="fixed inset-0 z-30 hidden bg-black/40 lg:hidden" onclick="toggleSidebar(false)"></div>
-  <aside id="sidebar" class="menubar fixed inset-y-0 left-0 z-40 flex w-72 -translate-x-full flex-col px-4 pb-5 pt-5 text-[#0f3b2c] transition-transform duration-200 lg:w-64 lg:translate-x-0">
+  <aside id="sidebar" class="menubar fixed inset-y-0 left-0 z-40 flex w-72 -translate-x-full flex-col px-4 pb-5 pt-5 text-ink transition-transform duration-200 lg:w-64 lg:translate-x-0">
     <div class="flex items-center justify-between px-2">
       <a href="{% url 'dashboard' %}" class="flex items-center gap-3">
-        <img src="{% static_v 'img/display/3d-logo.png' %}" alt="AGOM Golf Shop" width="64" height="64" class="h-16 w-16 shrink-0 rounded-2xl bg-white object-contain p-1 shadow-[inset_0_1px_0_#fff,0_3px_0_rgba(0,0,0,0.25),0_10px_18px_-8px_rgba(0,0,0,0.5)]" onerror="this.style.display='none'">
-        <span class="leading-tight"><span class="block text-xs font-semibold uppercase tracking-[0.18em] text-emerald-800">AGOM</span><span class="block text-base font-bold">Cargo Tracker</span></span>
+        <img src="{% static_v 'img/display/3d-logo.png' %}" alt="AGOM Golf Shop" width="64" height="64" class="h-16 w-16 shrink-0 rounded-2xl bg-card object-contain p-1 shadow-[inset_0_1px_0_#fff,0_3px_0_rgba(0,0,0,0.25),0_10px_18px_-8px_rgba(0,0,0,0.5)]" onerror="this.style.display='none'">
+        <span class="leading-tight"><span class="block text-xs font-semibold uppercase tracking-[0.18em] text-primary-hover">AGOM</span><span class="block text-base font-bold">Cargo Tracker</span></span>
       </a>
-      <button class="rounded-lg p-2 hover:bg-emerald-900/10 lg:hidden" onclick="toggleSidebar(false)" aria-label="Close menu">{% icon "x" %}</button>
+      <button class="rounded-lg p-2 hover:bg-mint lg:hidden" onclick="toggleSidebar(false)" aria-label="Close menu">{% icon "x" %}</button>
     </div>
 
     <nav class="mt-8 flex-1 space-y-1">
-      <p class="px-3 pb-1 text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-emerald-800">Overview</p>
+      <p class="px-3 pb-1 text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-primary-hover">Overview</p>
       <a href="{% url 'dashboard' %}" class="sidebar-link {% if name == 'dashboard' %}active{% endif %}">{% include "tracker/_nav_icon.html" with file="house.webp" fallback="home" %} Dashboard</a>
       <a href="{% url 'box_list' %}" class="sidebar-link {% if name == 'box_list' or name == 'box_detail' or name == 'box_edit' or name == 'box_create' %}active{% endif %}">{% include "tracker/_nav_icon.html" with file="flying-box.webp" fallback="box" %} Shipments</a>
       <a href="{% url 'cargo_history' %}" class="sidebar-link {% if name == 'cargo_history' %}active{% endif %}">{% include "tracker/_nav_icon.html" with file="calendar.webp" fallback="history" %} Cargo history</a>
@@ -40,7 +41,7 @@
       <a href="{% url 'customer_list' %}" class="sidebar-link {% if 'customer_' in name %}active{% endif %}">{% icon "contact" %} Customers</a>
       {% endif %}
       {% if can_import_csv %}
-      <p class="px-3 pb-1 pt-5 text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-emerald-800">Data</p>
+      <p class="px-3 pb-1 pt-5 text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-primary-hover">Data</p>
       <a href="{% url 'csv_import' %}" class="sidebar-link {% if 'csv' in name %}active{% endif %}">{% icon "upload" %} CSV import</a>
       {% endif %}
       {% if user.is_staff %}
@@ -50,10 +51,10 @@
 
     <div class="rounded-2xl bg-white/55 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_2px_0_rgba(15,59,44,0.12)]">
       <div class="flex items-center gap-3">
-        <div class="grid h-10 w-10 place-items-center rounded-full bg-emerald-800 font-bold uppercase text-white">{{ user.get_username|slice:":1" }}</div>
-        <div class="min-w-0 flex-1"><div class="truncate text-sm font-semibold">{{ user.get_username }}</div><div class="text-xs text-emerald-800">{{ role_name }}</div></div>
+        <div class="grid h-10 w-10 place-items-center rounded-full bg-primary font-bold uppercase text-white">{{ user.get_username|slice:":1" }}</div>
+        <div class="min-w-0 flex-1"><div class="truncate text-sm font-semibold">{{ user.get_username }}</div><div class="text-xs text-primary-hover">{{ role_name }}</div></div>
         <form method="post" action="{% url 'logout' %}">{% csrf_token %}
-          <button class="rounded-lg p-2 text-emerald-900 hover:bg-emerald-900/10" title="Log out" aria-label="Log out">{% icon "logout" %}</button>
+          <button class="rounded-lg p-2 text-primary-hover hover:bg-mint" title="Log out" aria-label="Log out">{% icon "logout" %}</button>
         </form>
       </div>
     </div>
@@ -61,14 +62,14 @@
 
   <div class="lg:pl-64">
     <!-- Mobile top bar -->
-    <header class="menubar sticky top-0 z-20 flex items-center justify-between px-4 py-3 text-[#0f3b2c] shadow-lg lg:hidden">
-      <button class="-ml-1 rounded-lg p-2 hover:bg-emerald-900/10" onclick="toggleSidebar(true)" aria-label="Open menu">{% icon "menu" "w-6 h-6" %}</button>
+    <header class="menubar sticky top-0 z-20 flex items-center justify-between px-4 py-3 text-ink shadow-lg lg:hidden">
+      <button class="-ml-1 rounded-lg p-2 hover:bg-mint" onclick="toggleSidebar(true)" aria-label="Open menu">{% icon "menu" "w-6 h-6" %}</button>
       <a href="{% url 'dashboard' %}" class="flex items-center gap-2">
-        <img src="{% static_v 'img/display/3d-logo.png' %}" alt="AGOM Golf Shop" width="36" height="36" class="h-9 w-9 rounded-lg bg-white object-contain p-0.5" onerror="this.style.display='none'">
+        <img src="{% static_v 'img/display/3d-logo.png' %}" alt="AGOM Golf Shop" width="36" height="36" class="h-9 w-9 rounded-lg bg-card object-contain p-0.5" onerror="this.style.display='none'">
         <span class="font-bold">Cargo Tracker</span>
       </a>
       {% if can_edit_japan %}
-        <button class="rounded-lg bg-white/60 p-2 text-emerald-900 shadow-[0_2px_0_rgba(15,59,44,0.15)] hover:bg-white/80" hx-get="{% url 'box_create' %}" hx-target="#modal" aria-label="Add box">{% icon "plus" "w-6 h-6" %}</button>
+        <button class="rounded-lg bg-white/60 p-2 text-primary-hover shadow-[0_2px_0_rgba(15,59,44,0.15)] hover:bg-white/80" hx-get="{% url 'box_create' %}" hx-target="#modal" aria-label="Add box">{% icon "plus" "w-6 h-6" %}</button>
       {% else %}<span class="w-10"></span>{% endif %}
     </header>
 
@@ -76,8 +77,8 @@
       {% if messages %}
         <div class="mb-5 space-y-2">
           {% for message in messages %}
-            <div class="card flex items-center gap-3 px-4 py-3 text-sm font-medium {% if message.tags == 'error' %}text-red-800{% else %}text-emerald-900{% endif %}">
-              <span class="{% if message.tags == 'error' %}text-red-600{% else %}text-emerald-600{% endif %}">{% if message.tags == 'error' %}{% icon "alert" %}{% else %}{% icon "check" %}{% endif %}</span>{{ message }}
+            <div class="card flex items-center gap-3 px-4 py-3 text-sm font-medium {% if message.tags == 'error' %}text-danger-ink{% else %}text-primary-hover{% endif %}">
+              <span class="{% if message.tags == 'error' %}text-danger-ink{% else %}text-primary{% endif %}">{% if message.tags == 'error' %}{% icon "alert" %}{% else %}{% icon "check" %}{% endif %}</span>{{ message }}
             </div>
           {% endfor %}
         </div>
