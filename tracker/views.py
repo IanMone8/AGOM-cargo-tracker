@@ -2,7 +2,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.core.exceptions import PermissionDenied
-from django.db.models import Count, OuterRef, Q, Subquery
+from django.db.models import Count, Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -493,44 +493,150 @@ def request_detach(request, pk):
 
 
 # --- Customers ------------------------------------------------------------------
-def customers_with_last_order(qs):
-    last_req = CustomerRequest.objects.filter(customer__iexact=OuterRef("name")).order_by("-created_at")
-    last_item = JapanItem.objects.filter(customer__iexact=OuterRef("name")).order_by("-box__created_at", "-id")
-    return qs.annotate(
-        last_req_item=Subquery(last_req.values("item_name")[:1]),
-        last_req_at=Subquery(last_req.values("created_at")[:1]),
-        last_req_status=Subquery(last_req.values("status")[:1]),
-        last_item_name=Subquery(last_item.values("item_name")[:1]),
-        last_item_cargo=Subquery(last_item.values("box__cargo__code")[:1]),
-        last_item_box=Subquery(last_item.values("box__box_no")[:1]),
-    )
+CUSTOMER_PAGE_SIZE = 25
+CUSTOMER_SORTS = {"name", "orders", "updated"}
+
+
+def _name_key(name):
+    return " ".join((name or "").split()).lower()
+
+
+def customer_rows(user, q="", viber="", orders=""):
+    """Customers with their order numbers, status tag and last update.
+
+    Orders are matched by name (requests + Japan items). Computed in Python:
+    a shop has dozens/hundreds of customers, so two queries cover everything.
+    """
+    qs = Customer.objects.all()
+    if q:
+        qs = qs.filter(Q(name__icontains=q) | Q(phone__icontains=q) | Q(address__icontains=q))
+    if viber in ("yes", "1"):
+        qs = qs.filter(viber_member=True)
+    elif viber == "no":
+        qs = qs.filter(viber_member=False)
+    customers = list(qs)
+
+    reqs, items = {}, {}
+    for r in CustomerRequest.objects.exclude(customer="").values("customer", "status", "updated_at"):
+        reqs.setdefault(_name_key(r["customer"]), []).append(r)
+    for i in visible_items(user).exclude(customer="").values("customer", "box__status", "box__updated_at"):
+        items.setdefault(_name_key(i["customer"]), []).append(i)
+
+    for c in customers:
+        r, it = reqs.get(_name_key(c.name), []), items.get(_name_key(c.name), [])
+        c.request_count, c.item_count = len(r), len(it)
+        c.order_count = len(r) + len(it)
+        c.open_count = sum(x["status"] != CustomerRequest.Status.FULFILLED for x in r)
+        c.in_box_count = sum(x["box__status"] != Box.Status.CHECKED for x in it)
+        if c.open_count:
+            c.tag = ("waiting", "Waiting")
+        elif c.in_box_count:
+            c.tag = ("in_box", "In box")
+        elif c.order_count:
+            c.tag = ("delivered", "All delivered")
+        else:
+            c.tag = ("none", "No orders")
+        stamps = [x["updated_at"] for x in r] + [x["box__updated_at"] for x in it]
+        c.last_update = max(stamps) if stamps else None
+
+    if orders == "open":
+        customers = [c for c in customers if c.open_count]
+    elif orders == "none":
+        customers = [c for c in customers if not c.open_count]
+    return customers
+
+
+def sort_customers(customers, sort, direction):
+    desc = direction == "desc"
+    if sort == "orders":
+        customers.sort(key=lambda c: (c.order_count, c.name.lower()), reverse=desc)
+    elif sort == "updated":
+        dated = sorted((c for c in customers if c.last_update), key=lambda c: c.last_update, reverse=desc)
+        customers[:] = dated + [c for c in customers if not c.last_update]  # never-updated last
+    else:
+        customers.sort(key=lambda c: c.name.lower(), reverse=desc)
+    customers.sort(key=lambda c: not c.favourite)  # stable: favourites first, order kept
+    return customers
+
+
+def _customer_table_context(request, params):
+    from urllib.parse import urlencode
+
+    sort = params["sort"] if params["sort"] in CUSTOMER_SORTS else "name"
+    direction = "desc" if params["dir"] == "desc" else "asc"
+    rows = sort_customers(customer_rows(request.user, params["q"], params["viber"], params["orders"]),
+                          sort, direction)
+    try:
+        page = max(1, int(params.get("page") or 1))
+    except ValueError:
+        page = 1
+    shown_to = page * CUSTOMER_PAGE_SIZE
+    base = {k: params[k] for k in ("q", "viber", "orders") if params[k]}
+
+    def url(**extra):
+        query = urlencode({**base, **{k: v for k, v in extra.items() if v}})
+        return reverse("customer_list") + (f"?{query}" if query else "")
+
+    sort_urls = {}
+    for col in CUSTOMER_SORTS:
+        # click the current column again to flip the direction; a new column starts sensible
+        if col == sort:
+            new_dir = "asc" if direction == "desc" else "desc"
+        else:
+            new_dir = "desc" if col in ("orders", "updated") else "asc"
+        sort_urls[col] = url(sort=col, dir=new_dir)
+    return {
+        **params,  # raw filter values first; computed values below win
+        "customers": rows[shown_to - CUSTOMER_PAGE_SIZE:shown_to],
+        "match_count": len(rows),
+        "shown_count": min(shown_to, len(rows)),
+        "more_url": url(sort=sort, dir=direction, page=page + 1) if shown_to < len(rows) else "",
+        "sort": sort,
+        "dir": direction,
+        "sort_urls": sort_urls,
+        "page": page,
+    }
+
+
+def _customer_params(source):
+    return {
+        "q": source.get("q", "").strip(),
+        "viber": source.get("viber", "") if source.get("viber", "") in ("yes", "no", "1") else "",
+        "orders": source.get("orders", "") if source.get("orders", "") in ("open", "none") else "",
+        "sort": source.get("sort", ""),
+        "dir": source.get("dir", ""),
+        "page": source.get("page", ""),
+    }
 
 
 @login_required
 @roles.require(roles.can_use_customers)
 def customer_list(request):
-    q = request.GET.get("q", "").strip()
-    qs = Customer.objects.all()
-    if q:
-        qs = qs.filter(Q(name__icontains=q) | Q(phone__icontains=q) | Q(address__icontains=q))
-    if request.GET.get("viber") == "1":
-        qs = qs.filter(viber_member=True)
-    status_labels = dict(CustomerRequest.Status.choices)
-    customers = list(customers_with_last_order(qs))
-    for c in customers:
-        c.last_req_status_label = status_labels.get(c.last_req_status, "")
-
     form = CustomerForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
         customer = form.save()
         messages.success(request, f"Customer {customer.name} added.")
         return redirect("customer_detail", pk=customer.pk)
 
-    ctx = {"customers": customers, "q": q, "viber": request.GET.get("viber") == "1",
-           "form": form, "show_form": request.method == "POST"}
+    ctx = _customer_table_context(request, _customer_params(request.GET))
+    if is_htmx(request) and ctx["page"] > 1:
+        return render(request, "tracker/partials/customer_rows.html", ctx)  # "Load more"
     if is_htmx(request) and request.headers.get("HX-Target") == "customer-results":
         return render(request, "tracker/partials/customer_results.html", ctx)
+    ctx.update(form=form, show_form=request.method == "POST", total_count=Customer.objects.count())
     return render(request, "tracker/customer_list.html", ctx)
+
+
+@login_required
+@roles.require(roles.can_use_customers)
+@require_POST
+def customer_favourite(request, pk):
+    customer = get_object_or_404(Customer, pk=pk)
+    customer.favourite = not customer.favourite
+    customer.save(update_fields=["favourite", "updated_at"])
+    params = _customer_params(request.POST)
+    params["page"] = ""
+    return render(request, "tracker/partials/customer_results.html", _customer_table_context(request, params))
 
 
 @login_required

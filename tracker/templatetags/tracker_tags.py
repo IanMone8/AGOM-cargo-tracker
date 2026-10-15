@@ -41,6 +41,9 @@ ICONS = {
     "contact": "M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Zm5 9a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Zm-4 3c.6-1.7 2.2-2.5 4-2.5s3.4.8 4 2.5M15 10h3m-3 3h3",
     "phone": "M5 4h3l2 5-2.5 1.5a11 11 0 0 0 6 6L15 14l5 2v3a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2",
     "pin": "M12 21s-7-6.2-7-11.5a7 7 0 1 1 14 0C19 14.8 12 21 12 21Zm0-9a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z",
+    "search": "M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Zm5.3-2.2L21 21",
+    "chat": "M4 5h16v11H8l-4 4V5Z",
+    "dots": "M6.5 12a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm7 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm7 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z",
     "upload": "M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M12 15V4m0 0L7.5 8.5M12 4l4.5 4.5",
     "cog": "M10.3 4.3a1.7 1.7 0 0 1 3.4 0 1.7 1.7 0 0 0 2.6 1 1.7 1.7 0 0 1 2.4 2.4 1.7 1.7 0 0 0 1 2.6 1.7 1.7 0 0 1 0 3.4 1.7 1.7 0 0 0-1 2.6 1.7 1.7 0 0 1-2.4 2.4 1.7 1.7 0 0 0-2.6 1 1.7 1.7 0 0 1-3.4 0 1.7 1.7 0 0 0-2.6-1 1.7 1.7 0 0 1-2.4-2.4 1.7 1.7 0 0 0-1-2.6 1.7 1.7 0 0 1 0-3.4 1.7 1.7 0 0 0 1-2.6 1.7 1.7 0 0 1 2.4-2.4 1.7 1.7 0 0 0 2.6-1ZM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z",
     "logout": "M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l5-5-5-5m5 5H3",
@@ -78,3 +81,42 @@ def static_v(path):
         if found:
             url += f"?v={int(os.path.getmtime(found))}"
     return url
+
+
+AVATAR_COLORS = [
+    ("#dcfce7", "#166534"), ("#e0e7ff", "#3730a3"), ("#fef3c7", "#92400e"), ("#fce7f3", "#9d174d"),
+    ("#cffafe", "#155e75"), ("#ede9fe", "#5b21b6"), ("#ffedd5", "#9a3412"), ("#e2e8f0", "#334155"),
+]
+
+
+@register.filter
+def initials(name):
+    parts = (name or "").split()
+    return ("".join(p[0] for p in parts[:2]) or "?").upper()
+
+
+@register.filter
+def avatar_style(name):
+    """Stable pastel colour per name."""
+    import zlib
+
+    bg, fg = AVATAR_COLORS[zlib.crc32((name or "").lower().encode()) % len(AVATAR_COLORS)]
+    return f"background:{bg};color:{fg}"
+
+
+@register.filter
+def ago(value):
+    """'5 days ago' – one unit only; 'just now' under a minute."""
+    if not value:
+        return ""
+    from django.utils import timezone
+    from django.utils.timesince import timesince
+
+    if (timezone.now() - value).total_seconds() < 60:
+        return "just now"
+    return f"{timesince(value, depth=1)} ago"
+
+
+@register.filter
+def get_item(mapping, key):
+    return mapping.get(key, "")

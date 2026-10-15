@@ -672,25 +672,6 @@ class CustomerPageTests(BaseTest):
                 self.assertEqual(self.client.get(url).status_code, 403)
         self.assertEqual(self.client.post(reverse("customer_list"), {"name": "X"}).status_code, 403)
 
-    def test_list_shows_contact_viber_and_last_order(self):
-        CustomerRequest.objects.create(customer="ko aung", item_name="Old wedge", status="fulfilled")
-        CustomerRequest.objects.create(customer="Ko Aung", item_name="Qi10 Driver", flex="S")
-        self.client.force_login(self.myanmar)
-        r = self.client.get(reverse("customer_list"))
-        self.assertContains(r, reverse("customer_detail", args=[self.ko.pk]))
-        for text in ("Ko Aung", "No. 12, Bahan, Yangon", 'href="tel:09 7712 3456"', "Viber member", "Qi10 Driver"):
-            self.assertContains(r, text)
-        self.assertNotContains(r, "Old wedge")  # only the latest order is shown
-        self.assertContains(self.client.get(reverse("customer_list")), reverse("customer_list"))  # sidebar link
-
-    def test_last_order_falls_back_to_box_item(self):
-        self.item1.customer = "Ko Aung"
-        self.item1.save()
-        self.client.force_login(self.owner)
-        r = self.client.get(reverse("customer_list"))
-        self.assertContains(r, "TSR2")
-        self.assertContains(r, "in GN-3")
-
     def test_search_and_viber_filter(self):
         self.Customer.objects.create(name="Ma Hnin", phone="09 111", viber_member=False)
         self.client.force_login(self.owner)
@@ -698,7 +679,7 @@ class CustomerPageTests(BaseTest):
                             HTTP_HX_TARGET="customer-results")
         self.assertContains(r, "Ko Aung")
         self.assertNotContains(r, "Ma Hnin")
-        r = self.client.get(reverse("customer_list"), {"viber": "1"})
+        r = self.client.get(reverse("customer_list"), {"viber": "yes"})
         self.assertContains(r, "Ko Aung")
         self.assertNotContains(r, "Ma Hnin")
 
@@ -781,3 +762,94 @@ class LogoTests(BaseTest):
         html = self.client.get(reverse("dashboard")).content.decode()
         self.assertEqual(html.count('src="/static/img/display/3d-logo.png'), 2)  # sidebar + phone header
         self.assertNotIn("agom-logo", html)
+
+
+class CustomerTableTests(BaseTest):
+    """CRM-style customer table: columns, status tags, sort, filters, favourites, load more."""
+
+    def setUp(self):
+        super().setUp()
+        from .models import Customer
+        self.Customer = Customer
+        self.ship()
+        self.ko = Customer.objects.create(name="Ko Aung", address="No. 12, Inya Road, Bahan Township, Yangon",
+                                          phone="09 7712 3456", viber_member=True)
+        self.ma = Customer.objects.create(name="Ma Hnin", phone="09 222")
+        self.tun = Customer.objects.create(name="U Tun")
+        self.zaw = Customer.objects.create(name="Ko Zaw")
+        CustomerRequest.objects.create(customer="Ko Aung", item_name="Qi10")                      # open -> Waiting
+        self.item1.customer = "ma hnin"                                                           # in a shipped box -> In box
+        self.item1.save()
+        CustomerRequest.objects.create(customer="U Tun", item_name="Putter", status="fulfilled")  # all done
+        self.client.force_login(self.myanmar)
+
+    def rows(self, **params):
+        import re
+        html = self.client.get(reverse("customer_list"), params).content.decode()
+        return re.findall(r'class="crm-link" title="([^"]+)"', html), html
+
+    def test_columns_and_status_tags(self):
+        names, html = self.rows()
+        self.assertIn("4 customers", html)
+        self.assertIn('class="crm-avatar"', html)
+        self.assertIn(">KA</span>", html)                                   # initials
+        self.assertIn('href="tel:0977123456"', html)                        # tap to call
+        self.assertIn('title="No. 12, Inya Road, Bahan Township, Yangon"', html)  # full address on hover
+        self.assertIn("Viber member", html)
+        self.assertIn("Not member", html)
+        self.assertIn('crm-tag-waiting"><i></i>Waiting', html)
+        self.assertIn('crm-tag-in_box"><i></i>In box', html)
+        self.assertIn('crm-tag-delivered"><i></i>All delivered', html)
+        self.assertIn('crm-tag-none"><i></i>No orders', html)
+        self.assertIn("just now", html)                                     # last update
+        for label in (">Open<", ">Edit<", ">Call 09 7712 3456<"):
+            self.assertIn(label, html)
+
+    def test_orders_count_and_sorting(self):
+        CustomerRequest.objects.create(customer="Ko Aung", item_name="Bag")
+        names, html = self.rows()
+        self.assertEqual(names, ["Ko Aung", "Ko Zaw", "Ma Hnin", "U Tun"])   # default: name A–Z
+        self.assertIn('aria-sort="ascending"', html)
+        names, _ = self.rows(sort="name", dir="desc")
+        self.assertEqual(names, ["U Tun", "Ma Hnin", "Ko Zaw", "Ko Aung"])
+        names, html = self.rows(sort="orders", dir="desc")
+        self.assertEqual(names[0], "Ko Aung")                               # 2 requests
+        self.assertEqual(names[-1], "Ko Zaw")                               # 0 orders
+        self.assertIn("▼", html)
+        names, _ = self.rows(sort="updated", dir="desc")
+        self.assertEqual(names[-1], "Ko Zaw")                               # never updated goes last
+
+    def test_filters(self):
+        self.assertEqual(self.rows(viber="yes")[0], ["Ko Aung"])
+        self.assertNotIn("Ko Aung", self.rows(viber="no")[0])
+        self.assertEqual(self.rows(orders="open")[0], ["Ko Aung"])
+        self.assertEqual(self.rows(orders="none")[0], ["Ko Zaw", "Ma Hnin", "U Tun"])
+        self.assertEqual(self.rows(q="inya")[0], ["Ko Aung"])
+
+    def test_favourite_toggle_sorts_to_top(self):
+        r = self.client.post(reverse("customer_favourite", args=[self.tun.pk]), {"sort": "name", "dir": "asc"},
+                             HTTP_HX_REQUEST="true")
+        self.assertEqual(r.status_code, 200)
+        self.tun.refresh_from_db()
+        self.assertTrue(self.tun.favourite)
+        self.assertIn('aria-pressed="true"', r.content.decode())
+        self.assertEqual(self.rows()[0][0], "U Tun")
+        self.assertEqual(self.rows(sort="name", dir="desc")[0][0], "U Tun")
+        self.client.post(reverse("customer_favourite", args=[self.tun.pk]))
+        self.tun.refresh_from_db()
+        self.assertFalse(self.tun.favourite)
+        self.client.force_login(self.japan)
+        self.assertEqual(self.client.post(reverse("customer_favourite", args=[self.tun.pk])).status_code, 403)
+
+    def test_load_more_after_25(self):
+        for n in range(30):
+            self.Customer.objects.create(name=f"Test Customer {n:02d}")
+        names, html = self.rows()
+        self.assertEqual(len(names), 25)
+        self.assertIn("Load more", html)
+        self.assertIn("Showing <span id=\"crm-shown\">25</span> of 34", html)
+        r = self.client.get(reverse("customer_list"), {"page": 2}, HTTP_HX_REQUEST="true")
+        page2 = r.content.decode()
+        self.assertEqual(page2.count('class="crm-link"'), 9)
+        self.assertNotIn("Load more", page2)
+        self.assertIn('<span id="crm-shown" hx-swap-oob="true">34</span>', page2)

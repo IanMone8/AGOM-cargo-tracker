@@ -69,9 +69,12 @@ Cargo history, request attach lists, or by direct link) until the Japan sender s
 app and in Django admin. Calendars don't offer dates before today (a date already saved on a box stays as it is).
 Marking a box Shipped without a date records today, and the Myanmar check can't start before the ship date.
 
-**Customers:** (Owner, Admin, Myanmar checker – not the Japan sender) a list with name, address, phone,
-Viber channel member and last order, plus a detail page per customer with all their requests and the items
-packed for them. Customer names typed on requests, Japan items or CSV rows create the customer automatically.
+**Customers:** (Owner, Admin, Myanmar checker – not the Japan sender) a CRM-style table: avatar + name,
+tap-to-call phone, address, Viber pill, orders (requests + items packed), a status tag (Waiting / In box /
+All delivered / No orders), last update and a favourite star (starred customers stay on top). Live search,
+Viber / Orders filters, sortable Name / Orders / Last update, 25 rows then "Load more"; rows become compact
+cards on phones. Each customer has a detail page with all their requests and packed items. Customer names
+typed on requests, Japan items or CSV rows create the customer automatically.
 
 **Locking:** once the Myanmar check has started on a box (it has a received date, or any item is checked),
 the Japan sender can no longer edit that box or add or delete its items.

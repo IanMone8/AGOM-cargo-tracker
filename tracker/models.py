@@ -336,6 +336,7 @@ class Customer(models.Model):
     address = models.TextField(blank=True)
     phone = models.CharField(max_length=40, blank=True)
     viber_member = models.BooleanField("Viber channel member", default=False)
+    favourite = models.BooleanField(default=False, help_text="Starred customers sort to the top")
     note = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

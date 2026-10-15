@@ -90,6 +90,6 @@ class CatalogAdmin(admin.ModelAdmin):
 
 @admin.register(Customer)
 class CustomerAdmin(admin.ModelAdmin):
-    list_display = ["name", "phone", "viber_member", "address"]
-    list_filter = ["viber_member"]
+    list_display = ["name", "phone", "viber_member", "favourite", "address"]
+    list_filter = ["viber_member", "favourite"]
     search_fields = ["name", "phone", "address"]
