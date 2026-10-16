@@ -1673,6 +1673,21 @@ class MyanmarBannerTests(BaseTest):
         self.assertIn("display/stickers/happy.webp", html)     # the small copy, not the original PNG
         self.assertNotIn("img/stickers/happy.png", html)
 
+    def test_centred_text_and_one_sticker_per_corner(self):
+        import re
+        from pathlib import Path
+        html = self.dashboard(self.myanmar)                     # the real sticker copies are in the repo
+        for name in ("happy", "stars", "peace", "ok"):
+            self.assertIn(f"sticker-{name}", html)
+            self.assertIn(f"/static/img/display/stickers/{name}.webp", html)
+        css = (Path(__file__).resolve().parent.parent / "static/css/agom.css").read_text()
+        self.assertRegex(css, r"\.mm-text \{[^}]*text-align: center")
+        corners = {"happy": ("top", "left"), "stars": ("top", "right"), "peace": ("bottom", "left"), "ok": ("bottom", "right")}
+        for name, (v, h) in corners.items():
+            rule = re.search(r"\.sticker-%s \{([^}]*)\}" % name, css).group(1)
+            self.assertIn(f"{v}:", rule)
+            self.assertIn(f"{h}:", rule)
+
     def test_sticker_motion_is_transform_only_and_respects_reduced_motion(self):
         import re
         from pathlib import Path

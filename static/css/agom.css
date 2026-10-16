@@ -306,37 +306,45 @@ textarea.field { resize: vertical; }
 }
 @media (max-width: 380px) { .hero-title { font-size: 1.16rem; } }
 
-/* ---------- Myanmar checker's banner (Burmese message + stickers) ---------- */
-.mm-text { max-width: 44rem; font-family: "Noto Sans Myanmar", "Plus Jakarta Sans", sans-serif; color: var(--text);
-  font-size: 1.05rem; font-weight: 400; line-height: 1.9; }        /* tall line-height: stacked vowels and tones aren't clipped */
-.mm-text p { margin: 0; padding: .05em 0; }
+/* ---------- Myanmar checker's banner: centred Burmese message, one sticker in each corner ---------- */
+.hero-mm { justify-content: center; min-height: 310px; padding: 2.25rem 11rem; }   /* side padding clears the corner stickers */
+.mm-text { max-width: 44rem; margin: 0 auto; text-align: center; font-family: "Noto Sans Myanmar", "Plus Jakarta Sans", sans-serif;
+  color: var(--text); font-size: 1.05rem; font-weight: 400; line-height: 1.9; }  /* tall line-height: stacked vowels and tones aren't clipped */
+.mm-text p { margin: 0; padding: .05em 0; text-wrap: balance; }   /* no one-word orphans when a line wraps */
 .mm-text .mm-lead { margin-bottom: .2rem; font-size: 1.4rem; font-weight: 600; }
 .mm-text .mm-sign { margin-top: .6rem; font-family: "Plus Jakarta Sans", sans-serif; font-size: .9rem; font-style: italic;
   font-weight: 600; color: var(--primary-hover); }                  /* 4.69:1 on the darkest part of the gradient */
-.stickers { position: relative; flex: none; width: 320px; height: 230px; }
-.sticker { position: absolute; display: block; transform: rotate(var(--tilt, 0deg)); }
+.stickers { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.sticker { position: absolute; display: block; width: 120px; height: 120px; transform: rotate(var(--tilt, 0deg)); }
 .sticker img { display: block; width: 100%; height: 100%; object-fit: contain;
   filter: drop-shadow(0 8px 10px rgba(31, 58, 43, .22)) drop-shadow(0 2px 2px rgba(31, 58, 43, .15)); }
-.sticker-happy { --tilt: -6deg; width: 150px; height: 150px; left: 92px; top: 46px; z-index: 3; }
-.sticker-ok { --tilt: 9deg; width: 104px; height: 104px; left: 0; top: 10px; z-index: 2; }
-.sticker-peace { --tilt: -10deg; width: 96px; height: 96px; right: 0; top: 0; z-index: 2; }
-.sticker-stars { --tilt: 12deg; width: 86px; height: 86px; right: 10px; bottom: 0; z-index: 4; }
+.sticker-happy { --tilt: -8deg; top: 18px; left: 22px; }       /* top-left */
+.sticker-stars { --tilt: 8deg; top: 18px; right: 22px; }       /* top-right */
+.sticker-peace { --tilt: 6deg; bottom: 18px; left: 22px; }     /* bottom-left */
+.sticker-ok { --tilt: -6deg; bottom: 18px; right: 22px; }      /* bottom-right */
 @media (prefers-reduced-motion: no-preference) {
   .sticker img { animation: sticker-bob 4.5s ease-in-out infinite alternate; }
   .sticker-ok img { animation-delay: -1.2s; animation-duration: 5.2s; }
   .sticker-peace img { animation-delay: -2.4s; animation-duration: 4.8s; }
   .sticker-stars img { animation-delay: -3.3s; animation-duration: 5.6s; }
 }
-@keyframes sticker-bob { from { transform: translateY(0) rotate(0deg); } to { transform: translateY(-7px) rotate(2deg); } }
+@keyframes sticker-bob { from { transform: translateY(0) rotate(0deg); } to { transform: translateY(-6px) rotate(2deg); } }
 
+@media (max-width: 1100px) {      /* narrower banner: slightly smaller stickers, less side padding */
+  .hero-mm { padding-inline: 9rem; }
+  .sticker { width: 104px; height: 104px; }
+}
 @media (max-width: 767px) {
+  /* phones: small corner stickers, text centred between the top and bottom pairs */
+  .hero-mm { display: flex; align-items: center; min-height: 0; padding: 4.5rem 1rem; }
   .mm-text { font-size: .95rem; line-height: 1.85; }
   .mm-text .mm-lead { font-size: 1.1rem; }
   .mm-text .mm-sign { font-size: .82rem; }
-  /* stickers: one row of four under the text */
-  .stickers { display: flex; justify-content: flex-start; gap: .6rem; width: auto; height: auto; margin-top: .9rem; }
-  .sticker { position: relative; inset: auto; width: 64px; height: 64px; }
-  .sticker-happy { order: 4; }
+  .sticker { width: 56px; height: 56px; }
+  .sticker-happy, .sticker-stars { top: 10px; }
+  .sticker-peace, .sticker-ok { bottom: 10px; }
+  .sticker-happy, .sticker-peace { left: 12px; }
+  .sticker-stars, .sticker-ok { right: 12px; }
 }
 
 /* ---------- Club option picker (two taps, big targets) ---------- */
