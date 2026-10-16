@@ -312,8 +312,7 @@ textarea.field { resize: vertical; }
   color: var(--text); font-size: 1.05rem; font-weight: 400; line-height: 1.9; }  /* tall line-height: stacked vowels and tones aren't clipped */
 .mm-text p { margin: 0; padding: .05em 0; text-wrap: balance; }   /* no one-word orphans when a line wraps */
 .mm-text .mm-lead { margin-bottom: .2rem; font-size: 1.4rem; font-weight: 600; }
-.mm-text .mm-sign { margin-top: .6rem; font-family: "Plus Jakarta Sans", sans-serif; font-size: .9rem; font-style: italic;
-  font-weight: 600; color: var(--primary-hover); }                  /* 4.69:1 on the darkest part of the gradient */
+.mm-text .mm-name { font-weight: 700; color: var(--primary-hover); }  /* the darker primary green: 4.69:1 on the gradient (--primary is 3.7:1) */
 .stickers { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
 .sticker { position: absolute; display: block; width: 120px; height: 120px; transform: rotate(var(--tilt, 0deg)); }
 .sticker img { display: block; width: 100%; height: 100%; object-fit: contain;
@@ -339,7 +338,6 @@ textarea.field { resize: vertical; }
   .hero-mm { display: flex; align-items: center; min-height: 0; padding: 4.5rem 1rem; }
   .mm-text { font-size: .95rem; line-height: 1.85; }
   .mm-text .mm-lead { font-size: 1.1rem; }
-  .mm-text .mm-sign { font-size: .82rem; }
   .sticker { width: 56px; height: 56px; }
   .sticker-happy, .sticker-stars { top: 10px; }
   .sticker-peace, .sticker-ok { bottom: 10px; }

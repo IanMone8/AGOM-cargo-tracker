@@ -1621,8 +1621,8 @@ class MyanmarBannerTests(BaseTest):
     LINES = [
         "ပျော်ရွှင်စရာလုပ်ငန်းခွင်က အချိန်တိုင်းမရနိုင်ပါ။",
         "သို့ပေမဲ့ သင်ဟာ ရုပ်ချောနေတာ တစ်ခုတည်းနဲ့ ပျော်ရွှင်ဖို့ထိုက်တန်ပါတယ်။",
-        "ပြုံးလိုက်ပါ ရယ်မောလိုက်ပါ",
-        "သာယာရွှင်လန်းပြီးအလုပ်လုပ်ရတဲ့နေ့လေးကိုပိုင်ဆိုင်နိုင်ပါစေ",
+        "ပြုံးလိုက်ပါ ရယ်မောလိုက်ပါ။",
+        "သာယာရွှင်လန်းပြီးအလုပ်လုပ်ရတဲ့နေ့လေးကိုပိုင်ဆိုင်နိုင်ပါစေ Miss Thaw Thaw။",
     ]
 
     def dashboard(self, user):
@@ -1633,11 +1633,15 @@ class MyanmarBannerTests(BaseTest):
         html = self.dashboard(self.myanmar)
         self.assertIn('class="hero hero-mm"', html)
         self.assertIn('lang="my"', html)
-        for line in self.LINES:                       # exact text, one paragraph per line
-            self.assertIn(f">{line}</p>", html)
-        self.assertLess(html.index(self.LINES[0]), html.index(self.LINES[3]))
+        import re
+        text = html[html.index('<div class="hero-text mm-text" lang="my">'):]
+        text = text[:text.index("</div>")]
+        paras = [re.sub(r"<[^>]+>", "", p).strip() for p in re.findall(r"<p[^>]*>(.*?)</p>", text, re.S)]
+        self.assertEqual(paras, self.LINES)              # exactly these four lines, nothing else
         self.assertIn('class="mm-lead">' + self.LINES[0], html)
-        self.assertIn("— Miss Thaw Thaw", html)
+        self.assertIn('<span class="mm-name" lang="en">Miss Thaw Thaw</span>။</p>', html)
+        self.assertNotIn("— Miss Thaw Thaw", html)
+        self.assertNotIn("mm-sign", html)
         self.assertIn("family=Noto+Sans+Myanmar:wght@400;600", html)
         self.assertNotIn("Golf stock route", html)
 
