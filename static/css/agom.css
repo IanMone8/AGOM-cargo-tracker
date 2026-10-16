@@ -362,17 +362,34 @@ textarea.field { resize: vertical; }
 .customer-chip { display: inline-flex; align-items: center; gap: .3rem; }
 .customer-icon { width: 18px; height: 18px; flex: none; object-fit: contain; }
 
-/* ---------- "Item (brand + model)" assist: suggestions, preview, questions ---------- */
-.item-assist:empty { display: none; }
-.item-assist { margin-top: .4rem; display: grid; gap: .35rem; font-size: .8rem; color: var(--text-muted); }
-.item-suggest { display: flex; flex-wrap: wrap; gap: .35rem; }
-.item-suggest-head { margin: .1rem 0 .3rem; font-size: .7rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); }
-.item-suggest + .item-suggest-head { margin-top: .55rem; }
+/* ---------- "Item (brand + model)": combo box (one dropdown list), preview, questions ---------- */
+.combo-box { position: relative; }
+.combo-box .field { padding-right: 3rem; }
+.combo-toggle { position: absolute; right: .3rem; top: 50%; transform: translateY(-50%); width: 2.5rem; height: 2.5rem;
+  display: grid; place-items: center; border-radius: .65rem; color: var(--text-muted); }
+.combo-toggle:hover { background: var(--mint); color: var(--primary-hover); }
+.combo-toggle svg { transition: transform .15s; }
+[data-item-field][data-open] .combo-toggle svg { transform: rotate(180deg); }
+/* the open field's card sits above the cards below it, so the list can hang over them */
+.item-card:has([data-item-field][data-open]), .bag-card:has([data-item-field][data-open]) { position: relative; z-index: 30; }
+.item-assist { position: relative; }
+.combo-list { position: absolute; z-index: 40; top: .3rem; left: 0; right: 0; padding: .3rem;
+  max-height: calc(8 * 2.85rem + .6rem); overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  background: var(--card); border: 1px solid var(--line-strong); border-radius: .9rem;
+  box-shadow: 0 14px 34px -12px rgba(23, 50, 34, .35); }
+.combo-list[hidden] { display: none; }
+.combo-opt { display: flex; align-items: center; min-height: 2.75rem; padding: .45rem .75rem; border-radius: .6rem;
+  font-size: .95rem; font-weight: 600; color: var(--text); cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; }
+.combo-opt + .combo-opt { margin-top: .1rem; }
+.combo-opt:hover, .combo-opt.is-active { background: var(--mint); }
+.combo-opt.is-active { box-shadow: inset 3px 0 0 var(--primary); }
+.combo-divider { height: 1px; margin: .3rem .5rem; background: var(--line-strong); }
+.combo-add { color: var(--primary-hover); }
+.item-hints { margin-top: .4rem; display: grid; gap: .35rem; font-size: .8rem; color: var(--text-muted); }
 .item-chip { padding: .35rem .65rem; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--card);
   color: var(--text); font-weight: 600; font-size: .8rem; min-height: 2rem; }
 .item-chip:hover, .item-chip:focus-visible { background: var(--mint); border-color: var(--primary); outline: none; }
 .item-chip[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: #fff; }
-.item-chip-here { border-color: var(--primary); background: var(--mint); }   /* "In this box" */
 .item-preview b { color: var(--text); }
 .item-tag { margin-left: .25rem; padding: .05rem .45rem; border-radius: 999px; background: var(--sage); color: var(--text-muted); font-size: .7rem; font-weight: 700; }
 .item-ask { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .5rem; padding: .45rem .6rem; border-radius: .75rem;

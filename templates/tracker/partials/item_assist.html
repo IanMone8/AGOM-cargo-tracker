@@ -1,18 +1,13 @@
-{# Under "Item (brand + model)": saved combos to tap, and how the text will be saved. JS in base.html handles the taps. #}
-{% if in_box %}
-  <p class="item-suggest-head">In this box</p>
-  <div class="item-suggest" role="listbox" aria-label="In this box" data-in-box>
-    {% for s in in_box %}<button type="button" class="item-chip item-chip-here" role="option" data-pick="{{ s }}">{{ s }}</button>{% endfor %}
-  </div>
-{% endif %}
-{% if suggestions %}
-  <p class="item-suggest-head">Saved items</p>
-  <div class="item-suggest" role="listbox" aria-label="Saved items" data-saved>
-    {% for s in suggestions %}<button type="button" class="item-chip" role="option" data-pick="{{ s }}">{{ s }}</button>{% endfor %}
-  </div>
-{% endif %}
+{% comment %} "Item (brand + model)" combo box: the dropdown list (shown/hidden and driven by the keyboard in base.html)
+   plus hints on how the text will be saved. Rows carry data-pick: picking fills the field with exactly that spelling. {% endcomment %}
+<div class="combo-list" role="listbox" aria-label="Items" data-combo-list hidden>
+  {% for s in above %}<div class="combo-opt" role="option" aria-selected="false" data-pick="{{ s }}" data-section="box">{{ s }}</div>{% endfor %}
+  {% if above and below %}<div class="combo-divider" role="separator"></div>{% endif %}
+  {% for s in below %}<div class="combo-opt" role="option" aria-selected="false" data-pick="{{ s }}" data-section="saved">{{ s }}</div>{% endfor %}
+  {% if add_new %}<div class="combo-opt combo-add" role="option" aria-selected="false" data-pick="{{ add_new }}" data-section="new">+ Add ‘{{ typed }}’ as new item</div>{% endif %}
+</div>
 {% if parsed.text %}
-  {# A likely typo is offered first; the brand prompt stays below it. #}
+  <div class="item-hints">
   {% if did_you_mean %}
     <p class="item-ask"><span>Did you mean</span> <button type="button" class="item-btn" data-pick="{{ did_you_mean }}">{{ did_you_mean }}</button>?</p>
   {% endif %}
@@ -30,4 +25,5 @@
   {% else %}
     <p class="item-preview">Saved as <b>{{ parsed.display }}</b>{% if parsed.brand %} <span class="item-tag">brand {{ parsed.brand }}</span>{% endif %}{% if parsed.model and parsed.model_is_new and parsed.brand %} <span class="item-tag">new model</span>{% endif %}</p>
   {% endif %}
+  </div>
 {% endif %}

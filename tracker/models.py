@@ -644,9 +644,22 @@ def parse_item(text, add_brand=False):
     known = brand_choices()
     parsed = brands.parse(text, known, models_for)
     if parsed.unknown_brand and add_brand:
-        parsed = brands.parse(text, known + [(brands.match_key(parsed.unknown_brand), parsed.unknown_brand)],
-                              models_for)
+        new = brands.style_name(parsed.unknown_brand)          # "ryoma" -> "Ryoma"
+        parsed = brands.parse(text, known + [(brands.match_key(new), new)], models_for)
     return parsed
+
+
+def saved_item_names():
+    """Every saved item name, {match_key: display}: the Brand + Model list, then names on items in any box
+    (which also covers names with no brand, e.g. "Golf Bag"). One entry per match key."""
+    from .brands import match_key
+    names = {}
+    for m in BrandModel.objects.filter(active=True, brand__active=True).select_related("brand"):
+        names.setdefault(match_key(str(m)), str(m))
+    for name in JapanItem.objects.exclude(item_name="").order_by().values_list("item_name", flat=True).distinct():
+        names.setdefault(match_key(name), name)
+    names.pop("", None)
+    return names
 
 
 def remember_item(parsed):

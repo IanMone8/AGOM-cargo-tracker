@@ -173,7 +173,7 @@ class CSVImportTests(BaseTest):
 
     def test_replace(self):
         self.upload("box,type,item_name\nGN-3,Bag,Stand bag\nGN-3,Balls,Pro V1\n", replace="on")
-        self.assertEqual(list(self.box.items.values_list("item_name", "is_bag")), [("Stand bag", True), ("Pro V1", False)])
+        self.assertEqual(list(self.box.items.values_list("item_name", "is_bag")), [("Stand Bag", True), ("Pro V1", False)])
 
 
 class AddBoxModalTests(BaseTest):
@@ -299,11 +299,11 @@ class CSVNewFieldsTests(CSVImportTests):
             "GN-3,Qi10 Driver,Club,1,pcs,TaylorMade,Qi10,Driver,1W,10.5,x,Graphite,Diamana 60,Navy,used,30000\n"
         )
         self.assertContains(r, "Imported 1 item(s)")
-        item = self.box.items.get(item_name="TaylorMade Qi10")    # brand / model columns win over a brand-less name
+        item = self.box.items.get(item_name="TaylorMade QI10")    # brand / model columns win; model codes in capitals
         self.assertEqual(
             (item.brand, item.model, item.club_type, item.club_number, item.flex, item.shaft_material,
              item.specification, item.color, item.condition, item.price_jpy, item.quantity_unit),
-            ("TaylorMade", "Qi10", "Driver", "1W", "X", "graphite", "Diamana 60", "Navy", "used", 30000, "pcs"),
+            ("TaylorMade", "QI10", "Driver", "1W", "X", "graphite", "Diamana 60", "Navy", "used", 30000, "pcs"),
         )
 
     def test_bad_unit_and_shaft(self):
@@ -1183,7 +1183,7 @@ class ClubOptionTests(BaseTest):
         f = SimpleUploadedFile("l.csv", b"box,type,item_name,loft,shaft_material\nGN-3,Club,Old style,10,steel\n",
                                content_type="text/csv")
         self.assertContains(self.client.post(reverse("csv_import"), {"file": f}), "Imported 1 item(s)")
-        self.assertEqual(JapanItem.objects.get(item_name="Old style").shaft_material, "steel")
+        self.assertEqual(JapanItem.objects.get(item_name="Old Style").shaft_material, "steel")   # no brand: Title Case
 
 
 class ItemCardCustomerTests(BaseTest):
@@ -1326,7 +1326,7 @@ class GolfBagTests(BaseTest):
         self.assertEqual(self.htmx(self.japan, reverse("box_bag", args=[self.box.pk]),
                                    {"bag-item_name": "X"}).status_code, 403)
         self.htmx(self.owner, reverse("box_bag", args=[self.box.pk]), {"bag-item_name": "Owner fix"})
-        self.assertEqual(self.box.bag_name, "Owner fix")
+        self.assertEqual(self.box.bag_name, "Owner Fix")
 
     # --- Myanmar check -----------------------------------------------------
     def test_bag_checked_like_an_item(self):
@@ -1986,7 +1986,7 @@ class MonthlyBoxIdTests(BaseTest):
         r = self.csv("box,kind,item_name\noct26-kb-05,bag,Bag\nOCT26-KB-5,,TSR2\nGN-3,,Head cover\n")
         self.assertContains(r, "into 2 box(es)")
         self.assertEqual(Box.objects.get(code="OCT26-KB-5").items.count(), 2)
-        self.assertTrue(self.box.items.filter(item_name="Head cover").exists())
+        self.assertTrue(self.box.items.filter(item_name="Head Cover").exists())
 
 
 class BrandModelItemTests(BaseTest):
@@ -2012,23 +2012,23 @@ class BrandModelItemTests(BaseTest):
             with self.subTest(text=text):
                 self.add(text)
                 item = self.latest()
-                self.assertEqual((item.brand, item.item_name), ("XXIO", "XXIO mp 1400"))
+                self.assertEqual((item.brand, item.item_name), ("XXIO", "XXIO MP 1400"))
         self.assertEqual(BrandModel.objects.filter(brand__display_name="XXIO").count(), 1)  # first spelling kept
-        self.assertEqual(self.latest().model, "mp 1400")
+        self.assertEqual(self.latest().model, "MP 1400")                  # model code in capitals
 
-    def test_brand_display_spelling_and_new_model_as_typed(self):
+    def test_brand_display_spelling_and_new_model_styled(self):
         self.add("taylormade  Qi10   Max")
         item = self.latest()
-        self.assertEqual((item.brand, item.model, item.item_name), ("TaylorMade", "Qi10 Max", "TaylorMade Qi10 Max"))
-        self.assertEqual(item.title, "TaylorMade Qi10 Max")
+        self.assertEqual((item.brand, item.model, item.item_name), ("TaylorMade", "QI10 Max", "TaylorMade QI10 Max"))
+        self.assertEqual(item.title, "TaylorMade QI10 Max")
         self.add("TAYLORMADE qi 10 max")                         # same model key -> saved spelling
-        self.assertEqual(self.latest().item_name, "TaylorMade Qi10 Max")
+        self.assertEqual(self.latest().item_name, "TaylorMade QI10 Max")
 
     def test_longest_brand_wins(self):
         from .models import Brand
         Brand.objects.create(display_name="Scotty")
         self.add("scotty cameron phantom 5")
-        self.assertEqual((self.latest().brand, self.latest().model), ("Scotty Cameron", "phantom 5"))
+        self.assertEqual((self.latest().brand, self.latest().model), ("Scotty Cameron", "Phantom 5"))
 
     def test_unknown_brand_prompt(self):
         from .models import Brand
@@ -2090,7 +2090,7 @@ class BrandModelItemTests(BaseTest):
         c = JapanItem.objects.create(box=self.box, item_name="Kasco Zeus", brand="Kasco", model="")
         convert(apps, None)
         a.refresh_from_db(); b.refresh_from_db(); c.refresh_from_db()
-        self.assertEqual((a.brand, a.model, a.item_name), ("Titleist", "tsr-2", "Titleist tsr-2"))
+        self.assertEqual((a.brand, a.model, a.item_name), ("Titleist", "TSR-2", "Titleist TSR-2"))
         self.assertEqual((b.brand, b.model, b.item_name), ("", "", "Golf balls"))          # no brand: unchanged
         self.assertEqual((c.brand, c.model, c.item_name), ("Kasco", "Zeus", "Kasco Zeus"))  # brand already on an item
 
@@ -2129,8 +2129,8 @@ class BrandModelItemTests(BaseTest):
         self.assertContains(r, "Imported 3 item(s)")
         got = list(self.box.items.filter(is_bag=False).exclude(pk__in=[self.item1.pk, self.item2.pk])
                    .order_by("id").values_list("brand", "model", "item_name"))
-        self.assertEqual(got, [("XXIO", "mp 1400", "XXIO mp 1400"), ("Kasco", "Zeus 1", "Kasco Zeus 1"),
-                               ("Titleist", "tsr 2", "Titleist tsr 2")])
+        self.assertEqual(got, [("XXIO", "MP 1400", "XXIO MP 1400"), ("Kasco", "Zeus 1", "Kasco Zeus 1"),
+                               ("Titleist", "TSR 2", "Titleist TSR 2")])
         from .models import Brand
         self.assertTrue(Brand.objects.filter(display_name="Kasco").exists())   # brand column: added
 
@@ -2306,56 +2306,107 @@ class PiecePriceTests(BaseTest):
         self.assertEqual(self.item2.line_total_jpy, 12600)              # 4200 × 3
 
 
-class InThisBoxSuggestionTests(BaseTest):
-    """Names typed on other cards of the unsaved box are offered first ("In this box"), before "Saved items"."""
+class ItemComboBoxTests(BaseTest):
+    """The "Item (brand + model)" combo box: names typed in the open box above the line (newest first),
+    every saved name A → Z below it, "+ Add '…' as new item" when nothing matches."""
 
     def setUp(self):
         super().setUp()
         from .models import Brand, BrandModel
         xxio = Brand.objects.get(display_name="XXIO")
         BrandModel.objects.create(brand=xxio, display_name="MP1400")
-        BrandModel.objects.create(brand=xxio, display_name="X-Driver")
+        BrandModel.objects.create(brand=Brand.objects.get(display_name="TaylorMade"), display_name="QI10")
+        JapanItem.objects.create(box=self.box, item_name="Golf Balls", qty=1)          # a saved name with no brand
         self.client.force_login(self.japan)
 
     def suggest(self, q="", **params):
         return self.client.get(reverse("item_suggest"), {"items-1-item_name": q, **params},
                                HTTP_HX_REQUEST="true").content.decode()
 
-    def chips(self, html, group):
+    def rows(self, html, section=None):
         import re
-        block = re.search(rf'<div class="item-suggest"[^>]*{group}>(.*?)</div>', html, re.S)
-        return re.findall(r'data-pick="([^"]*)"', block.group(1)) if block else []
+        rows = re.findall(r'class="combo-opt[^"]*"[^>]*data-pick="([^"]*)" data-section="(\w+)"', html)
+        return [p for p, sec in rows if section in (None, sec)]
 
-    def test_typed_names_listed_first_normalised_and_deduplicated(self):
+    def test_one_list_box_names_newest_first_then_saved_a_to_z(self):
+        html = self.suggest("", in_box=["zz new club", "xxio mp 1400", "Ryoma stand bag"])   # newest first
+        self.assertEqual(self.rows(html, "box"), ["Zz New Club", "XXIO MP1400", "Ryoma Stand Bag"])
+        # saved: Brand + Model list and names on items, A → Z ignoring case, nothing that is already above the line
+        self.assertEqual(self.rows(html, "saved"), ["Golf Balls", "RTX 6", "TaylorMade QI10", "TSR2"])
+        self.assertEqual(html.count('class="combo-divider"'), 1)
+        self.assertLess(html.index("Ryoma Stand Bag"), html.index("combo-divider"))
+        self.assertNotIn("item-chip", html)                                          # no chips any more
+        html = self.suggest("")                                                      # nothing typed in the box yet
+        self.assertEqual(self.rows(html, "box"), [])
+        self.assertNotIn("combo-divider", html)
+
+    def test_typing_filters_both_sections_and_all_shows_everything(self):
+        html = self.suggest("xxio 14", in_box=["Xxio Zeus 2"])
+        self.assertEqual(self.rows(html), ["XXIO MP1400"])
+        html = self.suggest("xxio", in_box=["Xxio Zeus 2"])
+        self.assertEqual((self.rows(html, "box"), self.rows(html, "saved")), (["XXIO Zeus 2"], ["XXIO MP1400"]))
+        html = self.suggest("xxio", in_box=["Xxio Zeus 2"], all="1")                  # ▾ opens the full list
+        self.assertEqual(len(self.rows(html, "saved")), 5)
+        self.assertNotIn("as new item", html)
+
+    def test_add_new_row_only_when_nothing_matches(self):
         from .models import Brand, BrandModel
-        before = (Brand.objects.count(), BrandModel.objects.count())
-        html = self.suggest("xxio", in_box=["xxio mp 1400", "Xxio  Zeus-2", "Ryoma Stand Bag", "XXIO mp1400"])
-        self.assertEqual(self.chips(html, "data-in-box"), ["XXIO MP1400", "XXIO Zeus-2"])   # parsed like saving, once
-        self.assertEqual(self.chips(html, "data-saved"), ["XXIO X-Driver"])   # MP1400 already "in this box"
-        self.assertLess(html.index("In this box"), html.index("Saved items"))
-        self.assertEqual((Brand.objects.count(), BrandModel.objects.count()), before)   # nothing written
-        # an empty name box lists everything typed in the box straight away; the own text isn't offered
-        html = self.suggest("", in_box=["xxio mp 1400", "Ryoma Stand Bag"])
-        self.assertEqual(self.chips(html, "data-in-box"), ["XXIO MP1400", "Ryoma Stand Bag"])
-        self.assertNotIn("Saved items", html)
-        html = self.suggest("XXIO MP1400", in_box=["xxio mp1400", "Ryoma Stand Bag"])
-        self.assertEqual(self.chips(html, "data-in-box"), [])
+        before = (Brand.objects.count(), BrandModel.objects.count(), JapanItem.objects.count())
+        html = self.suggest("titleist golf bag", in_box=["Ping G430"])
+        self.assertEqual(self.rows(html, "new"), ["Titleist Golf Bag"])              # fills the saved spelling
+        self.assertIn("+ Add ‘titleist golf bag’ as new item", html)
+        self.assertNotIn("as new item", self.suggest("golf"))
+        self.assertEqual((Brand.objects.count(), BrandModel.objects.count(), JapanItem.objects.count()), before)
 
-    def test_box_page_lists_the_boxs_saved_items(self):
-        self.add_bag(name="Ping Hoofer")
-        JapanItem.objects.create(box=self.box, item_name="XXIO MP1400", brand="XXIO", model="MP1400", qty=1)
-        html = self.suggest("", box=self.box.pk)
-        self.assertEqual(self.chips(html, "data-in-box"), ["Ping Hoofer", "TSR2", "RTX 6", "XXIO MP1400"])
-        html = self.suggest("mp", box=self.box.pk)
-        self.assertEqual(self.chips(html, "data-in-box"), ["XXIO MP1400"])
-        self.assertEqual(self.chips(html, "data-saved"), [])
-        self.assertNotIn("In this box", self.suggest("", box="x"))      # not a box id: ignored
-        self.assertNotIn("In this box", self.suggest("", box="99999"))
+    def test_saved_box_names_join_the_list_for_the_next_box(self):
+        self.assertNotIn("XXIO Zeus 7", self.rows(self.suggest("")))
+        self.htmx(self.japan, reverse("item_add", args=[self.box.pk]), {"item_name": "xxio zeus 7", "qty": "1"})
+        self.assertIn("XXIO Zeus 7", self.rows(self.suggest(""), "saved"))       # below the line from now on
+        self.assertEqual(self.rows(self.suggest("zeus")), ["XXIO Zeus 7"])
+        self.htmx(self.japan, reverse("item_add", args=[self.box.pk]), {"item_name": "xxio zeus 12", "qty": "1"})
+        self.assertEqual(self.rows(self.suggest("zeus")), ["XXIO Zeus 7", "XXIO Zeus 12"])   # numbers by value
 
-    def test_fields_carry_the_hooks(self):
+    def test_field_is_a_combo_box(self):
         html = self.client.get(reverse("box_create"), HTTP_HX_REQUEST="true").content.decode()
-        self.assertIn('hx-trigger="input changed delay:250ms, focus, refresh"', html)
+        for hook in ('data-combo-toggle', 'aria-label="Show all items"', 'aria-expanded="false"',
+                     'hx-trigger="input changed delay:200ms, focus, refresh"'):
+            self.assertIn(hook, html)
+        self.assertEqual(html.count("data-combo-toggle"), 2)                        # Golf bag + first item card
+        self.assertNotIn("{#", html + self.suggest("x"))                            # template comments stay hidden
         page_form = self.client.get(reverse("item_add", args=[self.box.pk]), HTTP_HX_REQUEST="true").content.decode()
-        self.assertIn(f'data-suggest-box="{self.box.pk}"', page_form)
-        bag_form = self.client.get(reverse("box_bag", args=[self.box.pk]), HTTP_HX_REQUEST="true").content.decode()
-        self.assertIn(f'data-suggest-box="{self.box.pk}"', bag_form)
+        self.assertIn("data-combo-toggle", page_form)
+        self.assertNotIn("data-suggest-box", page_form)
+
+
+class DisplaySpellingTests(BaseTest):
+    """Brand in its own spelling, model codes in capitals, names with no known brand in Title Case."""
+
+    def test_style_rules(self):
+        from .brands import style_name
+        for typed, shown in (("mp 1400", "MP 1400"), ("qi10", "QI10"), ("tsr 2", "TSR 2"), ("jpx 923", "JPX 923"),
+                             ("golf bag", "Golf Bag"), ("pro v1", "Pro V1"), ("phantom 5", "Phantom 5"),
+                             ("TourEdge exs", "TourEdge Exs")):
+            self.assertEqual(style_name(typed), shown)
+        from .models import parse_item
+        self.assertEqual(parse_item("xxio mp1400").display, "XXIO MP1400")
+        self.assertEqual(parse_item("taylormade qi10").display, "TaylorMade QI10")
+        self.assertEqual(parse_item("titleist golf bag").display, "Titleist Golf Bag")
+        self.assertEqual(parse_item("ryoma golf bag").display, "Ryoma Golf Bag")    # no known brand: Title Case
+        self.assertEqual(parse_item("ryoma d1", add_brand=True).brand, "Ryoma")
+
+    def test_migration_restyles_saved_names(self):
+        import importlib
+        from django.apps import apps
+        from .models import Brand, BrandModel
+        xxio = Brand.objects.get(display_name="XXIO")
+        m = BrandModel.objects.create(brand=xxio, display_name="mp1400")
+        a = JapanItem.objects.create(box=self.box, item_name="XXIO mp1400", brand="XXIO", model="mp1400", qty=1)
+        b = JapanItem.objects.create(box=self.box, item_name="titleist golf bag", qty=1)
+        c = JapanItem.objects.create(box=self.box, item_name="TaylorMade qi10", brand="TaylorMade", model="qi10", qty=1)
+        importlib.import_module("tracker.migrations.0013_name_display_spelling").restyle(apps, None)
+        for o in (m, a, b, c):
+            o.refresh_from_db()
+        self.assertEqual(m.display_name, "MP1400")
+        self.assertEqual((a.item_name, a.model), ("XXIO MP1400", "MP1400"))
+        self.assertEqual(b.item_name, "Titleist Golf Bag")
+        self.assertEqual((c.item_name, c.model), ("TaylorMade QI10", "QI10"))

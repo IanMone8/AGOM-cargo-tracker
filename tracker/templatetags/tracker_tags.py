@@ -68,6 +68,7 @@ ICONS = {
     # golf bag: body with a pocket, strap and three club heads sticking out
     "bag": "M8 8h8l-.6 12.2a1 1 0 0 1-1 .8H9.6a1 1 0 0 1-1-.8L8 8Zm1.5 0V4.5L8 3m3.5 5V3.5h1.5M14.5 8V5l1.5-1M9 13h6M16 9.5c2 .5 2.5 6 .5 8",
     "edit": "M4 20h4L19 9l-4-4L4 16v4Zm9-13 4 4",
+    "chevron-down": "m6 9 6 6 6-6",
 }
 
 

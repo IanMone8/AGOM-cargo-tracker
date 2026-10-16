@@ -127,17 +127,21 @@ and admin) and then get a clear warning. A box without a bag shows **No bag reco
 When upgrading, the migration marks an existing box's single item of type *Bag* as its golf bag; boxes with no
 or several bag items are left for the owner to fix.
 
-**Item (brand + model):** item cards and the Golf bag card have one box, "Item (brand + model)". While typing it suggests
-saved combos (every word is matched on letters/digits only, so "xxio 14" finds "XXIO MP1400") and shows how it will
-be saved. On save the **longest known brand** at the start is the brand (shown in its own spelling, "xxio" → "XXIO") and
-the rest is the model; models are recognised ignoring case, spaces and punctuation ("mp 1400", "MP1400", "Mp-1400"), and
-a new one is saved as first typed. Items show "XXIO MP1400" everywhere. If the first word isn't a known brand you get
-"Is 'Honma' a brand? [Yes, add brand] [No]" (not answering = No: the whole text is the model, no brand), and a one-tap
-"Did you mean …?" for a brand or model that is 1–2 letters off. Brands and models are in **Admin → Brands / Models**.
-Names typed on the other cards of the open Add box modal (bag and items) are offered first under **In this box** as
-soon as their box loses focus (or the card is copied), normalised like saving and without duplicates, then the
-**Saved items**; editing or deleting a card updates the list. On the box page, Add item and Edit bag list that box's
-saved items under In this box. Nothing is written until the box is saved.
+**Item (brand + model):** item cards and the Golf bag card have one combo box, "Item (brand + model)". Its dropdown is
+one list: above a divider line, the names typed on the other cards of the open (unsaved) box, newest first; below it,
+every saved item name (the Brand + Model list and the names on items in any box) A → Z, ignoring case and with numbers
+in order, no duplicates. Typing filters both parts (every word is matched on letters/digits only, so "xxio 14" finds
+"XXIO MP1400"); ▾ opens the full list; when nothing matches, the last row is "+ Add '…' as new item". Picking a row
+fills the field with exactly that spelling. Rows are big enough to tap, the list opens below the box and scrolls inside
+(about 8 rows); ↑ ↓ Enter Esc work on a keyboard. A box's names join the saved list when it is saved – nothing is
+written before. Under the box it shows how the text will be saved. On save the **longest known brand** at the start is
+the brand (in its own spelling, "xxio" → "XXIO") and the rest is the model; models are recognised ignoring case, spaces
+and punctuation ("mp 1400", "MP1400", "Mp-1400"). **Display spelling:** model codes in capitals ("XXIO MP1400",
+"TaylorMade QI10", "Mizuno JPX 923"), other words in Title Case ("Titleist Golf Bag", "Scotty Cameron Phantom 5"), and
+names with no known brand in Title Case; a word typed with capitals inside it ("TourEdge") is kept. Migration 0013
+applies this to the saved list and existing items. If the first word isn't a known brand you get "Is 'Honma' a brand?
+[Yes, add brand] [No]" (not answering = No: the whole text is the name, no brand), and a one-tap "Did you mean …?" for
+a brand or model that is 1–2 letters off. Brands and models are in **Admin → Brands / Models**.
 Shipments has a Brand filter, the box page has brand chips, and customer orders find items by brand + model.
 
 **Box ID:** new boxes get a monthly ID per cargo company, `<MON><YY>-<CARGO>-<n>` (e.g. `OCT26-KB-3`): the month

@@ -155,29 +155,123 @@
       const picked = e.target.closest('[data-picker]').querySelector('[data-club-picked]');
       picked.textContent = e.target.value ? '✓ ' + e.target.value : '';
     });
-    // "Item (brand + model)": tap a suggestion / "Did you mean" / "Is … a brand?" (partials/item_assist.html)
+    // "Item (brand + model)" combo box (tracker/_item_text_field.html + partials/item_assist.html).
+    // The server renders the list: names typed in this open box (above the line), every saved name A → Z (below),
+    // or "+ Add '…' as new item". Here: open / close, ▾ (full list), taps, and ↑ ↓ Enter Esc.
+    const comboField = el => el && el.closest && el.closest('[data-item-field]');
+    const comboInput = field => field.querySelector('[data-item-text]');
+    const comboList = field => field.querySelector('[data-combo-list]');
+    const comboOpts = field => [...field.querySelectorAll('[data-combo-list] .combo-opt')];
+    function comboShow(field) {          // show the list if this field is open and the list has rows
+      const list = comboList(field), input = comboInput(field);
+      if (!list) return;
+      const open = 'open' in field.dataset && comboOpts(field).length > 0;
+      list.hidden = !open;
+      input.setAttribute('aria-expanded', open);
+      if (open) list.scrollIntoView({block: 'nearest'});
+    }
+    function comboOpen(field, all) {
+      field.dataset.open = '';
+      if (all) field.dataset.all = '1'; else delete field.dataset.all;
+      htmx.trigger(comboInput(field), 'refresh');              // fetch the list (filtered, or all for ▾)
+    }
+    function comboClose(field) {
+      delete field.dataset.open; delete field.dataset.all;
+      comboSetActive(field, -1);
+      comboShow(field);
+    }
+    function comboSetActive(field, index) {
+      const opts = comboOpts(field), input = comboInput(field);
+      opts.forEach((o, i) => { o.classList.toggle('is-active', i === index); o.setAttribute('aria-selected', i === index); });
+      field.dataset.active = index;
+      if (opts[index]) { input.setAttribute('aria-activedescendant', opts[index].id); opts[index].scrollIntoView({block: 'nearest'}); }
+      else input.removeAttribute('aria-activedescendant');
+    }
+    function comboPick(field, value) {
+      const input = comboInput(field), add = field.querySelector('[data-add-brand]');
+      input.value = value;                 // exactly that spelling
+      if (add) add.value = '';
+      comboClose(field);
+      htmx.trigger(input, 'refresh');      // update "Saved as …" (the list stays closed)
+    }
+    // combobox roles once per field, and ids for the rows after each swap
+    document.body.addEventListener('htmx:afterSwap', e => {
+      const field = comboField(e.detail.target);
+      if (!field || !e.detail.target.matches('.item-assist')) return;
+      const input = comboInput(field), list = comboList(field);
+      list.id = input.id + '-list';
+      comboOpts(field).forEach((o, i) => o.id = `${list.id}-${i}`);
+      input.setAttribute('role', 'combobox'); input.setAttribute('aria-autocomplete', 'list');
+      input.setAttribute('aria-controls', list.id);
+      field.dataset.active = -1;
+      comboShow(field);
+    });
+    document.addEventListener('input', e => {
+      if (!e.target.matches('[data-item-text]')) return;
+      const field = comboField(e.target);
+      field.dataset.open = ''; delete field.dataset.all;     // typing filters both sections
+    });
+    document.addEventListener('focusin', e => {
+      if (e.target.matches('[data-item-text]')) comboField(e.target).dataset.open = '';   // the focus request opens it
+    });
+    document.addEventListener('focusout', e => {
+      const field = comboField(e.target);
+      if (field && e.target.matches('[data-item-text]') && !field.contains(e.relatedTarget)) comboClose(field);
+    });
+    // keep the focus in the box while tapping a row or ▾ (so the list doesn't close under the finger)
+    document.addEventListener('mousedown', e => {
+      if (e.target.closest('[data-combo-list], [data-combo-toggle], [data-item-field] [data-pick], [data-item-field] [data-add-brand-set]')) e.preventDefault();
+    });
     document.addEventListener('click', e => {
+      const toggle = e.target.closest('[data-combo-toggle]');
+      if (toggle) {
+        const field = comboField(toggle), input = comboInput(field);
+        if ('open' in field.dataset && !comboList(field)?.hidden) { comboClose(field); return; }
+        if (document.activeElement !== input) { field.dataset.all = '1'; input.focus(); }
+        comboOpen(field, true);
+        return;
+      }
       const pick = e.target.closest('[data-pick]'), ask = e.target.closest('[data-add-brand-set]');
       if (!pick && !ask) return;
-      const field = e.target.closest('[data-item-field]');
+      const field = comboField(e.target);
       if (!field) return;
-      const input = field.querySelector('[data-item-text]'), add = field.querySelector('[data-add-brand]');
-      if (pick) { input.value = pick.dataset.pick; if (add) add.value = ''; }
-      else if (add) add.value = ask.dataset.addBrandSet;
-      htmx.trigger(input, 'refresh');      // show how it will be saved now
-      if (pick) input.focus();
+      if (pick) { comboPick(field, pick.dataset.pick); comboInput(field).focus(); return; }
+      const add = field.querySelector('[data-add-brand]');   // "Is … a brand?" Yes / No / undo
+      if (add) add.value = ask.dataset.addBrandSet;
+      htmx.trigger(comboInput(field), 'refresh');
     });
-    // "In this box": names typed on the cards of the open, unsaved box (bag + item cards), kept only here in the
-    // page until the box is saved. Noted when a name box loses focus or a card is copied; each suggestion request
-    // sends the other cards' names (views.item_suggest normalises them like saving and lists them first).
-    const boxNames = new Map();             // card element -> typed text
+    // keyboard: ↓ opens / moves, ↑ moves, Enter picks the highlighted row, Esc closes the list (not the modal)
+    document.addEventListener('keydown', e => {
+      if (!e.target.matches || !e.target.matches('[data-item-text]')) return;
+      const field = comboField(e.target), list = comboList(field), open = list && !list.hidden;
+      const opts = comboOpts(field), at = +field.dataset.active;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (!open) { comboOpen(field, false); return; }
+        const step = e.key === 'ArrowDown' ? 1 : -1;
+        comboSetActive(field, Math.max(0, Math.min(opts.length - 1, (at < 0 && step < 0 ? opts.length : at) + step)));
+      } else if (e.key === 'Enter' && open && opts[at]) {
+        e.preventDefault();
+        comboPick(field, opts[at].dataset.pick);
+      } else if (e.key === 'Escape' && open) {
+        e.preventDefault(); e.stopPropagation();
+        comboClose(field);
+      } else if (e.key === 'Tab' && open) {
+        comboClose(field);
+      }
+    }, true);
+    // Names typed on the cards of the open, unsaved box (bag + item cards), kept only here in the page until
+    // the box is saved; newest first. Noted when a name box loses focus or a card is copied; each list request
+    // sends the other cards' names (views.item_suggest normalises them like saving and lists them above the line).
+    const boxNames = new Map();             // card element -> typed text (insertion order = oldest first)
     const nameCard = el => el.closest('.item-card, .bag-card');
     const cardGone = card => !card.isConnected || card.style.display === 'none'
       || (card.querySelector('[data-delete-flag]') || {}).value === 'on';
     function noteName(input) {
       const card = nameCard(input), text = input.value.trim();
-      if (!card) return;
-      if (text) boxNames.set(card, text); else boxNames.delete(card);
+      if (!card || boxNames.get(card) === text) return;
+      boxNames.delete(card);                // an edited name moves to the top
+      if (text) boxNames.set(card, text);
     }
     document.addEventListener('focusout', e => { if (e.target.matches('[data-item-text]')) noteName(e.target); });
     document.body.addEventListener('htmx:configRequest', e => {
@@ -186,11 +280,10 @@
       const own = nameCard(el), names = [];
       boxNames.forEach((text, card) => {
         if (cardGone(card)) { if (!card.isConnected) boxNames.delete(card); return; }   // deleted / closed
-        if (card !== own) names.push(text);
+        if (card !== own) names.unshift(text);                                        // newest first
       });
       e.detail.parameters['in_box'] = names;
-      const box = el.closest('[data-suggest-box]');            // box page: that box's saved items too
-      if (box) e.detail.parameters['box'] = box.dataset.suggestBox;
+      if (comboField(el).dataset.all) e.detail.parameters['all'] = '1';
     });
     // Box page: brand filter chips show only that brand's rows (bag and items)
     document.addEventListener('click', e => {

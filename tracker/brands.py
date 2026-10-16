@@ -3,6 +3,7 @@
 Pure functions working on plain data, so the data migration can use exactly the same rules:
 
     match_key("Mp-1400")            -> "mp1400"   (lowercase, no spaces or punctuation)
+    style_name("titleist golf bag") -> "Titleist Golf Bag" (model codes in capitals: "qi10" -> "QI10")
     split_brand("xxio mp 1400", brands) -> brand "XXIO", rest "mp 1400"   (longest brand at the start wins)
 """
 import re
@@ -23,6 +24,23 @@ def match_key(text):
 def tidy(text):
     """Trimmed, single spaces, letters kept as typed."""
     return " ".join((text or "").split())
+
+
+def style_word(word, before_number=False):
+    """Model codes in capitals, other words in Title Case: "mp1400" -> "MP1400", "qi10" -> "QI10", "golf" -> "Golf".
+    A short code right before a number is a code too ("mp 1400" -> "MP 1400", "tsr 2" -> "TSR 2").
+    A word typed with capitals after its first letter ("JPX", "TourEdge") is kept as typed."""
+    if any(c.isdigit() for c in word) or (before_number and word.isalpha() and len(word) <= 3):
+        return word.upper()
+    if any(c.isupper() for c in word[1:]):
+        return word
+    return word[:1].upper() + word[1:]
+
+
+def style_name(text):
+    """How a new model (or a name with no known brand) is shown: "mp 1400" -> "MP 1400", "golf bag" -> "Golf Bag"."""
+    words = tidy(text).split()
+    return " ".join(style_word(w, i + 1 < len(words) and words[i + 1].isdigit()) for i, w in enumerate(words))
 
 
 def split_brand(text, brands):
@@ -82,7 +100,7 @@ def closest(key, candidates, max_distance=2):
 class Parsed:
     text: str = ""
     brand: str = ""              # Brand display name ("" = no brand)
-    model: str = ""              # model display name (existing spelling, or as typed)
+    model: str = ""              # model display name (saved spelling, or a new one styled: "MP1400")
     model_is_new: bool = False
     unknown_brand: str = ""      # first word, when it isn't a known brand
     brand_guess: str = ""        # "Did you mean XXIO?"
@@ -105,7 +123,7 @@ def parse(text, brands, models_for):
         first = text.split()[0]
         out.unknown_brand = first
         out.brand_guess = closest(match_key(first), brands) or ""
-        out.model = text                       # until someone says it's a brand
+        out.model = style_name(text)           # until someone says it's a brand: "Golf Bag", Title Case
         out.model_is_new = True
         return out
     out.brand = brand
@@ -116,9 +134,20 @@ def parse(text, brands, models_for):
     if mkey in models:
         out.model = models[mkey]
     else:
-        out.model, out.model_is_new = rest, True
+        out.model, out.model_is_new = style_name(rest), True
         out.model_guess = closest(mkey, list(models.items())) or ""
     return out
+
+
+def sort_key(name):
+    """A → Z ignoring case, numbers by value: "XXIO Zeus 3" before "XXIO Zeus 12"."""
+    return [(0, int(part), "") if part.isdigit() else (1, 0, part) for part in re.split(r"(\d+)", name.lower()) if part]
+
+
+def matches(query, key):
+    """Every typed word is found in the name's match key ("xxio 14" matches XXIO MP1400)."""
+    words = [match_key(w) for w in tidy(query).split()]
+    return all(w in key for w in words if w)
 
 
 def search(query, combos, limit=8):
