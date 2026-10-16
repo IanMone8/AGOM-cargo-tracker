@@ -129,7 +129,7 @@ class BoxForm(StyledMixin, forms.ModelForm):
 
 ITEM_TEXT_ATTRS = {
     # suggestions + "Did you mean…?" / "Is 'Honma' a brand?" while typing (views.item_suggest)
-    "hx-get": reverse_lazy("item_suggest"), "hx-trigger": "input changed delay:250ms, focus once, refresh",
+    "hx-get": reverse_lazy("item_suggest"), "hx-trigger": "input changed delay:250ms, focus, refresh", "hx-sync": "this:replace",
     "hx-include": "closest [data-item-field]", "hx-target": "next .item-assist", "hx-swap": "innerHTML",
     "autocomplete": "off", "autocapitalize": "words", "spellcheck": "false", "data-item-text": "",
 }

@@ -167,6 +167,31 @@
       htmx.trigger(input, 'refresh');      // show how it will be saved now
       if (pick) input.focus();
     });
+    // "In this box": names typed on the cards of the open, unsaved box (bag + item cards), kept only here in the
+    // page until the box is saved. Noted when a name box loses focus or a card is copied; each suggestion request
+    // sends the other cards' names (views.item_suggest normalises them like saving and lists them first).
+    const boxNames = new Map();             // card element -> typed text
+    const nameCard = el => el.closest('.item-card, .bag-card');
+    const cardGone = card => !card.isConnected || card.style.display === 'none'
+      || (card.querySelector('[data-delete-flag]') || {}).value === 'on';
+    function noteName(input) {
+      const card = nameCard(input), text = input.value.trim();
+      if (!card) return;
+      if (text) boxNames.set(card, text); else boxNames.delete(card);
+    }
+    document.addEventListener('focusout', e => { if (e.target.matches('[data-item-text]')) noteName(e.target); });
+    document.body.addEventListener('htmx:configRequest', e => {
+      const el = e.detail.elt;
+      if (!el.matches || !el.matches('[data-item-text]')) return;
+      const own = nameCard(el), names = [];
+      boxNames.forEach((text, card) => {
+        if (cardGone(card)) { if (!card.isConnected) boxNames.delete(card); return; }   // deleted / closed
+        if (card !== own) names.push(text);
+      });
+      e.detail.parameters['in_box'] = names;
+      const box = el.closest('[data-suggest-box]');            // box page: that box's saved items too
+      if (box) e.detail.parameters['box'] = box.dataset.suggestBox;
+    });
     // Box page: brand filter chips show only that brand's rows (bag and items)
     document.addEventListener('click', e => {
       const chip = e.target.closest('[data-brand-filter]');
@@ -191,6 +216,9 @@
       });
       document.getElementById('item-cards').append(clone);   // at the end, so saved order = screen order
       total.value = +to + 1;
+      const name = clone.querySelector('[data-item-text]');
+      if (name) noteName(name);                               // the copy's name is "in this box" straight away
+      clone.querySelectorAll('.item-assist').forEach(a => a.innerHTML = '');
       if (typeof updateMoney === 'function') updateMoney();
       clone.scrollIntoView({block: 'nearest', behavior: 'smooth'});
     }

@@ -2304,3 +2304,58 @@ class PiecePriceTests(BaseTest):
         importlib.import_module("tracker.migrations.0012_piece_prices").fill_line_totals(apps, None)
         self.item2.refresh_from_db()
         self.assertEqual(self.item2.line_total_jpy, 12600)              # 4200 × 3
+
+
+class InThisBoxSuggestionTests(BaseTest):
+    """Names typed on other cards of the unsaved box are offered first ("In this box"), before "Saved items"."""
+
+    def setUp(self):
+        super().setUp()
+        from .models import Brand, BrandModel
+        xxio = Brand.objects.get(display_name="XXIO")
+        BrandModel.objects.create(brand=xxio, display_name="MP1400")
+        BrandModel.objects.create(brand=xxio, display_name="X-Driver")
+        self.client.force_login(self.japan)
+
+    def suggest(self, q="", **params):
+        return self.client.get(reverse("item_suggest"), {"items-1-item_name": q, **params},
+                               HTTP_HX_REQUEST="true").content.decode()
+
+    def chips(self, html, group):
+        import re
+        block = re.search(rf'<div class="item-suggest"[^>]*{group}>(.*?)</div>', html, re.S)
+        return re.findall(r'data-pick="([^"]*)"', block.group(1)) if block else []
+
+    def test_typed_names_listed_first_normalised_and_deduplicated(self):
+        from .models import Brand, BrandModel
+        before = (Brand.objects.count(), BrandModel.objects.count())
+        html = self.suggest("xxio", in_box=["xxio mp 1400", "Xxio  Zeus-2", "Ryoma Stand Bag", "XXIO mp1400"])
+        self.assertEqual(self.chips(html, "data-in-box"), ["XXIO MP1400", "XXIO Zeus-2"])   # parsed like saving, once
+        self.assertEqual(self.chips(html, "data-saved"), ["XXIO X-Driver"])   # MP1400 already "in this box"
+        self.assertLess(html.index("In this box"), html.index("Saved items"))
+        self.assertEqual((Brand.objects.count(), BrandModel.objects.count()), before)   # nothing written
+        # an empty name box lists everything typed in the box straight away; the own text isn't offered
+        html = self.suggest("", in_box=["xxio mp 1400", "Ryoma Stand Bag"])
+        self.assertEqual(self.chips(html, "data-in-box"), ["XXIO MP1400", "Ryoma Stand Bag"])
+        self.assertNotIn("Saved items", html)
+        html = self.suggest("XXIO MP1400", in_box=["xxio mp1400", "Ryoma Stand Bag"])
+        self.assertEqual(self.chips(html, "data-in-box"), [])
+
+    def test_box_page_lists_the_boxs_saved_items(self):
+        self.add_bag(name="Ping Hoofer")
+        JapanItem.objects.create(box=self.box, item_name="XXIO MP1400", brand="XXIO", model="MP1400", qty=1)
+        html = self.suggest("", box=self.box.pk)
+        self.assertEqual(self.chips(html, "data-in-box"), ["Ping Hoofer", "TSR2", "RTX 6", "XXIO MP1400"])
+        html = self.suggest("mp", box=self.box.pk)
+        self.assertEqual(self.chips(html, "data-in-box"), ["XXIO MP1400"])
+        self.assertEqual(self.chips(html, "data-saved"), [])
+        self.assertNotIn("In this box", self.suggest("", box="x"))      # not a box id: ignored
+        self.assertNotIn("In this box", self.suggest("", box="99999"))
+
+    def test_fields_carry_the_hooks(self):
+        html = self.client.get(reverse("box_create"), HTTP_HX_REQUEST="true").content.decode()
+        self.assertIn('hx-trigger="input changed delay:250ms, focus, refresh"', html)
+        page_form = self.client.get(reverse("item_add", args=[self.box.pk]), HTTP_HX_REQUEST="true").content.decode()
+        self.assertIn(f'data-suggest-box="{self.box.pk}"', page_form)
+        bag_form = self.client.get(reverse("box_bag", args=[self.box.pk]), HTTP_HX_REQUEST="true").content.decode()
+        self.assertIn(f'data-suggest-box="{self.box.pk}"', bag_form)

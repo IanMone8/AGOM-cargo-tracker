@@ -254,7 +254,7 @@ def box_id_hint(cargo):
 @roles.require(roles.can_edit_japan)
 def item_suggest(request):
     """HTMX, while typing in "Item (brand + model)": saved combos to pick, plus how the text will be saved."""
-    from .brands import search
+    from .brands import match_key, search
     from .models import BrandModel, parse_item
     q = next((v for k, v in request.GET.items() if k.endswith("item_name")), "")
     add = next((v for k, v in request.GET.items() if k.endswith("add_brand")), "")
@@ -263,7 +263,22 @@ def item_suggest(request):
     plain = parse_item(q)
     parsed = parse_item(q, add_brand=True) if add == "yes" else plain
     new_brand = plain.unknown_brand if add == "yes" else ""     # "Yes, add brand" tapped, saved with the item
-    suggestions = [c for c in search(q, combos) if c != parsed.display]
+    # "In this box": names typed on the other cards of the unsaved box (sent by base.html, normalised here
+    # exactly like saving – nothing is written), plus an existing box's saved items on the box page.
+    here = {}
+    for raw in request.GET.getlist("in_box")[:100]:
+        shown = parse_item(raw[:200]).display
+        if shown:
+            here.setdefault(match_key(shown), shown)
+    box = visible_boxes(request.user).filter(pk=request.GET.get("box") or 0).first() \
+        if (request.GET.get("box") or "").isdigit() else None
+    if box:
+        for name in box.items.exclude(item_name="").order_by("-is_bag", "id").values_list("item_name", flat=True):
+            here.setdefault(match_key(name), name)
+    own = match_key(parsed.display)
+    here.pop(own, None)
+    in_box = search(q, here.items()) if q.strip() else list(here.values())[:8]
+    suggestions = [c for c in search(q, combos) if match_key(c) not in here and match_key(c) != own]
     did_you_mean = ""
     if parsed.brand_guess:                         # "xxip mp1400" -> "XXIO mp1400"
         did_you_mean = f"{parsed.brand_guess} {q.split(None, 1)[1] if len(q.split()) > 1 else ''}".strip()
@@ -272,7 +287,7 @@ def item_suggest(request):
     if did_you_mean:                               # show it the way it would be saved
         did_you_mean = parse_item(did_you_mean).display
     return render(request, "tracker/partials/item_assist.html", {
-        "parsed": parsed, "suggestions": suggestions, "did_you_mean": did_you_mean, "add_brand": add,
+        "parsed": parsed, "in_box": in_box, "suggestions": suggestions, "did_you_mean": did_you_mean, "add_brand": add,
         "new_brand": new_brand,
     })
 

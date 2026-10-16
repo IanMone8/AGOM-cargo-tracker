@@ -134,6 +134,10 @@ the rest is the model; models are recognised ignoring case, spaces and punctuati
 a new one is saved as first typed. Items show "XXIO MP1400" everywhere. If the first word isn't a known brand you get
 "Is 'Honma' a brand? [Yes, add brand] [No]" (not answering = No: the whole text is the model, no brand), and a one-tap
 "Did you mean …?" for a brand or model that is 1–2 letters off. Brands and models are in **Admin → Brands / Models**.
+Names typed on the other cards of the open Add box modal (bag and items) are offered first under **In this box** as
+soon as their box loses focus (or the card is copied), normalised like saving and without duplicates, then the
+**Saved items**; editing or deleting a card updates the list. On the box page, Add item and Edit bag list that box's
+saved items under In this box. Nothing is written until the box is saved.
 Shipments has a Brand filter, the box page has brand chips, and customer orders find items by brand + model.
 
 **Box ID:** new boxes get a monthly ID per cargo company, `<MON><YY>-<CARGO>-<n>` (e.g. `OCT26-KB-3`): the month

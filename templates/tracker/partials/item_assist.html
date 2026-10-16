@@ -1,6 +1,13 @@
 {# Under "Item (brand + model)": saved combos to tap, and how the text will be saved. JS in base.html handles the taps. #}
+{% if in_box %}
+  <p class="item-suggest-head">In this box</p>
+  <div class="item-suggest" role="listbox" aria-label="In this box" data-in-box>
+    {% for s in in_box %}<button type="button" class="item-chip item-chip-here" role="option" data-pick="{{ s }}">{{ s }}</button>{% endfor %}
+  </div>
+{% endif %}
 {% if suggestions %}
-  <div class="item-suggest" role="listbox" aria-label="Saved brands and models">
+  <p class="item-suggest-head">Saved items</p>
+  <div class="item-suggest" role="listbox" aria-label="Saved items" data-saved>
     {% for s in suggestions %}<button type="button" class="item-chip" role="option" data-pick="{{ s }}">{{ s }}</button>{% endfor %}
   </div>
 {% endif %}

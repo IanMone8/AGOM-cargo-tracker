@@ -1,5 +1,5 @@
 {# Add / edit the golf bag on the box page #}
-<form class="mb-4" hx-post="{% url 'box_bag' box.pk %}" hx-target="#bag-section" hx-swap="outerHTML">
+<form class="mb-4" hx-post="{% url 'box_bag' box.pk %}" hx-target="#bag-section" hx-swap="outerHTML" data-suggest-box="{{ box.pk }}">
   {% include "tracker/partials/bag_card.html" %}
   <div class="mt-2 flex gap-2">
     <button class="btn btn-primary flex-1">{% if bag %}Save bag{% else %}Add bag{% endif %}</button>

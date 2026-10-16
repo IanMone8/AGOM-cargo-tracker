@@ -366,10 +366,13 @@ textarea.field { resize: vertical; }
 .item-assist:empty { display: none; }
 .item-assist { margin-top: .4rem; display: grid; gap: .35rem; font-size: .8rem; color: var(--text-muted); }
 .item-suggest { display: flex; flex-wrap: wrap; gap: .35rem; }
+.item-suggest-head { margin: .1rem 0 .3rem; font-size: .7rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); }
+.item-suggest + .item-suggest-head { margin-top: .55rem; }
 .item-chip { padding: .35rem .65rem; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--card);
   color: var(--text); font-weight: 600; font-size: .8rem; min-height: 2rem; }
 .item-chip:hover, .item-chip:focus-visible { background: var(--mint); border-color: var(--primary); outline: none; }
 .item-chip[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: #fff; }
+.item-chip-here { border-color: var(--primary); background: var(--mint); }   /* "In this box" */
 .item-preview b { color: var(--text); }
 .item-tag { margin-left: .25rem; padding: .05rem .45rem; border-radius: 999px; background: var(--sage); color: var(--text-muted); font-size: .7rem; font-weight: 700; }
 .item-ask { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .5rem; padding: .45rem .6rem; border-radius: .75rem;

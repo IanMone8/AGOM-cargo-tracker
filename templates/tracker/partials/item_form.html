@@ -1,4 +1,4 @@
-<form class="mb-4" hx-post="{% url 'item_add' box.pk %}" hx-target="#item-form-slot">
+<form class="mb-4" hx-post="{% url 'item_add' box.pk %}" hx-target="#item-form-slot" data-suggest-box="{{ box.pk }}">
   {% include "tracker/partials/item_card.html" with item_form=form %}
   <div class="mt-2 flex gap-2">
     <button class="btn btn-primary flex-1">Add item</button>
