@@ -34,6 +34,8 @@ class Box(models.Model):
     japan_ship_date = models.DateField(null=True, blank=True)
     myanmar_received_date = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.PACKED)
+    cargo_fee_jpy = models.PositiveIntegerField("Cargo fee (JP¥)", null=True, blank=True,
+                                                help_text="Whole yen, what the cargo company charges for this box")
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -82,6 +84,15 @@ class Box(models.Model):
             return self.bags_annotated
         return self.items.filter(is_bag=True).count()
 
+    def money(self, items=None):
+        """Yen totals: bag + items inside + cargo fee. Amounts are per piece, so each line is amount × qty."""
+        items = list(self.items.all()) if items is None else items
+        bag = sum(i.line_total or 0 for i in items if i.is_bag)
+        inside = sum(i.line_total or 0 for i in items if not i.is_bag)
+        fee = self.cargo_fee_jpy or 0
+        return {"bag": bag, "items": inside, "cargo_fee": fee, "total": bag + inside + fee,
+                "any": any(i.price_jpy is not None for i in items) or self.cargo_fee_jpy is not None}
+
     @property
     def title(self):
         """ "JP-7 · Titleist Stand Bag" – the box ID with its bag's name."""
@@ -111,6 +122,7 @@ class Box(models.Model):
         checks = [i.receive_check for i in items if hasattr(i, "receive_check")]
         bags = sum(i.is_bag for i in items)
         return {
+            "money": self.money(items),
             "total": len(items),
             "bags": bags,
             "inside": len(items) - bags,
@@ -223,7 +235,7 @@ class JapanItem(models.Model):
     condition = models.CharField(
         "Japan condition", max_length=5, choices=Condition.choices, default=Condition.NEW
     )
-    price_jpy = models.PositiveIntegerField("Amount (JPY)", null=True, blank=True)
+    price_jpy = models.PositiveIntegerField("Amount (JP¥)", null=True, blank=True, help_text="Whole yen, per piece")
     customer = models.CharField(max_length=100, blank=True)
     note = models.CharField(max_length=255, blank=True)
     is_bag = models.BooleanField(
@@ -237,6 +249,11 @@ class JapanItem(models.Model):
 
     def __str__(self):
         return f"{self.box.label}: {self.title}" + (f" {self.flex}" if self.flex else "") + f" ×{self.qty}"
+
+    @property
+    def line_total(self):
+        """Amount × qty (the amount is per piece)."""
+        return None if self.price_jpy is None else self.price_jpy * self.qty
 
     @property
     def club_label(self):

@@ -10,7 +10,8 @@
     <div class="col-span-2">{% include "tracker/_field.html" with field=bag_form.item_name %}</div>
     <div class="col-span-2 sm:col-span-1">{% include "tracker/_field.html" with field=bag_form.color %}</div>
     <div class="col-span-2 sm:col-span-1">{% include "tracker/_field.html" with field=bag_form.customer %}</div>
-    <div class="col-span-2">{% include "tracker/_field.html" with field=bag_form.note %}</div>
+    {% if can_see_money %}<div class="col-span-2 sm:col-span-1" data-money-line>{% include "tracker/_field.html" with field=bag_form.price_jpy %}</div>{% endif %}
+    <div class="col-span-2 {% if can_see_money %}sm:col-span-1{% endif %}">{% include "tracker/_field.html" with field=bag_form.note %}</div>
   </div>
   {% if form.allow_no_bag %}
     <label class="mt-3 flex items-start gap-2 rounded-xl bg-warn-bg p-3 text-xs text-warn-ink">

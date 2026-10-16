@@ -124,6 +124,16 @@ and admin) and then get a clear warning. A box without a bag shows **No bag reco
 When upgrading, the migration marks an existing box's single item of type *Bag* as its golf bag; boxes with no
 or several bag items are left for the owner to fix.
 
+**Money (JP¥):** the box has an optional **Cargo fee** (next to Box ID) and the bag and every item have an
+optional **Amount** – the price per piece, whole yen (`12500`, `12,500` and `¥12,500` all work; phones get the number
+keypad). Item cards show the line total (amount × qty) when qty > 1, Copy keeps the amount, and the Add box modal has a
+live **Bag + Items + Cargo fee = Total** line above Save. The box page shows the same line; Shipments shows each box's
+total. Amounts, cargo fees and totals are for Owner, Admin and the Japan sender only – the Myanmar checker never sees
+them (pages, HTMX updates and the money script are all left out for them).
+
+**Customer icon:** names of customers show `static/img/icons/customer.png` (small copy made by
+`scripts/make_display_images.py`, background cut out) at 18px; it's hidden if the file is missing.
+
 **Locking:** once the Myanmar check has started on a box (it has a received date, or any item is checked),
 the Japan sender can no longer edit that box or add or delete its items.
 Owner and Admin can still correct it, and the Myanmar checker can still edit the Myanmar side.
@@ -158,16 +168,18 @@ Run the tests with `python manage.py test`.
 ## CSV format for Japan lists
 
 ```
-box,kind,item_name,color,club_option,flex,qty,customer,note
-GN-3,bag,Titleist Stand Bag,Black,,,1,Ko Aung,
-GN-3,,Titleist TSR2,,Driver 10.5°,S,1,Ko Aung,with cover
-GN-3,,,,Driver head 9.5,,2,,
-GN-3,,Mizuno JPX 923,,Iron · Graphite 5,R,1,,
-KL-1,bag,Ping Hoofer,Navy,,,1,,
-KL-1,,Cleveland RTX 6,,Wedge 52,,1,,
+box,kind,item_name,color,club_option,flex,qty,amount_jpy,cargo_fee_jpy,customer,note
+GN-3,bag,Titleist Stand Bag,Black,,,1,8000,"12,500",Ko Aung,
+GN-3,,Titleist TSR2,,Driver 10.5°,S,1,"¥25,000",,Ko Aung,with cover
+GN-3,,,,Driver head 9.5,,2,6500,,,
+GN-3,,Mizuno JPX 923,,Iron · Graphite 5,R,1,,,,
+KL-1,bag,Ping Hoofer,Navy,,,1,,9000,,
+KL-1,,Cleveland RTX 6,,Wedge 52,,1,4200,,,
 ```
 
 * Required: `box`, plus `item_name` or `club_option` on each row. Other columns are optional.
+* `amount_jpy` is the price per piece; `cargo_fee_jpy` goes on the box's bag row. Both are whole yen and accept
+  `12500`, `12,500` or `¥12,500`.
 * `kind` = `bag` marks the box's golf bag (bag name in `item_name`, plus `color`, `customer`, `note`; qty 1);
   empty (or `item`) is an item inside the bag. Each box needs **exactly one** bag row – or must already have its
   bag when you add items to it. A box with no bag or two bags is rejected with its row numbers, e.g.

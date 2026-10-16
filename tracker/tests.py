@@ -311,7 +311,8 @@ class CSVNewFieldsTests(CSVImportTests):
         Cargo.objects.create(code="KL", name="KL Cargo")
         self.client.force_login(self.owner)
         template = self.client.get(reverse("csv_template")).content.decode()
-        self.assertTrue(template.startswith("box,kind,item_name,color,club_option,flex,qty,customer,note"))
+        self.assertTrue(template.startswith("box,kind,item_name,color,club_option,flex,qty,amount_jpy,cargo_fee_jpy,"
+                                            "customer,note"))
         r = self.upload(template, replace="on")
         self.assertContains(r, "Imported 4 item(s) and 2 golf bag(s) into 2 box(es)")
         self.assertEqual(Box.objects.get(box_no=1).title, "KL-1 · Ping Hoofer")
@@ -1018,7 +1019,7 @@ class ClubOptionTests(BaseTest):
             self.assertIn(f'name="{name}"', html)
         self.assertLess(html.index('name="item_name"'), html.index('name="customer"'))   # right below Item name
         self.assertLess(html.index('name="customer"'), html.index('name="club_option"'))
-        for gone in ("type", "loft", "brand", "model", "shaft_material", "price_jpy"):
+        for gone in ("type", "loft", "brand", "model", "shaft_material"):
             self.assertNotIn(f'name="{gone}"', html)
         cats = ["Driver", "Driver head", "Wood", "Hybrid", "Iron", "Wedge", "Putter", "Other"]
         positions = [html.index(f">{cat}</button>") for cat in cats]
@@ -1723,3 +1724,117 @@ class MyanmarBannerTests(BaseTest):
         self.assertNotIn("sticker-bob", css)                   # the stickers animate themselves
         script = (base / "scripts/make_display_images.py").read_text()
         self.assertNotIn("animated_", script)                  # it would freeze the GIFs into one frame
+
+
+class YenAmountTests(BaseTest):
+    """Japanese yen: cargo fee per box, amount per piece on the bag and items, totals – never shown to Myanmar."""
+
+    def modal_data(self, **extra):
+        data = {"cargo": self.cargo.pk, "box_no": "21", "notes": "", "cargo_fee_jpy": "12500",
+                "bag-item_name": "Titleist Stand Bag", "bag-color": "", "bag-customer": "", "bag-note": "",
+                "bag-price_jpy": "¥8,000",
+                "items-TOTAL_FORMS": "3", "items-INITIAL_FORMS": "0", "items-MIN_NUM_FORMS": "0",
+                "items-MAX_NUM_FORMS": "1000",
+                "items-0-item_name": "TSR2", "items-0-qty": "2", "items-0-price_jpy": "12,500",
+                "items-1-item_name": "Pro V1", "items-1-qty": "1", "items-1-price_jpy": "3000",
+                "items-2-item_name": "No price", "items-2-qty": "1", "items-2-price_jpy": ""}
+        data.update(extra)
+        return data
+
+    def test_modal_has_yen_fields_and_live_summary(self):
+        self.client.force_login(self.japan)
+        html = self.client.get(reverse("box_create"), HTTP_HX_REQUEST="true").content.decode()
+        for name in ("cargo_fee_jpy", "bag-price_jpy", "items-0-price_jpy"):
+            self.assertRegex(html, r'<span class="yen-sign" aria-hidden="true">¥</span><input type="text" name="%s" '
+                                   r'inputmode="numeric"' % name)
+        self.assertLess(html.index('name="box_no"'), html.index('name="cargo_fee_jpy"'))   # next to Box ID
+        self.assertIn("data-money-summary", html)
+        self.assertIn('data-sum="total"', html)
+        self.assertIn("data-line-total", html)
+
+    def test_amounts_saved_and_totals(self):
+        r = self.htmx(self.japan, reverse("box_create"), self.modal_data())
+        self.assertEqual(r.status_code, 204)
+        box = Box.objects.get(box_no=21)
+        self.assertEqual(box.cargo_fee_jpy, 12500)
+        bag, tsr2, prov1, none = box.items.all()
+        self.assertEqual((bag.price_jpy, tsr2.price_jpy, prov1.price_jpy, none.price_jpy), (8000, 12500, 3000, None))
+        self.assertEqual(tsr2.line_total, 25000)                 # amount is per piece
+        self.assertEqual(box.money(), {"bag": 8000, "items": 28000, "cargo_fee": 12500, "total": 48500, "any": True})
+        self.client.force_login(self.japan)
+        html = self.client.get(reverse("box_detail", args=[box.pk])).content.decode()
+        self.assertIn("Bag <b>¥8,000</b>", html)
+        self.assertIn("Items <b>¥28,000</b>", html)
+        self.assertIn("Cargo fee <b>¥12,500</b>", html)
+        self.assertIn("Total <b>¥48,500</b>", html)
+        self.assertIn("¥12,500 × 2 = ¥25,000", html)              # line total on the item row
+        self.assertIn("data-box-total>¥48,500<", self.client.get(reverse("box_list")).content.decode())
+
+    def test_bad_amounts_rejected(self):
+        for bad in ("-5", "abc", "12.5"):
+            with self.subTest(bad=bad):
+                r = self.htmx(self.japan, reverse("box_create"), self.modal_data(**{"items-0-price_jpy": bad}))
+                self.assertEqual(r.status_code, 200)
+                self.assertFalse(Box.objects.filter(box_no=21).exists())
+
+    def test_copy_keeps_amount(self):
+        self.item1.price_jpy = 9900
+        self.item1.save()
+        self.htmx(self.japan, reverse("item_copy", args=[self.item1.pk]))
+        self.assertEqual(JapanItem.objects.latest("id").price_jpy, 9900)
+
+    def test_hidden_from_myanmar_checker(self):
+        self.box.cargo_fee_jpy = 7000
+        self.box.save()
+        self.item1.price_jpy = 12500
+        self.item1.save()
+        self.ship()
+        self.client.force_login(self.owner)
+        self.assertIn("¥12,500", self.client.get(reverse("box_detail", args=[self.box.pk])).content.decode())
+        self.client.force_login(self.myanmar)
+        for url in (reverse("box_detail", args=[self.box.pk]), reverse("box_list"), reverse("dashboard"),
+                    reverse("box_edit", args=[self.box.pk])):
+            with self.subTest(url=url):
+                html = self.client.get(url).content.decode()
+                self.assertNotIn("¥", html)
+                self.assertNotIn("cargo_fee_jpy", html)
+                self.assertNotIn("Cargo fee", html)
+        self.client.post(reverse("box_start_check", args=[self.box.pk]))
+        r = self.htmx(self.myanmar, reverse("item_check", args=[self.item1.pk]), {"result": "matched"})  # HTMX parts too
+        self.assertEqual(r.status_code, 200)
+        self.assertNotIn("¥", r.content.decode())
+        self.assertNotIn("¥", self.client.get(reverse("item_row", args=[self.item1.pk])).content.decode())
+        # a Myanmar edit of the box can't wipe the fee
+        self.client.post(reverse("box_edit", args=[self.box.pk]), {"status": "arrived", "notes": "x",
+                                                                   "myanmar_received_date": ""})
+        self.box.refresh_from_db()
+        self.assertEqual(self.box.cargo_fee_jpy, 7000)
+
+    def test_csv_amounts_and_cargo_fee(self):
+        self.client.force_login(self.owner)
+        f = SimpleUploadedFile("l.csv", (
+            "box,kind,item_name,qty,amount_jpy,cargo_fee_jpy\n"
+            "GN-8,bag,Ping Hoofer,1,8000,\"¥12,500\"\n"
+            "GN-8,,TSR2,2,\"12,500\",\n"
+            "GN-8,,Pro V1,1,¥3000,\n").encode(), content_type="text/csv")
+        self.assertContains(self.client.post(reverse("csv_import"), {"file": f}), "Imported 2 item(s)")
+        box = Box.objects.get(box_no=8)
+        self.assertEqual(box.cargo_fee_jpy, 12500)
+        self.assertEqual(sorted(box.items.values_list("price_jpy", flat=True)), [3000, 8000, 12500])
+        self.assertEqual(box.money()["total"], 8000 + 25000 + 3000 + 12500)
+        f = SimpleUploadedFile("l.csv", (
+            "box,kind,item_name,amount_jpy,cargo_fee_jpy\n"
+            "GN-9,bag,Bag,,\n"
+            "GN-9,,TSR2,12.5,500\n").encode(), content_type="text/csv")
+        r = self.client.post(reverse("csv_import"), {"file": f})
+        self.assertContains(r, "amount_jpy must be whole yen")
+        self.assertContains(r, "cargo_fee_jpy goes on the box&#x27;s bag row")
+
+    def test_customer_icon_instead_of_emoji(self):
+        self.item1.customer = "Ko Aung"
+        self.item1.save()
+        self.client.force_login(self.owner)
+        html = self.client.get(reverse("box_detail", args=[self.box.pk])).content.decode()
+        self.assertIn('<img src="/static/img/display/icons/customer.webp', html)
+        self.assertIn('alt="Customer" width="18" height="18"', html)
+        self.assertNotIn("👤", html)

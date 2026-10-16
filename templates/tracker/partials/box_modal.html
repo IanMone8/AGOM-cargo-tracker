@@ -13,6 +13,12 @@
     <div class="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
       {% include "tracker/partials/box_form_body.html" %}
     </div>
+    {% if can_see_money %}
+      {# live total: Bag + Items + Cargo fee (base.html keeps it up to date while typing) #}
+      <div class="money-summary border-t border-line bg-sage px-4 py-2.5 text-sm sm:px-6" data-money-summary aria-live="polite">
+        <span>Bag <b data-sum="bag">¥0</b></span><span class="op">+</span><span>Items <b data-sum="items">¥0</b></span><span class="op">+</span><span>Cargo fee <b data-sum="fee">¥0</b></span><span class="op">=</span><span class="money-total">Total <b data-sum="total">¥0</b></span>
+      </div>
+    {% endif %}
     <div class="flex gap-2 border-t border-line bg-card px-4 py-3 sm:px-6">
       <button type="button" class="btn btn-ghost flex-1 sm:flex-none" onclick="closeModal()">Cancel</button>
       <button class="btn btn-save flex-1">{% icon "check" %} Save box</button>

@@ -26,6 +26,14 @@ BADGES = {
 
 
 @register.filter
+def yen(value):
+    """12500 -> "¥12,500" (whole yen); empty for no amount."""
+    if value in (None, ""):
+        return ""
+    return f"¥{int(value):,}"
+
+
+@register.filter
 def badge(value):
     """Status pill; colours come from the tokens in css/agom.css (all pass WCAG AA)."""
     return "pill " + BADGES.get(value, "pill-neutral")

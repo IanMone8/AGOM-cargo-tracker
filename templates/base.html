@@ -89,6 +89,7 @@
   </div>
 {% endwith %}
   <div id="modal"></div>
+  {% if can_see_money %}<script src="{% static_v 'js/money.js' %}" defer></script>{% endif %}
   <script>
     function toggleSidebar(open) {
       document.getElementById('sidebar').classList.toggle('-translate-x-full', !open);
@@ -99,6 +100,7 @@
       const card = btn.closest('.item-card');
       const flag = card.querySelector('[data-delete-flag]');
       if (flag) { flag.value = 'on'; card.style.display = 'none'; } else { card.remove(); }
+      if (typeof updateMoney === 'function') updateMoney();
     }
     // 3D tilt for [data-tilt] cards (mouse/trackpad only; off for reduced motion).
     (function () {
@@ -167,6 +169,7 @@
       });
       document.getElementById('item-cards').append(clone);   // at the end, so saved order = screen order
       total.value = +to + 1;
+      if (typeof updateMoney === 'function') updateMoney();
       clone.scrollIntoView({block: 'nearest', behavior: 'smooth'});
     }
     function closeModal() { document.getElementById('modal').innerHTML = ''; document.body.classList.remove('overflow-hidden'); }

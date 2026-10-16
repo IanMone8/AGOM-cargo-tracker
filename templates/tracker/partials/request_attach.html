@@ -7,7 +7,7 @@
           <button class="block w-full rounded-xl bg-card px-3 py-2.5 text-left text-sm ring-1 ring-line-strong hover:ring-info"
                   hx-post="{% url 'request_attach' r.pk %}" hx-vals='{"japan_item": "{{ item.pk }}"}'
                   hx-target="#request-{{ r.pk }}" hx-swap="outerHTML">
-            <b>{{ item.box.label }}</b> · {% if item.is_bag %}🎒 Golf bag: {% endif %}{{ item.title }} {{ item.flex }} ×{{ item.qty }}{% if item.customer %} · 👤 {{ item.customer }}{% endif %}
+            <b>{{ item.box.label }}</b> · {% if item.is_bag %}🎒 Golf bag: {% endif %}{{ item.title }} {{ item.flex }} ×{{ item.qty }}{% if item.customer %} · <span class="customer-chip">{% include "tracker/_customer_icon.html" %}{{ item.customer }}</span>{% endif %}
           </button>
         {% endfor %}
       </div>

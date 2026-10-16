@@ -1,4 +1,4 @@
-<section id="summary" {% if oob %}hx-swap-oob="true"{% endif %} class="card p-5">
+{% load tracker_tags %}<section id="summary" {% if oob %}hx-swap-oob="true"{% endif %} class="card p-5">
   <div class="mb-2 flex items-center justify-between text-sm">
     <span class="font-bold">Myanmar check</span>
     <span class="font-semibold text-ink-muted">{{ summary.checked }}/{{ summary.total }} checked{% if summary.bags %} <span class="font-normal">(bag + {{ summary.inside }} item{{ summary.inside|pluralize }})</span>{% endif %}</span>
@@ -27,4 +27,9 @@
   {% elif summary.total and not summary.unchecked %}
     <p class="mt-4 text-sm font-semibold text-primary">✅ Everything matched.</p>
   {% endif %}
+  {% if can_see_money %}{% with m=summary.money %}
+    <div class="money-summary mt-4 rounded-2xl bg-sage px-3 py-2.5 text-sm" data-box-money>
+      <span>Bag <b>{{ m.bag|yen }}</b></span><span class="op">+</span><span>Items <b>{{ m.items|yen }}</b></span><span class="op">+</span><span>Cargo fee <b>{{ m.cargo_fee|yen }}</b></span><span class="op">=</span><span class="money-total">Total <b>{{ m.total|yen }}</b></span>
+    </div>
+  {% endwith %}{% endif %}
 </section>

@@ -2,7 +2,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.core.exceptions import PermissionDenied
-from django.db.models import Count, OuterRef, Q, Subquery, Value
+from django.db.models import Count, F, IntegerField, OuterRef, Q, Subquery, Sum, Value
 from django.db.models.functions import Coalesce, NullIf
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -78,9 +78,19 @@ def with_bag(qs):
     )
 
 
+def with_money(qs):
+    """Annotate money_total = Σ(amount × qty) + cargo fee, and has_money (any amount or fee entered)."""
+    lines = (JapanItem.objects.filter(box=OuterRef("pk"), price_jpy__isnull=False).order_by().values("box")
+             .annotate(t=Sum(F("price_jpy") * F("qty"))).values("t")[:1])
+    return qs.annotate(
+        items_money=Coalesce(Subquery(lines, output_field=IntegerField()), Value(0)),
+        money_total=F("items_money") + Coalesce(F("cargo_fee_jpy"), Value(0)),
+    )
+
+
 def boxes_with_counts(qs=None):
     qs = qs if qs is not None else Box.objects.all()
-    return with_bag(qs).select_related("cargo").annotate(
+    return with_money(with_bag(qs)).select_related("cargo").annotate(
         item_count=Count("items", distinct=True),
         checked_count=Count("items__receive_check", distinct=True),
         problem_count=Count(

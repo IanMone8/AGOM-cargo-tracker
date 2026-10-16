@@ -8,8 +8,8 @@
       <div class="mt-1.5 flex flex-wrap gap-1.5 text-[0.7rem] font-semibold">
         {% if item.club_label and item.item_name %}<span class="rounded-md bg-mint px-1.5 py-0.5 text-primary-hover">{{ item.club_label }}</span>{% endif %}
         <span class="rounded-md bg-sage px-1.5 py-0.5 text-ink-muted">{{ item.get_condition_display }}</span>
-        {% if item.price_jpy %}<span class="rounded-md bg-sage px-1.5 py-0.5 text-ink-muted">¥{{ item.price_jpy }}</span>{% endif %}
-        {% if item.customer %}{% if can_use_customers %}<a href="{% url 'customer_by_name' %}?name={{ item.customer|urlencode }}" class="rounded-md bg-mint px-1.5 py-0.5 text-primary-hover hover:underline">👤 {{ item.customer }}</a>{% else %}<span class="rounded-md bg-mint px-1.5 py-0.5 text-primary-hover">👤 {{ item.customer }}</span>{% endif %}{% endif %}
+        {% if can_see_money and item.price_jpy is not None %}<span class="rounded-md bg-sage px-1.5 py-0.5 text-ink" data-amount>{{ item.price_jpy|yen }}{% if item.qty > 1 %} × {{ item.qty }} = {{ item.line_total|yen }}{% endif %}</span>{% endif %}
+        {% if item.customer %}{% if can_use_customers %}<a href="{% url 'customer_by_name' %}?name={{ item.customer|urlencode }}" class="customer-chip rounded-md bg-mint px-1.5 py-0.5 text-primary-hover hover:underline">{% include "tracker/_customer_icon.html" %}{{ item.customer }}</a>{% else %}<span class="customer-chip rounded-md bg-mint px-1.5 py-0.5 text-primary-hover">{% include "tracker/_customer_icon.html" %}{{ item.customer }}</span>{% endif %}{% endif %}
       </div>
       {% if item.specification %}<div class="mt-1 text-xs text-ink-muted">{{ item.specification }}</div>{% endif %}
       {% if item.note %}<div class="mt-0.5 text-xs italic text-ink-muted">{{ item.note }}</div>{% endif %}

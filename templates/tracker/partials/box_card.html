@@ -16,5 +16,6 @@
       </div>
     {% endif %}
   </div>
-  <div class="shrink-0 text-right text-xs text-ink-muted"><span class="block text-base font-bold text-ink">{{ box.checked_count }}/{{ box.item_count }}</span>checked</div>
+  <div class="shrink-0 text-right text-xs text-ink-muted"><span class="block text-base font-bold text-ink">{{ box.checked_count }}/{{ box.item_count }}</span>checked
+    {% if can_see_money and box.money_total %}<span class="mt-1 block font-bold text-ink" data-box-total>{{ box.money_total|yen }}</span>{% endif %}</div>
 </a>

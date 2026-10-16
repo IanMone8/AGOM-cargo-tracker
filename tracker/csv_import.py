@@ -18,21 +18,23 @@ from .models import Box, Cargo, ClubOption, Customer, JapanItem
 
 # Template columns (simple). Older files may also use: type, quantity_unit, brand, model,
 # club_type, club_number, loft, shaft_material, specification, color, condition, price_jpy.
-COLUMNS = ["box", "kind", "item_name", "color", "club_option", "flex", "qty", "customer", "note"]
+COLUMNS = ["box", "kind", "item_name", "color", "club_option", "flex", "qty", "amount_jpy", "cargo_fee_jpy",
+           "customer", "note"]
 KINDS = {"": "item", "item": "item", "bag": "bag", "golf bag": "bag"}
 REQUIRED = ["box"]
 # Friendlier header names that map onto the real columns.
-ALIASES = {"name": "item_name", "amount": "price_jpy", "unit": "quantity_unit",
+ALIASES = {"name": "item_name", "amount": "price_jpy", "amount_jpy": "price_jpy", "unit": "quantity_unit",
            "japan_condition": "condition", "shaft": "shaft_material", "row_type": "kind", "row": "kind"}
 BOX_RE = re.compile(r"^\s*([A-Za-z]+)\s*-?\s*(\d+)\s*$")
 
+# amount_jpy is per piece; cargo_fee_jpy goes on the box's bag row.
 TEMPLATE_ROWS = [
-    ["GN-3", "bag", "Titleist Stand Bag", "Black", "", "", "1", "Ko Aung", ""],
-    ["GN-3", "", "Titleist TSR2", "", "Driver 10.5°", "S", "1", "Ko Aung", "with cover"],
-    ["GN-3", "", "", "", "Driver head 9.5", "", "2", "", ""],
-    ["GN-3", "", "Mizuno JPX 923", "", "Iron · Graphite 5", "R", "1", "", ""],
-    ["KL-1", "bag", "Ping Hoofer", "Navy", "", "", "1", "", ""],
-    ["KL-1", "", "Cleveland RTX 6", "", "Wedge 52", "", "1", "", ""],
+    ["GN-3", "bag", "Titleist Stand Bag", "Black", "", "", "1", "8000", "12,500", "Ko Aung", ""],
+    ["GN-3", "", "Titleist TSR2", "", "Driver 10.5°", "S", "1", "¥25,000", "", "Ko Aung", "with cover"],
+    ["GN-3", "", "", "", "Driver head 9.5", "", "2", "6500", "", "", ""],
+    ["GN-3", "", "Mizuno JPX 923", "", "Iron · Graphite 5", "R", "1", "", "", "", ""],
+    ["KL-1", "bag", "Ping Hoofer", "Navy", "", "", "1", "", "9000", "", ""],
+    ["KL-1", "", "Cleveland RTX 6", "", "Wedge 52", "", "1", "4200", "", "", ""],
 ]
 
 
@@ -92,6 +94,17 @@ def _parse_box(label):
     if not m:
         return None
     return m.group(1).upper(), int(m.group(2))
+
+
+def _parse_yen(value, name, errors, row):
+    """Whole yen: "12500", "12,500" or "¥12,500" -> 12500; empty -> None."""
+    text = (value or "").replace("¥", "").replace("￥", "").replace(",", "").replace(" ", "").strip()
+    if text == "":
+        return None
+    if not text.isdigit():
+        errors.append((row, f"{name} must be whole yen like 12500, 12,500 or ¥12,500 – got '{value}'"))
+        return None
+    return int(text)
 
 
 def _parse_int(value, name, errors, row, default=None, minimum=0):
@@ -165,6 +178,7 @@ def import_japan_csv(uploaded_file, replace=False, allow_bag_exception=False):
     unit_ok = set(JapanItem.Unit.values)
     shaft_ok = set(JapanItem.Shaft.values)
     parsed = []  # (cargo_code, box_no, item kwargs, row number)
+    fees = {}    # (cargo_code, box_no) -> cargo fee from the bag row
 
     for row_no, row in enumerate(reader, start=2):
         row = {k: (v or "").strip() for k, v in row.items() if k}
@@ -212,7 +226,12 @@ def import_japan_csv(uploaded_file, replace=False, allow_bag_exception=False):
         if shaft and shaft not in shaft_ok:
             errors.append((row_no, f"shaft_material must be steel or graphite, got '{shaft}'"))
         qty = _parse_int(row.get("qty"), "qty", errors, row_no, default=1, minimum=1)
-        price = _parse_int(row.get("price_jpy"), "price_jpy", errors, row_no)
+        price = _parse_yen(row.get("price_jpy"), "amount_jpy", errors, row_no)
+        fee = _parse_yen(row.get("cargo_fee_jpy"), "cargo_fee_jpy", errors, row_no)
+        if fee is not None and not is_bag:
+            errors.append((row_no, "cargo_fee_jpy goes on the box's bag row (kind = bag)"))
+        elif fee is not None:
+            fees[(code, box_no)] = fee
         parsed.append((code, box_no, dict(
             type=row.get("type", "")[:50],
             item_name=row.get("item_name", "")[:200],
@@ -263,6 +282,9 @@ def import_japan_csv(uploaded_file, replace=False, allow_bag_exception=False):
                 result.created_boxes.append(box)
             elif replace:
                 box.items.all().delete()
+            if key in fees:
+                box.cargo_fee_jpy = fees[key]
+                box.save(update_fields=["cargo_fee_jpy", "updated_at"])
             boxes[key] = box
         JapanItem.objects.bulk_create(
             JapanItem(box=boxes[(code, no)], **kwargs) for code, no, kwargs, _ in parsed

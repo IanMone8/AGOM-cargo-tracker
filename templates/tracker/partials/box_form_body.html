@@ -1,8 +1,9 @@
 {% load tracker_tags %}
 {% for e in form.non_field_errors %}<p class="mb-3 rounded-xl bg-danger-bg px-3 py-2 text-sm text-danger-ink">{{ e }}</p>{% endfor %}
 <div class="card grid grid-cols-2 gap-3 p-4">
-  <div class="col-span-2 sm:col-span-1">{% include "tracker/_field.html" with field=form.cargo %}</div>
-  <div class="col-span-2 sm:col-span-1">{% include "tracker/_field.html" with field=form.box_no %}</div>
+  <div class="col-span-2">{% include "tracker/_field.html" with field=form.cargo %}</div>
+  <div class="{% if not can_see_money %}col-span-2{% endif %}">{% include "tracker/_field.html" with field=form.box_no %}</div>
+  {% if can_see_money %}<div>{% include "tracker/_field.html" with field=form.cargo_fee_jpy %}</div>{% endif %}
   <div class="col-span-2">{% include "tracker/_field.html" with field=form.notes %}</div>
 </div>
 

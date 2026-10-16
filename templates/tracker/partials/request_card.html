@@ -2,7 +2,7 @@
 <div id="request-{{ r.pk }}" class="card p-4">
   <div class="flex items-start justify-between gap-3">
     <div class="min-w-0">
-      <div class="flex items-center gap-2"><a href="{% url 'customer_by_name' %}?name={{ r.customer|urlencode }}" class="font-semibold text-primary-hover underline-offset-2 hover:underline">{{ r.customer }}</a><span class="{{ r.status|badge }}">{{ r.get_status_display }}</span></div>
+      <div class="flex items-center gap-2"><a href="{% url 'customer_by_name' %}?name={{ r.customer|urlencode }}" class="customer-chip font-semibold text-primary-hover underline-offset-2 hover:underline">{% include "tracker/_customer_icon.html" %}{{ r.customer }}</a><span class="{{ r.status|badge }}">{{ r.get_status_display }}</span></div>
       <div class="text-sm">{{ r.type }} {{ r.item_name }}{% if r.flex %} · {{ r.flex }}{% endif %}{% if r.loft %} · {{ r.loft }}°{% endif %} <b>×{{ r.qty }}</b></div>
       {% if r.note %}<div class="text-xs italic text-ink-muted">{{ r.note }}</div>{% endif %}
       {% if r.japan_item %}

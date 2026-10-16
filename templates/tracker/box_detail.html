@@ -15,10 +15,11 @@
     </div>
     {% if can_edit_this_box %}<a href="{% url 'box_edit' box.pk %}" class="btn btn-ghost">Edit box</a>{% endif %}
   </div>
-  <dl class="grid grid-cols-2 gap-px bg-line text-sm sm:grid-cols-3">
+  <dl class="grid grid-cols-2 gap-px bg-line text-sm {% if can_see_money %}sm:grid-cols-4{% else %}sm:grid-cols-3{% endif %}">
     <div class="bg-card px-5 py-3"><dt class="text-xs text-ink-muted">Shipped from Japan</dt><dd class="font-semibold">{{ box.japan_ship_date|date:"j M Y"|default:"—" }}</dd></div>
     <div class="bg-card px-5 py-3"><dt class="text-xs text-ink-muted">Received in Myanmar</dt><dd class="font-semibold">{{ box.myanmar_received_date|date:"j M Y"|default:"—" }}</dd></div>
-    <div class="col-span-2 bg-card px-5 py-3 sm:col-span-1"><dt class="text-xs text-ink-muted">Note</dt><dd class="whitespace-pre-line font-medium">{{ box.notes|default:"—" }}</dd></div>
+    {% if can_see_money %}<div class="bg-card px-5 py-3"><dt class="text-xs text-ink-muted">Cargo fee</dt><dd class="font-semibold">{{ box.cargo_fee_jpy|yen|default:"—" }}</dd></div>{% endif %}
+    <div class="{% if not can_see_money %}col-span-2{% endif %} bg-card px-5 py-3 sm:col-span-1"><dt class="text-xs text-ink-muted">Note</dt><dd class="whitespace-pre-line font-medium">{{ box.notes|default:"—" }}</dd></div>
   </dl>
 </div>
 

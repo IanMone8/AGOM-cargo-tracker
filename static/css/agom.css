@@ -339,6 +339,21 @@ textarea.field { resize: vertical; }
   .sticker-stars, .sticker-ok { right: 12px; }
 }
 
+/* ---------- Yen amounts (Owner / Admin / Japan sender only) ---------- */
+.yen-wrap { position: relative; }
+.yen-wrap .yen-sign { position: absolute; left: .8rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-weight: 600; pointer-events: none; }
+.yen-wrap .field { padding-left: 1.75rem; font-variant-numeric: tabular-nums; }
+.money-summary { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-end; gap: .2rem .45rem; color: var(--text-muted); }
+.money-summary b { color: var(--text); font-variant-numeric: tabular-nums; }
+.money-summary .op { color: var(--text-muted); }
+.money-summary .money-total { color: var(--text); font-weight: 700; }
+.money-summary .money-total b { font-size: 1.05em; color: var(--primary-hover); }
+@media (max-width: 480px) { .money-summary { justify-content: flex-start; font-size: .82rem; } }
+
+/* Customer icon next to a name (hidden if the image is missing) */
+.customer-chip { display: inline-flex; align-items: center; gap: .3rem; }
+.customer-icon { width: 18px; height: 18px; flex: none; object-fit: contain; }
+
 /* ---------- Club option picker (two taps, big targets) ---------- */
 .club-row { display: flex; flex-wrap: wrap; gap: .5rem; }
 .club-panel { margin-top: .6rem; padding: .6rem; border-radius: 1rem; background: var(--sage); border: 1px dashed var(--line-strong); }

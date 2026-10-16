@@ -21,10 +21,29 @@ class StyledMixin:
                 w.attrs.setdefault("class", INPUT)
 
 
+class YenField(forms.IntegerField):
+    """Whole yen, optional, >= 0. Accepts "12500", "12,500" and "¥12,500"; stored as an integer."""
+
+    def __init__(self, *, label, **kwargs):
+        kwargs.setdefault("required", False)
+        kwargs.setdefault("min_value", 0)
+        kwargs.setdefault("widget", forms.TextInput(attrs={
+            "inputmode": "numeric", "autocomplete": "off", "placeholder": "0", "data-yen": "",
+        }))
+        super().__init__(label=label, **kwargs)
+
+    def to_python(self, value):
+        if isinstance(value, str):
+            value = value.replace("¥", "").replace("￥", "").replace(",", "").replace(" ", "").strip()
+        return super().to_python(value)
+
+
 class BoxForm(StyledMixin, forms.ModelForm):
+    cargo_fee_jpy = YenField(label="Cargo fee (JP¥)")
+
     class Meta:
         model = Box
-        fields = ["cargo", "box_no", "japan_ship_date", "myanmar_received_date", "status", "notes"]
+        fields = ["cargo", "box_no", "cargo_fee_jpy", "japan_ship_date", "myanmar_received_date", "status", "notes"]
         widgets = {
             "japan_ship_date": forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
             "myanmar_received_date": forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
@@ -35,6 +54,8 @@ class BoxForm(StyledMixin, forms.ModelForm):
         super().__init__(*args, **kwargs)
         # Japan sender cannot set the Myanmar side; Myanmar checker cannot
         # change which box it is or the Japan ship date.
+        if user is not None and not roles.can_see_money(user):
+            self.fields.pop("cargo_fee_jpy")      # the Myanmar checker never sees money
         if user is not None and not roles.is_manager(user):
             if not roles.can_check(user):
                 self.fields.pop("myanmar_received_date")
@@ -98,9 +119,11 @@ class BoxCreateForm(StyledMixin, forms.ModelForm):
         required=False, label="Save without a golf bag (owner override)",
         help_text="Every box should hold exactly one golf bag. Only use this to fix old or unusual boxes.")
 
+    cargo_fee_jpy = YenField(label="Cargo fee (JP¥)")
+
     class Meta:
         model = Box
-        fields = ["cargo", "box_no", "notes"]
+        fields = ["cargo", "box_no", "cargo_fee_jpy", "notes"]
         labels = {"cargo": "Cargo company", "box_no": "Box ID", "notes": "Box note"}
         widgets = {
             "box_no": forms.NumberInput(attrs={"min": 1, "inputmode": "numeric", "placeholder": "e.g. 3"}),
@@ -119,9 +142,11 @@ class BagForm(StyledMixin, forms.ModelForm):
     """The box's golf bag (required): stored as a JapanItem with is_bag=True, so it is
     checked in Myanmar, linked to customer orders and attachable like any other item."""
 
+    price_jpy = YenField(label="Amount (JP¥)")
+
     class Meta:
         model = JapanItem
-        fields = ["item_name", "color", "customer", "note"]
+        fields = ["item_name", "color", "customer", "price_jpy", "note"]
         labels = {"item_name": "Bag name", "color": "Color", "customer": "Customer"}
         widgets = {
             "item_name": forms.TextInput(attrs={"placeholder": "e.g. Titleist Stand Bag", "autocomplete": "off"}),
@@ -139,14 +164,16 @@ class BagForm(StyledMixin, forms.ModelForm):
 
     @property
     def is_blank(self):
-        return not any((self.cleaned_data.get(f) or "").strip() for f in self.Meta.fields)
+        return not any((self.cleaned_data.get(f) or "").strip() for f in ("item_name", "color", "customer", "note")) \
+            and self.cleaned_data.get("price_jpy") is None
 
     def clean(self):
         data = super().clean()
         for name in ("item_name", "color", "customer", "note"):
             if data.get(name):
                 data[name] = " ".join(data[name].split())
-        if self.optional and not data.get("item_name") and any(data.get(f) for f in ("color", "customer", "note")):
+        if self.optional and not data.get("item_name") and (any(data.get(f) for f in ("color", "customer", "note"))
+                                                             or data.get("price_jpy") is not None):
             self.add_error("item_name", "Enter the bag's name (or clear the bag fields).")
         return data
 
@@ -166,12 +193,13 @@ class JapanItemForm(StyledMixin, forms.ModelForm):
     """
 
     club_option = forms.CharField(required=False, widget=forms.HiddenInput)
+    price_jpy = YenField(label="Amount (JP¥)")
     club_other = forms.CharField(required=False, max_length=50, label="Other club / item",
                                  widget=forms.TextInput(attrs={"placeholder": "e.g. Head cover, Chipper"}))
 
     class Meta:
         model = JapanItem
-        fields = ["item_name", "customer", "flex", "qty", "note"]
+        fields = ["item_name", "customer", "flex", "qty", "price_jpy", "note"]
         labels = {"item_name": "Item name", "customer": "Customer"}
         widgets = {
             "item_name": forms.TextInput(attrs={"list": "catalog-models", "placeholder": "Optional, e.g. Titleist TSR2"}),
