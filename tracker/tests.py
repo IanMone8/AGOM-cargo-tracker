@@ -1667,38 +1667,59 @@ class MyanmarBannerTests(BaseTest):
         with mock.patch.object(views.finders, "find", return_value=None):
             html = self.dashboard(self.myanmar)
         self.assertNotIn('class="stickers"', html)
-        present = {"img/display/stickers/happy.webp", "img/display/stickers/ok.webp"}
+        # only the GIFs of "confetti" and "ok" exist: those two show (GIF only, no WebP source)
+        present = {"img/stickers/animated_confetti.gif", "img/stickers/animated_ok.gif"}
         with mock.patch.object(views.finders, "find", side_effect=lambda p: p if p in present else None):
             html = self.dashboard(self.myanmar)
-        self.assertIn("sticker-happy", html)
+        self.assertIn("sticker-confetti", html)
         self.assertIn("sticker-ok", html)
         self.assertNotIn("sticker-peace", html)
         self.assertNotIn("sticker-stars", html)
-        self.assertIn("display/stickers/happy.webp", html)     # the small copy, not the original PNG
-        self.assertNotIn("img/stickers/happy.png", html)
+        self.assertIn('<img src="/static/img/stickers/animated_confetti.gif', html)
+        self.assertNotIn("animated_confetti.webp", html)
 
-    def test_centred_text_and_one_sticker_per_corner(self):
+    def test_animated_stickers_in_corners_with_still_pictures_for_reduced_motion(self):
+        import re
+        html = self.dashboard(self.myanmar)                     # the real files are in the repo
+        corners = {"confetti": ("top-left", "happy"), "stars": ("top-right", "stars"),
+                   "peace": ("bottom-left", "peace"), "ok": ("bottom-right", "ok")}
+        for name, (corner, still) in corners.items():
+            with self.subTest(name):
+                block = re.search(r'<picture class="sticker sticker-%s" data-corner="%s">(.*?)</picture>' % (name, corner),
+                                  html, re.S).group(1)
+                # reduced motion first (the first matching <source> wins), then animated WebP, then the GIF
+                self.assertRegex(block, r'<source media="\(prefers-reduced-motion: reduce\)" '
+                                        r'srcset="/static/img/display/stickers/%s\.webp[^"]*" type="image/webp">' % still)
+                self.assertRegex(block, r'<source srcset="/static/img/display/stickers/animated_%s\.webp' % name)
+                self.assertLess(block.index("prefers-reduced-motion"), block.index("animated_%s.webp" % name))
+                self.assertRegex(block, r'<img src="/static/img/stickers/animated_%s\.gif[^"]*" alt="" width="120" '
+                                        r'height="120" loading="lazy"' % name)
+
+    def test_animated_webps_keep_every_frame_and_are_small(self):
+        from pathlib import Path
+        from PIL import Image
+        img = Path(__file__).resolve().parent.parent / "static/img"
+        for name in ("confetti", "stars", "peace", "ok"):
+            with self.subTest(name):
+                webp, gif = img / f"display/stickers/animated_{name}.webp", img / f"stickers/animated_{name}.gif"
+                self.assertLess(webp.stat().st_size, 400 * 1024)
+                with Image.open(webp) as w, Image.open(gif) as g:
+                    self.assertEqual(w.n_frames, g.n_frames)      # every frame kept
+                    self.assertTrue(getattr(w, "is_animated", False))
+                    self.assertEqual(w.mode, "RGBA")              # white background cut out
+
+    def test_corner_layout_and_no_css_bob(self):
         import re
         from pathlib import Path
-        html = self.dashboard(self.myanmar)                     # the real sticker copies are in the repo
-        for name in ("happy", "stars", "peace", "ok"):
-            self.assertIn(f"sticker-{name}", html)
-            self.assertIn(f"/static/img/display/stickers/{name}.webp", html)
-        css = (Path(__file__).resolve().parent.parent / "static/css/agom.css").read_text()
+        base = Path(__file__).resolve().parent.parent
+        css = (base / "static/css/agom.css").read_text()
         self.assertRegex(css, r"\.mm-text \{[^}]*text-align: center")
-        corners = {"happy": ("top", "left"), "stars": ("top", "right"), "peace": ("bottom", "left"), "ok": ("bottom", "right")}
+        corners = {"confetti": ("top", "left"), "stars": ("top", "right"), "peace": ("bottom", "left"),
+                   "ok": ("bottom", "right")}
         for name, (v, h) in corners.items():
             rule = re.search(r"\.sticker-%s \{([^}]*)\}" % name, css).group(1)
             self.assertIn(f"{v}:", rule)
             self.assertIn(f"{h}:", rule)
-
-    def test_sticker_motion_is_transform_only_and_respects_reduced_motion(self):
-        import re
-        from pathlib import Path
-        css = (Path(__file__).resolve().parent.parent / "static/css/agom.css").read_text()
-        block = re.search(r"@keyframes sticker-bob \{(.*?)\}\n", css, re.S).group(1)
-        self.assertEqual(set(re.findall(r"([a-z-]+)\s*:", block)), {"transform"})
-        reduced = css.index("@media (prefers-reduced-motion: no-preference) {\n  .sticker img")
-        self.assertGreater(reduced, 0)
-        script = (Path(__file__).resolve().parent.parent / "scripts/make_display_images.py").read_text()
-        self.assertIn('STICKERS = ["ok", "peace", "stars", "happy"]', script)
+        self.assertNotIn("sticker-bob", css)                   # the stickers animate themselves
+        script = (base / "scripts/make_display_images.py").read_text()
+        self.assertNotIn("animated_", script)                  # it would freeze the GIFs into one frame

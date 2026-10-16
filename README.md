@@ -48,10 +48,13 @@ on phones the scene fills the top ~40 % and the card sits below. Password has a 
 favicon use it. Until the file exists the image is simply hidden.
 
 **Myanmar checker's banner:** the Myanmar checker (only – not Owner/Admin) sees a Burmese message from
-Miss Thaw Thaw (her name in green at the end of the last line) instead of the English banner, centred, in Noto Sans Myanmar (Google Fonts, loaded only for them), with
-one sticker bobbing gently in each corner – happy, stars, peace, ok (off with *reduce motion*). Put the originals in `static/img/stickers/`
-(`ok.png`, `peace.png`, `stars.png`, `happy.png`) and run `python scripts/make_display_images.py` to make the
-small WebP copies in `static/img/display/stickers/`; a sticker whose copy is missing is simply not shown.
+Miss Thaw Thaw (her name in green at the end of the last line) instead of the English banner, centred, in
+Noto Sans Myanmar (Google Fonts, loaded only for them), with an animated sticker in each corner – confetti, stars,
+peace, ok. The GIFs (`static/img/stickers/animated_*.gif`, ~2 MB each, white background) are shown as small
+animated WebPs that keep every frame, with the white cut out: run `python scripts/make_animated_stickers.py`
+after replacing a GIF (don't use `make_display_images.py` for them – that would freeze them). The GIF is the
+fallback for browsers without animated WebP. With *reduce motion* the still PNG copies (happy, stars, peace, ok,
+made by `make_display_images.py`) are shown instead. A sticker whose files are missing is not shown.
 
 **Dashboard icons:** `static/img/icons/plane.png`, `boxes.png`, `box-checked.png` and `warning.png`
 (Cargos, Total boxes, Checked in Myanmar, Needs review). A missing icon is hidden.

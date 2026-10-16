@@ -93,23 +93,29 @@ def boxes_with_counts(qs=None):
 
 
 # --- Dashboard ---------------------------------------------------------------
-# Stickers on the Myanmar checker's banner (small copies made by scripts/make_display_images.py),
-# with their place in the cluster. happy is the big one.
+# Stickers on the Myanmar checker's banner, one per corner. Each is animated (an animated WebP made by
+# scripts/make_animated_stickers.py, with the original GIF as fallback) and has a still picture for people
+# who ask for reduced motion (the small copy of the PNG made by scripts/make_display_images.py).
 STICKERS = [
-    {"name": "happy", "alt": "Happy sticker"},
-    {"name": "ok", "alt": "OK sticker"},
-    {"name": "peace", "alt": "Peace sticker"},
-    {"name": "stars", "alt": "Stars sticker"},
+    {"name": "confetti", "corner": "top-left", "still": "happy"},
+    {"name": "stars", "corner": "top-right", "still": "stars"},
+    {"name": "peace", "corner": "bottom-left", "still": "peace"},
+    {"name": "ok", "corner": "bottom-right", "still": "ok"},
 ]
 
 
 def banner_stickers():
-    """Only stickers whose image exists – a missing file is simply not shown."""
+    """Stickers whose animation exists (WebP or GIF) – a missing one is simply not shown."""
     found = []
     for s in STICKERS:
-        path = f"img/display/stickers/{s['name']}.webp"
-        if finders.find(path):
-            found.append({**s, "path": path})
+        webp = f"img/display/stickers/animated_{s['name']}.webp"
+        gif = f"img/stickers/animated_{s['name']}.gif"
+        still = f"img/display/stickers/{s['still']}.webp"
+        has_webp, has_gif = bool(finders.find(webp)), bool(finders.find(gif))
+        if not (has_webp or has_gif):
+            continue
+        found.append({**s, "webp": webp if has_webp else "", "gif": gif if has_gif else webp,
+                      "still": still if finders.find(still) else ""})
     return found
 
 

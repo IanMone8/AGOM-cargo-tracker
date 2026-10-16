@@ -17,8 +17,13 @@ a centred Burmese message (Noto Sans Myanmar) and one sticker in each corner.
   {% if stickers %}
     <div class="stickers" aria-hidden="true">
       {% for s in stickers %}
-        <span class="sticker sticker-{{ s.name }}"><img src="{% static_v s.path %}" alt="" width="240" height="240"
-              loading="lazy" decoding="async" onerror="this.closest('.sticker').style.display='none'"></span>
+        {# reduced motion: the still PNG copy; otherwise the animated WebP, with the GIF as fallback #}
+        <picture class="sticker sticker-{{ s.name }}" data-corner="{{ s.corner }}">
+          {% if s.still %}<source media="(prefers-reduced-motion: reduce)" srcset="{% static_v s.still %}" type="image/webp">{% endif %}
+          {% if s.webp %}<source srcset="{% static_v s.webp %}" type="image/webp">{% endif %}
+          <img src="{% static_v s.gif %}" alt="" width="120" height="120" loading="lazy" decoding="async"
+               onerror="this.closest('.sticker').style.display='none'">
+        </picture>
       {% endfor %}
     </div>
   {% endif %}
