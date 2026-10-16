@@ -1,7 +1,11 @@
 """Import Japan packing lists from CSV.
 
-One file may contain several boxes; the ``box`` column holds the label,
-e.g. ``GN-3``. The cargo code must already exist; missing boxes are created.
+One file may contain several boxes. The ``box`` column holds the Box ID:
+- empty: a new box gets the next monthly Box ID (e.g. OCT26-KB-3) for the company in the ``cargo``
+  column. Each bag row (kind = bag) with an empty box starts a new box; the item rows below it go in it.
+- a monthly ID like ``OCT26-KB-3``: that box (created if new).
+- an older ID like ``GN-3``: only for boxes that already exist.
+The cargo code must already exist.
 Each box holds exactly one golf bag: a row with ``kind`` = ``bag``; the other
 rows are the items inside it.
 The whole file is validated first and nothing is saved if any row is bad.
@@ -14,27 +18,28 @@ from dataclasses import dataclass, field
 from django.db import transaction
 
 from .forms import is_bag_word
-from .models import Box, Cargo, ClubOption, Customer, JapanItem
+from .models import Box, Cargo, ClubOption, Customer, JapanItem, parse_box_code
 
 # Template columns (simple). Older files may also use: type, quantity_unit, brand, model,
 # club_type, club_number, loft, shaft_material, specification, color, condition, price_jpy.
-COLUMNS = ["box", "kind", "item_name", "color", "club_option", "flex", "qty", "amount_jpy", "cargo_fee_jpy",
+COLUMNS = ["box", "cargo", "kind", "item_name", "color", "club_option", "flex", "qty", "amount_jpy", "cargo_fee_jpy",
            "customer", "note"]
 KINDS = {"": "item", "item": "item", "bag": "bag", "golf bag": "bag"}
-REQUIRED = ["box"]
+REQUIRED = []          # box or cargo – checked per row
 # Friendlier header names that map onto the real columns.
 ALIASES = {"name": "item_name", "amount": "price_jpy", "amount_jpy": "price_jpy", "unit": "quantity_unit",
            "japan_condition": "condition", "shaft": "shaft_material", "row_type": "kind", "row": "kind"}
 BOX_RE = re.compile(r"^\s*([A-Za-z]+)\s*-?\s*(\d+)\s*$")
 
 # amount_jpy is per piece; cargo_fee_jpy goes on the box's bag row.
+# box left empty: each bag row starts a new box with the next monthly Box ID for its cargo company.
 TEMPLATE_ROWS = [
-    ["GN-3", "bag", "Titleist Stand Bag", "Black", "", "", "1", "8000", "12,500", "Ko Aung", ""],
-    ["GN-3", "", "Titleist TSR2", "", "Driver 10.5°", "S", "1", "¥25,000", "", "Ko Aung", "with cover"],
-    ["GN-3", "", "", "", "Driver head 9.5", "", "2", "6500", "", "", ""],
-    ["GN-3", "", "Mizuno JPX 923", "", "Iron · Graphite 5", "R", "1", "", "", "", ""],
-    ["KL-1", "bag", "Ping Hoofer", "Navy", "", "", "1", "", "9000", "", ""],
-    ["KL-1", "", "Cleveland RTX 6", "", "Wedge 52", "", "1", "4200", "", "", ""],
+    ["", "GN", "bag", "Titleist Stand Bag", "Black", "", "", "1", "8000", "12,500", "Ko Aung", ""],
+    ["", "GN", "", "Titleist TSR2", "", "Driver 10.5°", "S", "1", "¥25,000", "", "Ko Aung", "with cover"],
+    ["", "GN", "", "", "", "Driver head 9.5", "", "2", "6500", "", "", ""],
+    ["", "GN", "", "Mizuno JPX 923", "", "Iron · Graphite 5", "R", "1", "", "", "", ""],
+    ["", "KL", "bag", "Ping Hoofer", "Navy", "", "", "1", "", "9000", "", ""],
+    ["", "KL", "", "Cleveland RTX 6", "", "Wedge 52", "", "1", "4200", "", "", ""],
 ]
 
 
@@ -96,6 +101,48 @@ def _parse_box(label):
     return m.group(1).upper(), int(m.group(2))
 
 
+def _box_key(row, row_no, is_bag, cargos, auto_open, errors):
+    """Which box a row belongs to: ("code", "OCT26-KB-3"), ("legacy", "GN", 3) or ("auto", "KB", n)."""
+    raw, cargo_col = row.get("box", ""), row.get("cargo", "").upper()
+    if cargo_col and cargo_col not in cargos:
+        errors.append((row_no, f"Unknown cargo code '{cargo_col}' – add it in admin first"))
+        return None
+    if not raw:                                   # new box, numbered automatically
+        if not cargo_col:
+            errors.append((row_no, "Put the Box ID in box, or leave box empty and give the cargo code in cargo "
+                                   "to get a new Box ID"))
+            return None
+        if is_bag:                                # each bag row starts a new box
+            auto_open[cargo_col] = ("auto", cargo_col, row_no)
+        elif cargo_col not in auto_open:
+            errors.append((row_no, f"No box for this {cargo_col} item – put its bag row (kind = bag) above it, "
+                                   "or fill in box"))
+            return None
+        return auto_open[cargo_col]
+    parsed = parse_box_code(raw)
+    if parsed:
+        period, code, seq, normal = parsed
+        if code not in cargos:
+            errors.append((row_no, f"Unknown cargo code '{code}' in Box ID '{raw}' – add it in admin first"))
+            return None
+        if cargo_col and cargo_col != code:
+            errors.append((row_no, f"Box ID '{raw}' is a {code} box but cargo says {cargo_col}"))
+            return None
+        clash = Box.objects.filter(cargo=cargos[code], period=period, seq=seq).exclude(code=normal).first()
+        if clash:
+            errors.append((row_no, f"Box ID '{raw}' clashes with {clash.label}"))
+            return None
+        return ("code", normal)
+    legacy = _parse_box(raw)                      # an older ID like GN-3: only for boxes that already exist
+    if legacy and legacy[0] not in cargos:
+        errors.append((row_no, f"Unknown cargo code '{legacy[0]}' – add it in admin first"))
+        return None
+    if legacy and Box.objects.filter(cargo=cargos[legacy[0]], box_no=legacy[1]).exists():
+        return ("legacy", legacy[0], legacy[1])
+    errors.append((row_no, f"Box '{raw}' should look like OCT26-KB-3 (or leave it empty to get a new Box ID)"))
+    return None
+
+
 def _parse_yen(value, name, errors, row):
     """Whole yen: "12500", "12,500" or "¥12,500" -> 12500; empty -> None."""
     text = (value or "").replace("¥", "").replace("￥", "").replace(",", "").replace(" ", "").strip()
@@ -125,19 +172,37 @@ def _rows(numbers):
     return ("row " if len(numbers) == 1 else "rows ") + ", ".join(map(str, numbers))
 
 
+def _existing_box(key, cargos):
+    """The box a key points at, if it already exists."""
+    if key[0] == "code":
+        return Box.objects.filter(code=key[1]).first()
+    if key[0] == "legacy":
+        return Box.objects.filter(cargo=cargos.get(key[1]), box_no=key[2]).first()
+    return None                                   # ("auto", ...) is always a new box
+
+
+def _key_label(key, rows):
+    if key[0] == "code":
+        return key[1]
+    if key[0] == "legacy":
+        return f"{key[1]}-{key[2]}"
+    return f"new {key[1]} box ({_rows(rows[:1])})"
+
+
 def _check_bags(parsed, cargos, replace):
     """Every box must end up with exactly one golf bag. Returns [(row, message)]."""
     rows, bag_rows = {}, {}
-    for code, box_no, kwargs, row_no in parsed:
-        rows.setdefault((code, box_no), []).append(row_no)
+    for key, kwargs, row_no in parsed:
+        rows.setdefault(key, []).append(row_no)
         if kwargs["is_bag"]:
-            bag_rows.setdefault((code, box_no), []).append(row_no)
+            bag_rows.setdefault(key, []).append(row_no)
     problems = []
-    for (code, box_no), numbers in rows.items():
-        label, bags = f"{code}-{box_no}", bag_rows.get((code, box_no), [])
+    for key, numbers in rows.items():
+        label, bags = _key_label(key, numbers), bag_rows.get(key, [])
         existing = None
         if not replace:
-            existing = JapanItem.objects.filter(is_bag=True, box__cargo=cargos[code], box__box_no=box_no).first()
+            box = _existing_box(key, cargos)
+            existing = box.items.filter(is_bag=True).first() if box else None
         if len(bags) > 1:
             problems.append((bags[0], f"Box {label} has {len(bags)} bag rows ({_rows(bags)}) – "
                                       "a box holds exactly one golf bag"))
@@ -177,27 +242,24 @@ def import_japan_csv(uploaded_file, replace=False, allow_bag_exception=False):
     cond_ok = set(JapanItem.Condition.values)
     unit_ok = set(JapanItem.Unit.values)
     shaft_ok = set(JapanItem.Shaft.values)
-    parsed = []  # (cargo_code, box_no, item kwargs, row number)
-    fees = {}    # (cargo_code, box_no) -> cargo fee from the bag row
+    parsed = []     # (box key, item kwargs, row number)
+    fees = {}       # box key -> cargo fee from the bag row
+    auto_open = {}  # cargo code -> the new (auto-numbered) box the next item rows go into
 
     for row_no, row in enumerate(reader, start=2):
         row = {k: (v or "").strip() for k, v in row.items() if k}
         if not any(row.values()):
             continue
         errors = result.errors
-        box = _parse_box(row.get("box"))
-        if not box:
-            errors.append((row_no, f"Box '{row.get('box')}' should look like GN-3"))
-            continue
-        code, box_no = box
-        if code not in cargos:
-            errors.append((row_no, f"Unknown cargo code '{code}' – add it in admin first"))
         kind = KINDS.get(" ".join(row.get("kind", "").lower().split()))
         if kind is None:
             errors.append((row_no, f"kind must be bag or item (or empty for an item), got '{row['kind']}'"))
         elif kind == "item" and not row.get("kind") and is_bag_word(row.get("type")) and not row.get("club_option"):
             kind = "bag"  # older files: an item of type "Bag" is the box's golf bag
         is_bag = kind == "bag"
+        key = _box_key(row, row_no, is_bag, cargos, auto_open, errors)
+        if key is None:
+            continue
         if is_bag:
             if not row.get("item_name"):
                 errors.append((row_no, "bag row: put the bag's name in item_name, e.g. Titleist Stand Bag"))
@@ -231,8 +293,8 @@ def import_japan_csv(uploaded_file, replace=False, allow_bag_exception=False):
         if fee is not None and not is_bag:
             errors.append((row_no, "cargo_fee_jpy goes on the box's bag row (kind = bag)"))
         elif fee is not None:
-            fees[(code, box_no)] = fee
-        parsed.append((code, box_no, dict(
+            fees[key] = fee
+        parsed.append((key, dict(
             type=row.get("type", "")[:50],
             item_name=row.get("item_name", "")[:200],
             flex=flex,
@@ -254,10 +316,10 @@ def import_japan_csv(uploaded_file, replace=False, allow_bag_exception=False):
             is_bag=is_bag,
         ), row_no))
         if is_bag:
-            parsed[-1][2].update(type=JapanItem.BAG_TYPE, qty=1, flex="", loft="", club_type="", club_number="",
+            parsed[-1][1].update(type=JapanItem.BAG_TYPE, qty=1, flex="", loft="", club_type="", club_number="",
                                  shaft_material="")
         elif option:  # the single label wins over the old separate columns
-            option.apply_to(_Fields(parsed[-1][2]))
+            option.apply_to(_Fields(parsed[-1][1]))
 
     if not parsed and not result.errors:
         result.errors.append((0, "The file has no data rows."))
@@ -273,12 +335,18 @@ def import_japan_csv(uploaded_file, replace=False, allow_bag_exception=False):
 
     with transaction.atomic():
         boxes = {}
-        for code, box_no, _, _ in parsed:
-            key = (code, box_no)
+        for key, _, _ in parsed:
             if key in boxes:
                 continue
-            box, created = Box.objects.get_or_create(cargo=cargos[code], box_no=box_no)
-            if created:
+            box = _existing_box(key, cargos)
+            if box is None:
+                if key[0] == "code":
+                    box = Box(cargo=cargos[parse_box_code(key[1])[1]])
+                    box.set_code(key[1])
+                else:                             # ("auto", cargo, n): next monthly Box ID
+                    box = Box(cargo=cargos[key[1]])
+                    box.set_code(Box.next_code(box.cargo)[0])
+                box.save()
                 result.created_boxes.append(box)
             elif replace:
                 box.items.all().delete()
@@ -286,12 +354,10 @@ def import_japan_csv(uploaded_file, replace=False, allow_bag_exception=False):
                 box.cargo_fee_jpy = fees[key]
                 box.save(update_fields=["cargo_fee_jpy", "updated_at"])
             boxes[key] = box
-        JapanItem.objects.bulk_create(
-            JapanItem(box=boxes[(code, no)], **kwargs) for code, no, kwargs, _ in parsed
-        )
-        for name in {kwargs["customer"] for _, _, kwargs, _ in parsed if kwargs["customer"]}:
+        JapanItem.objects.bulk_create(JapanItem(box=boxes[key], **kwargs) for key, kwargs, _ in parsed)
+        for name in {kwargs["customer"] for _, kwargs, _ in parsed if kwargs["customer"]}:
             Customer.ensure(name)  # bulk_create skips save(), so add customers here
-        result.created_bags = sum(kwargs["is_bag"] for _, _, kwargs, _ in parsed)
+        result.created_bags = sum(kwargs["is_bag"] for _, kwargs, _ in parsed)
         result.created_items = len(parsed) - result.created_bags
         result.boxes = list(boxes.values())
         for box in result.boxes:

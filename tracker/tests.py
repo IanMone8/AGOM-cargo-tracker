@@ -155,12 +155,12 @@ class CSVImportTests(BaseTest):
         r = self.upload(
             "box,type,item_name,flex,loft,qty,condition,price_jpy,customer,note\n"
             "GN-3,Putter,Newport 2,,,1,used,\"12,000\",,\n"
-            "gn-5,Bag,Ping Hoofer,,,,,,,\n"
-            "gn-5,Driver,Qi10,sr,10.5,2,new,,Ma Hnin,\n"
+            "oct26-gn-5,Bag,Ping Hoofer,,,,,,,\n"
+            "oct26-gn-5,Driver,Qi10,sr,10.5,2,new,,Ma Hnin,\n"
         )
         self.assertContains(r, "Imported 2 item(s) and 1 golf bag(s) into 2 box(es)")
-        new_box = Box.objects.get(cargo=self.cargo, box_no=5)
-        self.assertEqual(new_box.title, "GN-5 · Ping Hoofer")
+        new_box = Box.objects.get(code="OCT26-GN-5")
+        self.assertEqual(new_box.title, "OCT26-GN-5 · Ping Hoofer")
         item = new_box.items.get(is_bag=False)
         self.assertEqual((item.flex, item.qty, item.customer), ("SR", 2, "Ma Hnin"))
         self.assertEqual(self.box.items.get(item_name="Newport 2").price_jpy, 12000)
@@ -178,7 +178,7 @@ class CSVImportTests(BaseTest):
 
 class AddBoxModalTests(BaseTest):
     def post_data(self, **items):
-        data = {"cargo": self.cargo.pk, "box_no": "9", "notes": "fragile",
+        data = {"cargo": self.cargo.pk, "box_id": "OCT26-GN-9", "notes": "fragile",
                 "bag-item_name": "Titleist Stand Bag", "bag-color": "Black", "bag-customer": "Ko Aung",
                 "bag-note": "zip pocket",
                 "items-TOTAL_FORMS": "3", "items-INITIAL_FORMS": "0",
@@ -214,14 +214,14 @@ class AddBoxModalTests(BaseTest):
             "items-2-club_option": "other", "items-2-club_other": "Putter", "items-2-qty": "3",
         })
         r = self.htmx(self.japan, reverse("box_create"), data)
-        box = Box.objects.get(cargo=self.cargo, box_no=9)
+        box = Box.objects.get(code="OCT26-GN-9")
         self.assertEqual(r.status_code, 204)
         self.assertEqual(r["HX-Redirect"], reverse("box_detail", args=[box.pk]))
         self.assertEqual(box.notes, "fragile")
         bag, iron, putter = box.items.all()   # the bag comes first
         self.assertEqual((bag.is_bag, bag.item_name, bag.color, bag.customer, bag.note, bag.type, bag.qty),
                          (True, "Titleist Stand Bag", "Black", "Ko Aung", "zip pocket", "Golf bag", 1))
-        self.assertEqual(box.title, "GN-9 · Titleist Stand Bag")
+        self.assertEqual(box.title, "OCT26-GN-9 · Titleist Stand Bag")
         self.assertEqual((iron.type, iron.shaft_material, iron.club_number, iron.flex, iron.note),
                          ("Iron", "graphite", "5", "R", "with covers"))
         self.assertEqual(iron.club_label, "Iron · Graphite 5")
@@ -233,11 +233,15 @@ class AddBoxModalTests(BaseTest):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, 'role="dialog"')
         self.assertContains(r, "This field is required")
-        self.assertFalse(Box.objects.filter(box_no=9).exists())
+        self.assertFalse(Box.objects.filter(code="OCT26-GN-9").exists())
 
-    def test_duplicate_box_id_rejected(self):
-        r = self.htmx(self.japan, reverse("box_create"), self.post_data(box_no="3"))
-        self.assertContains(r, "already exists")
+    def test_taken_box_id_moves_to_next_free_number(self):
+        Box.objects.create(cargo=self.cargo, code="OCT26-GN-9", period="OCT26", seq=9)
+        self.client.force_login(self.japan)
+        r = self.client.post(reverse("box_create"), self.post_data(**{"bag-item_name": "Stand bag", "items-TOTAL_FORMS": "1",
+                             "items-0-item_name": "TSR2", "items-0-qty": "1"}), follow=True)
+        self.assertTrue(Box.objects.filter(code="OCT26-GN-10").exists())
+        self.assertContains(r, "OCT26-GN-9 was taken in the meantime, so this box is OCT26-GN-10.")
 
     def test_myanmar_cannot_add_box(self):
         self.client.force_login(self.myanmar)
@@ -311,12 +315,12 @@ class CSVNewFieldsTests(CSVImportTests):
         Cargo.objects.create(code="KL", name="KL Cargo")
         self.client.force_login(self.owner)
         template = self.client.get(reverse("csv_template")).content.decode()
-        self.assertTrue(template.startswith("box,kind,item_name,color,club_option,flex,qty,amount_jpy,cargo_fee_jpy,"
+        self.assertTrue(template.startswith("box,cargo,kind,item_name,color,club_option,flex,qty,amount_jpy,cargo_fee_jpy,"
                                             "customer,note"))
         r = self.upload(template, replace="on")
         self.assertContains(r, "Imported 4 item(s) and 2 golf bag(s) into 2 box(es)")
-        self.assertEqual(Box.objects.get(box_no=1).title, "KL-1 · Ping Hoofer")
-        head = JapanItem.objects.get(item_name="", box__box_no=3)
+        self.assertEqual(Box.objects.get(cargo__code="KL", code__isnull=False).bag_name, "Ping Hoofer")
+        head = JapanItem.objects.get(item_name="", box__cargo__code="GN", box__code__isnull=False)
         self.assertEqual((head.type, head.loft, head.head_only, head.qty, head.title), ("Driver", "9.5", True, 2, "Driver head 9.5°"))
         self.assertEqual(JapanItem.objects.get(item_name="Cleveland RTX 6").club_label, "Wedge 52°")
 
@@ -1203,7 +1207,7 @@ class GolfBagTests(BaseTest):
     """Every box holds exactly one golf bag; all other items are packed inside it."""
 
     def modal_data(self, **extra):
-        data = {"cargo": self.cargo.pk, "box_no": "12", "notes": "",
+        data = {"cargo": self.cargo.pk, "box_id": "OCT26-GN-12", "notes": "",
                 "bag-item_name": "", "bag-color": "", "bag-customer": "", "bag-note": "",
                 "items-TOTAL_FORMS": "1", "items-INITIAL_FORMS": "0",
                 "items-MIN_NUM_FORMS": "0", "items-MAX_NUM_FORMS": "1000",
@@ -1233,25 +1237,25 @@ class GolfBagTests(BaseTest):
     def test_box_needs_its_bag(self):
         r = self.htmx(self.japan, reverse("box_create"), self.modal_data())
         self.assertContains(r, "Every box holds one golf bag")
-        self.assertFalse(Box.objects.filter(box_no=12).exists())
+        self.assertFalse(Box.objects.filter(code="OCT26-GN-12").exists())
         # the Japan sender can't use the owner override
         r = self.htmx(self.japan, reverse("box_create"), self.modal_data(allow_no_bag="on"))
-        self.assertFalse(Box.objects.filter(box_no=12).exists())
+        self.assertFalse(Box.objects.filter(code="OCT26-GN-12").exists())
         r = self.htmx(self.japan, reverse("box_create"), self.modal_data(**{"bag-item_name": "Ping  Hoofer",
                                                                              "bag-color": "Navy"}))
         self.assertEqual(r.status_code, 204)
-        box = Box.objects.get(box_no=12)
+        box = Box.objects.get(code="OCT26-GN-12")
         self.assertEqual([(i.title, i.is_bag) for i in box.items.all()], [("Ping Hoofer", True), ("Pro V1", False)])
 
     def test_owner_override_saves_without_bag_with_warning(self):
         self.client.force_login(self.owner)
         r = self.client.post(reverse("box_create"), self.modal_data(allow_no_bag="on"), follow=True)
-        box = Box.objects.get(box_no=12)
+        box = Box.objects.get(code="OCT26-GN-12")
         self.assertFalse(box.items.filter(is_bag=True).exists())
         self.assertContains(r, "WITHOUT a golf bag")
         self.assertContains(r, "No bag recorded")
         # half-filled bag with the override: the name is still needed
-        r = self.htmx(self.owner, reverse("box_create"), self.modal_data(box_no="13", allow_no_bag="on",
+        r = self.htmx(self.owner, reverse("box_create"), self.modal_data(box_id="OCT26-GN-13", allow_no_bag="on",
                                                                          **{"bag-color": "Red"}))
         self.assertContains(r, "Enter the bag&#x27;s name")
 
@@ -1375,29 +1379,29 @@ class GolfBagTests(BaseTest):
     # --- CSV -----------------------------------------------------------------
     def test_csv_bag_rows(self):
         r = self.csv("box,kind,item_name,color,club_option,qty,customer\n"
-                     "GN-5,bag,Titleist Stand Bag,Black,,1,Ko Aung\n"
-                     "GN-5,,TSR2,,Driver 10.5,1,\n"
-                     "GN-5,item,Pro V1,,,2,\n")
+                     "OCT26-GN-5,bag,Titleist Stand Bag,Black,,1,Ko Aung\n"
+                     "OCT26-GN-5,,TSR2,,Driver 10.5,1,\n"
+                     "OCT26-GN-5,item,Pro V1,,,2,\n")
         self.assertContains(r, "Imported 2 item(s) and 1 golf bag(s) into 1 box(es)")
-        box = Box.objects.get(box_no=5)
+        box = Box.objects.get(code="OCT26-GN-5")
         bag = box.items.get(is_bag=True)
         self.assertEqual((bag.item_name, bag.color, bag.customer, bag.type, bag.qty),
                          ("Titleist Stand Bag", "Black", "Ko Aung", "Golf bag", 1))
         self.assertEqual(box.items.first(), bag)
         # adding more items to a box that already has its bag needs no bag row
-        self.assertContains(self.csv("box,item_name\nGN-5,Head cover\n"), "Imported 1 item(s) into 1 box(es)")
+        self.assertContains(self.csv("box,item_name\nOCT26-GN-5,Head cover\n"), "Imported 1 item(s) into 1 box(es)")
 
     def test_csv_rejects_zero_or_two_bags_with_row_numbers(self):
         r = self.csv("box,kind,item_name\n"
-                     "GN-5,,TSR2\n"
-                     "GN-5,,Pro V1\n"
-                     "GN-6,bag,Bag one\n"
-                     "GN-6,,Wedge\n"
-                     "GN-6,bag,Bag two\n")
+                     "OCT26-GN-5,,TSR2\n"
+                     "OCT26-GN-5,,Pro V1\n"
+                     "OCT26-GN-6,bag,Bag one\n"
+                     "OCT26-GN-6,,Wedge\n"
+                     "OCT26-GN-6,bag,Bag two\n")
         self.assertContains(r, "Nothing was imported")
-        self.assertContains(r, "Row 2: Box GN-5 has no golf bag – add a row with kind = bag (box GN-5 is on rows 2, 3)")
-        self.assertContains(r, "Row 4: Box GN-6 has 2 bag rows (rows 4, 6) – a box holds exactly one golf bag")
-        self.assertFalse(Box.objects.filter(box_no__in=[5, 6]).exists())
+        self.assertContains(r, "Row 2: Box OCT26-GN-5 has no golf bag – add a row with kind = bag (box OCT26-GN-5 is on rows 2, 3)")
+        self.assertContains(r, "Row 4: Box OCT26-GN-6 has 2 bag rows (rows 4, 6) – a box holds exactly one golf bag")
+        self.assertFalse(Box.objects.filter(code__in=["OCT26-GN-5", "OCT26-GN-6"]).exists())
         # GN-3 has no bag yet: adding items without a bag row is rejected too
         self.assertContains(self.csv("box,item_name\nGN-3,Head cover\n"), "Box GN-3 has no golf bag")
         # GN-3 with its bag: a second bag row is rejected
@@ -1407,19 +1411,19 @@ class GolfBagTests(BaseTest):
 
     def test_csv_bag_row_checks(self):
         r = self.csv("box,kind,item_name,club_option,qty\n"
-                     "GN-5,bag,,,1\n"
-                     "GN-5,bag,X,Wedge 52,2\n"
-                     "GN-5,box,Y,,1\n")
+                     "OCT26-GN-5,bag,,,1\n"
+                     "OCT26-GN-5,bag,X,Wedge 52,2\n"
+                     "OCT26-GN-5,box,Y,,1\n")
         for msg in ("Row 2: bag row: put the bag&#x27;s name in item_name", "Row 3: bag row: leave club_option empty",
                     "Row 3: bag row: qty must be 1", "Row 4: kind must be bag or item"):
             self.assertContains(r, msg)
 
     def test_csv_owner_override(self):
-        r = self.csv("box,kind,item_name\nGN-5,,TSR2\n", allow_bag_exception="on")
+        r = self.csv("box,kind,item_name\nOCT26-GN-5,,TSR2\n", allow_bag_exception="on")
         self.assertContains(r, "Imported 1 item(s) into 1 box(es)")
         self.assertContains(r, "Imported with the owner override")
-        self.assertContains(r, "Row 2: Box GN-5 has no golf bag")
-        self.assertTrue(Box.objects.filter(box_no=5).exists())
+        self.assertContains(r, "Row 2: Box OCT26-GN-5 has no golf bag")
+        self.assertTrue(Box.objects.filter(code="OCT26-GN-5").exists())
 
     # --- Admin -------------------------------------------------------------
     def admin_post(self, bags, **extra):
@@ -1730,7 +1734,7 @@ class YenAmountTests(BaseTest):
     """Japanese yen: cargo fee per box, amount per piece on the bag and items, totals – never shown to Myanmar."""
 
     def modal_data(self, **extra):
-        data = {"cargo": self.cargo.pk, "box_no": "21", "notes": "", "cargo_fee_jpy": "12500",
+        data = {"cargo": self.cargo.pk, "box_id": "OCT26-GN-21", "notes": "", "cargo_fee_jpy": "12500",
                 "bag-item_name": "Titleist Stand Bag", "bag-color": "", "bag-customer": "", "bag-note": "",
                 "bag-price_jpy": "¥8,000",
                 "items-TOTAL_FORMS": "3", "items-INITIAL_FORMS": "0", "items-MIN_NUM_FORMS": "0",
@@ -1747,7 +1751,7 @@ class YenAmountTests(BaseTest):
         for name in ("cargo_fee_jpy", "bag-price_jpy", "items-0-price_jpy"):
             self.assertRegex(html, r'<span class="yen-sign" aria-hidden="true">¥</span><input type="text" name="%s" '
                                    r'inputmode="numeric"' % name)
-        self.assertLess(html.index('name="box_no"'), html.index('name="cargo_fee_jpy"'))   # next to Box ID
+        self.assertLess(html.index('name="box_id"'), html.index('name="cargo_fee_jpy"'))   # next to Box ID
         self.assertIn("data-money-summary", html)
         self.assertIn('data-sum="total"', html)
         self.assertIn("data-line-total", html)
@@ -1755,7 +1759,7 @@ class YenAmountTests(BaseTest):
     def test_amounts_saved_and_totals(self):
         r = self.htmx(self.japan, reverse("box_create"), self.modal_data())
         self.assertEqual(r.status_code, 204)
-        box = Box.objects.get(box_no=21)
+        box = Box.objects.get(code="OCT26-GN-21")
         self.assertEqual(box.cargo_fee_jpy, 12500)
         bag, tsr2, prov1, none = box.items.all()
         self.assertEqual((bag.price_jpy, tsr2.price_jpy, prov1.price_jpy, none.price_jpy), (8000, 12500, 3000, None))
@@ -1775,7 +1779,7 @@ class YenAmountTests(BaseTest):
             with self.subTest(bad=bad):
                 r = self.htmx(self.japan, reverse("box_create"), self.modal_data(**{"items-0-price_jpy": bad}))
                 self.assertEqual(r.status_code, 200)
-                self.assertFalse(Box.objects.filter(box_no=21).exists())
+                self.assertFalse(Box.objects.filter(code="OCT26-GN-21").exists())
 
     def test_copy_keeps_amount(self):
         self.item1.price_jpy = 9900
@@ -1814,18 +1818,18 @@ class YenAmountTests(BaseTest):
         self.client.force_login(self.owner)
         f = SimpleUploadedFile("l.csv", (
             "box,kind,item_name,qty,amount_jpy,cargo_fee_jpy\n"
-            "GN-8,bag,Ping Hoofer,1,8000,\"¥12,500\"\n"
-            "GN-8,,TSR2,2,\"12,500\",\n"
-            "GN-8,,Pro V1,1,¥3000,\n").encode(), content_type="text/csv")
+            "OCT26-GN-8,bag,Ping Hoofer,1,8000,\"¥12,500\"\n"
+            "OCT26-GN-8,,TSR2,2,\"12,500\",\n"
+            "OCT26-GN-8,,Pro V1,1,¥3000,\n").encode(), content_type="text/csv")
         self.assertContains(self.client.post(reverse("csv_import"), {"file": f}), "Imported 2 item(s)")
-        box = Box.objects.get(box_no=8)
+        box = Box.objects.get(code="OCT26-GN-8")
         self.assertEqual(box.cargo_fee_jpy, 12500)
         self.assertEqual(sorted(box.items.values_list("price_jpy", flat=True)), [3000, 8000, 12500])
         self.assertEqual(box.money()["total"], 8000 + 25000 + 3000 + 12500)
         f = SimpleUploadedFile("l.csv", (
             "box,kind,item_name,amount_jpy,cargo_fee_jpy\n"
-            "GN-9,bag,Bag,,\n"
-            "GN-9,,TSR2,12.5,500\n").encode(), content_type="text/csv")
+            "OCT26-GN-9,bag,Bag,,\n"
+            "OCT26-GN-9,,TSR2,12.5,500\n").encode(), content_type="text/csv")
         r = self.client.post(reverse("csv_import"), {"file": f})
         self.assertContains(r, "amount_jpy must be whole yen")
         self.assertContains(r, "cargo_fee_jpy goes on the box&#x27;s bag row")
@@ -1838,3 +1842,141 @@ class YenAmountTests(BaseTest):
         self.assertIn('<img src="/static/img/display/icons/customer.webp', html)
         self.assertIn('alt="Customer" width="18" height="18"', html)
         self.assertNotIn("👤", html)
+
+
+class MonthlyBoxIdTests(BaseTest):
+    """Box IDs like OCT26-KB-3: month (Japan time) + cargo code + next number for that cargo that month."""
+
+    def setUp(self):
+        super().setUp()
+        self.kb = Cargo.objects.create(code="KB", name="KB Cargo")
+        self.ws = Cargo.objects.create(code="WS", name="WS Cargo")
+
+    @staticmethod
+    def at(y, m, d, h=12):
+        import datetime
+        return datetime.datetime(y, m, d, h, tzinfo=datetime.timezone.utc)
+
+    def make(self, cargo, when):
+        from .models import Box as B
+        box = B(cargo=cargo)
+        box.set_code(B.next_code(cargo, when)[0])
+        box.save()
+        return box
+
+    def test_numbering_per_company_and_month(self):
+        oct_ = self.at(2026, 10, 15)
+        self.assertEqual([self.make(self.kb, oct_).code for _ in range(3)], ["OCT26-KB-1", "OCT26-KB-2", "OCT26-KB-3"])
+        self.assertEqual(self.make(self.ws, oct_).code, "OCT26-WS-1")              # its own counter
+        self.assertEqual(Box.next_code(self.kb, oct_)[3], "4th KB box in October 2026")
+        self.assertEqual(self.make(self.kb, self.at(2026, 11, 2)).code, "NOV26-KB-1")   # new month starts at 1
+        self.assertEqual(self.make(self.kb, self.at(2026, 12, 31)).code, "DEC26-KB-1")
+        self.assertEqual(self.make(self.kb, self.at(2027, 1, 1)).code, "JAN27-KB-1")    # new year too
+        self.assertEqual(self.make(self.kb, oct_).code, "OCT26-KB-4")              # October keeps counting
+
+    def test_month_is_japan_time(self):
+        # 31 Oct 16:30 UTC is already 1 Nov 01:30 in Tokyo (and still October in Yangon)
+        self.assertEqual(Box.next_code(self.kb, self.at(2026, 10, 31, 16))[0][:5], "NOV26")
+        self.assertEqual(Box.next_code(self.kb, self.at(2026, 10, 31, 14))[0][:5], "OCT26")
+
+    def test_gaps_after_delete_never_duplicate(self):
+        oct_ = self.at(2026, 10, 15)
+        b1, b2, b3 = (self.make(self.kb, oct_) for _ in range(3))
+        b2.delete()
+        self.assertEqual(Box.next_code(self.kb, oct_)[0], "OCT26-KB-4")            # highest + 1, gap stays
+        b3.delete()
+        self.assertEqual(Box.next_code(self.kb, oct_)[0], "OCT26-KB-2")            # free again, still unique
+        self.assertFalse(Box.objects.filter(code="OCT26-KB-2").exists())
+
+    def test_existing_boxes_keep_their_ids(self):
+        self.assertEqual(self.box.label, "GN-3")
+        self.assertIsNone(self.box.code)
+
+    def test_parse_and_normalise(self):
+        from .models import parse_box_code
+        self.assertEqual(parse_box_code(" oct26-kb-03 "), ("OCT26", "KB", 3, "OCT26-KB-3"))
+        for bad in ("GN-3", "OCT-KB-3", "XYZ26-KB-3", "OCT26KB3", ""):
+            self.assertIsNone(parse_box_code(bad), bad)
+
+    def test_next_id_endpoint_fills_the_field(self):
+        from unittest import mock
+        self.make(self.kb, self.at(2026, 10, 3))
+        self.make(self.kb, self.at(2026, 10, 4))
+        self.client.force_login(self.japan)
+        with mock.patch("django.utils.timezone.now", return_value=self.at(2026, 10, 16)):
+            r = self.client.get(reverse("box_next_id"), {"cargo": self.kb.pk}, HTTP_HX_REQUEST="true")
+        self.assertContains(r, 'id="box-id-field"')
+        self.assertContains(r, 'value="OCT26-KB-3"')
+        self.assertContains(r, "Auto: 3rd KB box in October 2026")
+        self.client.force_login(self.myanmar)
+        self.assertEqual(self.client.get(reverse("box_next_id"), {"cargo": self.kb.pk}).status_code, 403)
+
+    def test_modal_wiring_and_no_old_helper(self):
+        self.client.force_login(self.japan)
+        html = self.client.get(reverse("box_create"), HTTP_HX_REQUEST="true").content.decode()
+        self.assertRegex(html, r'<select name="cargo"[^>]*hx-get="/boxes/next-id/"[^>]*hx-target="#box-id-field"')
+        self.assertIn('name="box_id"', html)
+        self.assertNotIn("Number only", html)
+        self.assertNotIn('name="box_no"', html)
+
+    def modal(self, **extra):
+        data = {"cargo": self.kb.pk, "box_id": "", "notes": "", "bag-item_name": "Bag",
+                "items-TOTAL_FORMS": "1", "items-INITIAL_FORMS": "0", "items-MIN_NUM_FORMS": "0",
+                "items-MAX_NUM_FORMS": "1000", "items-0-item_name": "TSR2", "items-0-qty": "1"}
+        data.update(extra)
+        return self.htmx(self.japan, reverse("box_create"), data)
+
+    def test_save_checks_again_and_validates(self):
+        from .models import box_period
+        period = box_period()[0]
+        self.assertEqual(self.modal().status_code, 204)                          # empty Box ID: numbered on save
+        self.assertTrue(Box.objects.filter(code=f"{period}-KB-1").exists())
+        self.modal(box_id=f"{period}-KB-1")                                       # taken meanwhile -> next free
+        self.assertTrue(Box.objects.filter(code=f"{period}-KB-2").exists())
+        r = self.modal(box_id=f"{period}-WS-9")
+        self.assertContains(r, "This box is for KB, so its ID must have KB in it")
+        r = self.modal(box_id="hello")
+        self.assertContains(r, "Box ID looks like")
+        self.modal(box_id="sep26-kb-7")                                           # editable: another month is fine
+        self.assertTrue(Box.objects.filter(code="SEP26-KB-7", period="SEP26", seq=7).exists())
+
+    def csv(self, text):
+        self.client.force_login(self.owner)
+        f = SimpleUploadedFile("l.csv", text.encode(), content_type="text/csv")
+        return self.client.post(reverse("csv_import"), {"file": f})
+
+    def test_csv_empty_box_gets_new_ids(self):
+        from .models import box_period
+        period = box_period()[0]
+        self.make(self.kb, None)                                                  # KB-1 already used this month
+        r = self.csv("box,cargo,kind,item_name\n"
+                     ",KB,bag,Bag A\n"
+                     ",KB,,TSR2\n"
+                     ",KB,bag,Bag B\n"
+                     ",KB,,Pro V1\n"
+                     ",WS,bag,Bag C\n")
+        self.assertContains(r, "Imported 2 item(s) and 3 golf bag(s) into 3 box(es)")
+        self.assertEqual(Box.objects.get(code=f"{period}-KB-2").bag_name, "Bag A")
+        self.assertEqual(list(Box.objects.get(code=f"{period}-KB-3").items.values_list("item_name", flat=True)),
+                         ["Bag B", "Pro V1"])
+        self.assertEqual(Box.objects.get(code=f"{period}-WS-1").bag_name, "Bag C")
+
+    def test_csv_given_ids_validated(self):
+        r = self.csv("box,cargo,kind,item_name\n"
+                     ",,bag,No cargo\n"
+                     ",KB,,Item before any bag\n"
+                     "OCT26-ZZ-1,,bag,Unknown cargo\n"
+                     "OCT26-KB-5,WS,bag,Wrong cargo\n"
+                     "GN-77,,bag,Old style that doesn't exist\n"
+                     "hello,,bag,Garbage\n")
+        for msg in ("Row 2: Put the Box ID in box", "Row 3: No box for this KB item",
+                    "Row 4: Unknown cargo code &#x27;ZZ&#x27;", "Row 5: Box ID &#x27;OCT26-KB-5&#x27; is a KB box but cargo says WS",
+                    "Row 6: Box &#x27;GN-77&#x27; should look like OCT26-KB-3", "Row 7: Box &#x27;hello&#x27; should look like"):
+            self.assertContains(r, msg)
+        self.assertFalse(Box.objects.filter(code__isnull=False).exists())
+        # a given monthly ID creates that box; an existing old-style box still takes more items
+        self.add_bag()
+        r = self.csv("box,kind,item_name\noct26-kb-05,bag,Bag\nOCT26-KB-5,,TSR2\nGN-3,,Head cover\n")
+        self.assertContains(r, "into 2 box(es)")
+        self.assertEqual(Box.objects.get(code="OCT26-KB-5").items.count(), 2)
+        self.assertTrue(self.box.items.filter(item_name="Head cover").exists())

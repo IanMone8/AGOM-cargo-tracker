@@ -67,12 +67,12 @@ class BoxAdmin(admin.ModelAdmin):
     form = BoxAdminForm
     list_display = ["label", "bag", "cargo", "status", "japan_ship_date", "myanmar_received_date", "item_count"]
     list_filter = ["status", "cargo"]
-    search_fields = ["cargo__code", "box_no", "notes"]
+    search_fields = ["code", "cargo__code", "box_no", "notes"]
     date_hierarchy = "japan_ship_date"
     inlines = [JapanItemInline, ExtraItemInline]
     list_select_related = ["cargo"]
 
-    @admin.display(description="Box", ordering="box_no")
+    @admin.display(description="Box", ordering="id")
     def label(self, obj):
         return obj.label
 

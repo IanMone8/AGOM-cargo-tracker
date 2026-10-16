@@ -14,7 +14,7 @@ It uses SQLite in development and Postgres in production (via `DATABASE_URL`).
 | **Dashboard** | Pastel stat cards: Cargos · Total boxes · Checked in Myanmar (e.g. 3 / 4) · Needs review (boxes with differences), plus lists of boxes waiting for check or review, in transit and recently updated |
 | **Shipments** | All boxes with cargo / status filters (live, via HTMX) and an **Add box** button |
 | **Add box** (modal) | Cargo company, Box ID, box note, the required **Golf bag** card, then **Items inside the bag**. **Add item** adds another item card; each card has **Copy** and **Delete** |
-| **Box detail** | "GN-3 · Titleist Stand Bag" header, the golf bag first, then the items inside it, **Start Myanmar check**, then one-tap **✓ Matched / ✗ Missing / ± Wrong qty**, undo, extra items and a live mismatch summary |
+| **Box detail** | "OCT26-KB-3 · Titleist Stand Bag" header, the golf bag first, then the items inside it, **Start Myanmar check**, then one-tap **✓ Matched / ✗ Missing / ± Wrong qty**, undo, extra items and a live mismatch summary |
 | **Cargo history** | One card per cargo company (boxes, in transit, checked, issues, average transit days) and its box history, newest first |
 | **CSV import** | (Owner / Admin) Import Japan packing lists (several boxes per file), all-or-nothing validation, template download |
 | **Admin** | Every model is registered at `/admin/` |
@@ -124,6 +124,12 @@ and admin) and then get a clear warning. A box without a bag shows **No bag reco
 When upgrading, the migration marks an existing box's single item of type *Bag* as its golf bag; boxes with no
 or several bag items are left for the owner to fix.
 
+**Box ID:** new boxes get a monthly ID per cargo company, `<MON><YY>-<CARGO>-<n>` (e.g. `OCT26-KB-3`): the month
+in Japan time, the cargo code, and the next number for that company that month (highest so far + 1, so deleting a box
+never causes a duplicate; it starts at 1 each month). In the Add box modal it fills in as soon as a cargo company is
+chosen ("Auto: 3rd KB box in October 2026") and stays editable; on save it is checked again and, if the number was taken
+in the meantime, moved to the next free one with a notice. Boxes made before this keep their old `GN-3` style IDs.
+
 **Money (JP¥):** the box has an optional **Cargo fee** (next to Box ID) and the bag and every item have an
 optional **Amount** – the price per piece, whole yen (`12500`, `12,500` and `¥12,500` all work; phones get the number
 keypad). Item cards show the line total (amount × qty) when qty > 1, Copy keeps the amount, and the Add box modal has a
@@ -168,16 +174,16 @@ Run the tests with `python manage.py test`.
 ## CSV format for Japan lists
 
 ```
-box,kind,item_name,color,club_option,flex,qty,amount_jpy,cargo_fee_jpy,customer,note
-GN-3,bag,Titleist Stand Bag,Black,,,1,8000,"12,500",Ko Aung,
-GN-3,,Titleist TSR2,,Driver 10.5°,S,1,"¥25,000",,Ko Aung,with cover
-GN-3,,,,Driver head 9.5,,2,6500,,,
-GN-3,,Mizuno JPX 923,,Iron · Graphite 5,R,1,,,,
-KL-1,bag,Ping Hoofer,Navy,,,1,,9000,,
-KL-1,,Cleveland RTX 6,,Wedge 52,,1,4200,,,
+box,cargo,kind,item_name,color,club_option,flex,qty,amount_jpy,cargo_fee_jpy,customer,note
+,GN,bag,Titleist Stand Bag,Black,,,1,8000,"12,500",Ko Aung,
+,GN,,Titleist TSR2,,Driver 10.5°,S,1,"¥25,000",,Ko Aung,with cover
+,GN,,,,Driver head 9.5,,2,6500,,,
+,GN,,Mizuno JPX 923,,Iron · Graphite 5,R,1,,,,
+,KL,bag,Ping Hoofer,Navy,,,1,,9000,,
+,KL,,Cleveland RTX 6,,Wedge 52,,1,4200,,,
 ```
 
-* Required: `box`, plus `item_name` or `club_option` on each row. Other columns are optional.
+* Required: `box` (or `cargo` for a new box), plus `item_name` or `club_option` on each row. Other columns are optional.
 * `amount_jpy` is the price per piece; `cargo_fee_jpy` goes on the box's bag row. Both are whole yen and accept
   `12500`, `12,500` or `¥12,500`.
 * `kind` = `bag` marks the box's golf bag (bag name in `item_name`, plus `color`, `customer`, `note`; qty 1);
@@ -192,7 +198,9 @@ KL-1,,Cleveland RTX 6,,Wedge 52,,1,4200,,,
 * Older files still work: `type`, `loft`, `brand`, `model`, `club_type`, `club_number`, `shaft_material`,
   `specification`, `color`, `condition`, `price_jpy`, `quantity_unit`; friendlier headers like `name`,
   `amount`, `unit` too. If a row has both, `club_option` wins.
-* `box` is the cargo code plus the number (`GN-3`). The cargo company must already exist; missing boxes are created.
+* `box`: leave it **empty** and put the cargo code in `cargo` to get new Box IDs (each bag row starts a new box, the
+  item rows below it go in it), or give a Box ID like `OCT26-KB-3`. Older IDs like `GN-3` only work for boxes that
+  already exist. The cargo company must already exist.
 * `flex` is `L`, `A`, `R`, `SR`, `S`, `X` or empty. `price_jpy` may contain `¥` and commas.
 * UTF-8 (including Excel's "CSV UTF-8") and Shift-JIS files are accepted.
 * If any row has an error, **nothing is imported** and every bad row is listed.
@@ -247,7 +255,8 @@ static/          css/agom.css (golf theme), img/ (logos, icons; small copies in 
 
 ## Data model notes
 
-* `Box.box_no` is a number (the "Box ID" in the Add box form); the label (`GN-3`) is built from the cargo code.
+* New boxes store `Box.code` (`OCT26-KB-3`) plus `period` (`OCT26`) and `seq` (3); (cargo, period, seq) and `code`
+  are unique. Boxes made before monthly IDs keep `box_no` and their `GN-3` label.
 * The golf bag is a Japan item with `is_bag = True` (type "Golf bag", qty 1); it sorts first in every list.
 * Japan items store: name, type, qty, quantity unit, brand, model, club / item type, club number, loft, flex,
   shaft material, specification, color, Japan condition, amount (optional), customer and note.

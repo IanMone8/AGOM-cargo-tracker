@@ -1,3 +1,6 @@
+import re
+from zoneinfo import ZoneInfo
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import RegexValidator
@@ -22,6 +25,34 @@ class Cargo(models.Model):
         return f"{self.code} – {self.name}"
 
 
+MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
+               "November", "December"]
+JAPAN_TZ = ZoneInfo("Asia/Tokyo")
+BOX_CODE_RE = re.compile(r"^(%s)(\d{2})-([A-Z0-9]+)-0*(\d+)$" % "|".join(MONTHS))
+
+
+def box_period(when=None):
+    """("OCT26", <Japan-time datetime>) – the month a box is created in, in Japan time."""
+    from django.utils import timezone
+    jp = (when or timezone.now()).astimezone(JAPAN_TZ)
+    return f"{MONTHS[jp.month - 1]}{jp:%y}", jp
+
+
+def parse_box_code(text):
+    """"oct26-kb-03" -> ("OCT26", "KB", 3, "OCT26-KB-3"), or None if it isn't a box code."""
+    m = BOX_CODE_RE.match(" ".join((text or "").upper().split()).replace(" ", ""))
+    if not m:
+        return None
+    period, cargo, seq = m.group(1) + m.group(2), m.group(3), int(m.group(4))
+    return period, cargo, seq, f"{period}-{cargo}-{seq}"
+
+
+def ordinal(n):
+    suffix = "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
 class Box(models.Model):
     class Status(models.TextChoices):
         PACKED = "packed", "Packed"
@@ -30,7 +61,12 @@ class Box(models.Model):
         CHECKED = "checked", "Checked"
 
     cargo = models.ForeignKey(Cargo, on_delete=models.PROTECT, related_name="boxes")
-    box_no = models.PositiveIntegerField()
+    # Box ID. New boxes: "OCT26-KB-3" = month in Japan time, cargo code, number for that cargo that month.
+    # Older boxes keep their "KB-3" style ID (cargo code + box_no) and have no code.
+    code = models.CharField("Box ID", max_length=30, unique=True, null=True, blank=True)
+    period = models.CharField(max_length=5, blank=True, help_text='Month of the Box ID, e.g. "OCT26"')
+    seq = models.PositiveIntegerField(null=True, blank=True, help_text="Number in the Box ID (per cargo company per month)")
+    box_no = models.PositiveIntegerField(null=True, blank=True, help_text="Only for boxes made before monthly Box IDs")
     japan_ship_date = models.DateField(null=True, blank=True)
     myanmar_received_date = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.PACKED)
@@ -41,10 +77,11 @@ class Box(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["cargo__code", "box_no"]
+        ordering = ["cargo__code", "id"]
         verbose_name_plural = "boxes"
         constraints = [
             models.UniqueConstraint(fields=["cargo", "box_no"], name="unique_box_per_cargo"),
+            models.UniqueConstraint(fields=["cargo", "period", "seq"], name="unique_monthly_box_number"),
         ]
 
     def __str__(self):
@@ -66,7 +103,26 @@ class Box(models.Model):
 
     @property
     def label(self):
-        return f"{self.cargo.code}-{self.box_no}"
+        return self.code or f"{self.cargo.code}-{self.box_no}"
+
+    # --- monthly Box IDs -----------------------------------------------------
+    @classmethod
+    def next_seq(cls, cargo, period):
+        """Highest number used by this cargo company this month + 1 (a deleted box never causes a duplicate)."""
+        top = cls.objects.filter(cargo=cargo, period=period).aggregate(m=models.Max("seq"))["m"]
+        return (top or 0) + 1
+
+    @classmethod
+    def next_code(cls, cargo, when=None):
+        """The next Box ID for this cargo company now, e.g. ("OCT26-KB-3", "OCT26", 3, "3rd KB box in October 2026")."""
+        period, jp = box_period(when)
+        seq = cls.next_seq(cargo, period)
+        hint = f"{ordinal(seq)} {cargo.code} box in {MONTH_NAMES[jp.month - 1]} {jp.year}"
+        return f"{period}-{cargo.code}-{seq}", period, seq, hint
+
+    def set_code(self, code):
+        period, _cargo, seq, normal = parse_box_code(code)
+        self.code, self.period, self.seq = normal, period, seq
 
     # --- the golf bag (every box holds exactly one) ---------------------------
     @property

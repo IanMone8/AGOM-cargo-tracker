@@ -1,6 +1,6 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.core.exceptions import PermissionDenied
 from django.db.models import Count, F, IntegerField, OuterRef, Q, Subquery, Sum, Value
 from django.db.models.functions import Coalesce, NullIf
@@ -185,8 +185,9 @@ def box_create(request):
     bag_form = BagForm(data, prefix="bag", optional=override)
     formset = ItemFormSet(data, prefix="items")
     if request.method == "POST" and all([form.is_valid(), bag_form.is_valid(), formset.is_valid()]):
+        wanted = form.instance.code
         with transaction.atomic():
-            box = form.save()
+            box = save_with_free_code(form)      # savepoints inside: a clash moves to the next free number
             if not bag_form.is_blank:
                 bag = bag_form.save(commit=False)
                 bag.box = box
@@ -194,6 +195,8 @@ def box_create(request):
             formset.instance = box
             formset.save()
             box.refresh_status()
+        if box.code != wanted:
+            messages.info(request, f"{wanted} was taken in the meantime, so this box is {box.code}.")
         inside = box.items.filter(is_bag=False).count()
         if bag_form.is_blank:
             messages.warning(request, f"Box {box.label} saved WITHOUT a golf bag (owner override) with "
@@ -205,10 +208,41 @@ def box_create(request):
             response["HX-Redirect"] = reverse("box_detail", args=[box.pk])
             return response
         return redirect("box_detail", pk=box.pk)
-    ctx = {"form": form, "bag_form": bag_form, "formset": formset, **catalog_context()}
+    ctx = {"form": form, "bag_form": bag_form, "formset": formset, **catalog_context(),
+           **box_id_hint(form.cleaned_data.get("cargo") if form.is_bound and hasattr(form, "cleaned_data") else None)}
     if is_htmx(request):
         return render(request, "tracker/partials/box_modal.html", ctx)
     return render(request, "tracker/box_create.html", ctx)
+
+
+def save_with_free_code(form, tries=5):
+    """Save a new box; if its Box ID was taken meanwhile, move it to the next free number for that cargo/month."""
+    box = form.instance
+    for _ in range(tries):
+        if Box.objects.filter(Q(code=box.code) | Q(cargo=box.cargo, period=box.period, seq=box.seq)).exists():
+            box.seq = Box.next_seq(box.cargo, box.period)
+            box.code = f"{box.period}-{box.cargo.code}-{box.seq}"
+        try:
+            with transaction.atomic():
+                return form.save()
+        except IntegrityError:          # someone saved the same number a moment ago: try the next one
+            continue
+    raise IntegrityError("Could not find a free Box ID")
+
+
+@login_required
+@roles.require(roles.can_edit_japan)
+def box_next_id(request):
+    """HTMX: the Box ID field filled with the next monthly ID for the chosen cargo company."""
+    cargo = Cargo.objects.filter(pk=request.GET.get("cargo") or 0).first()
+    form = BoxCreateForm(initial={"box_id": Box.next_code(cargo)[0]} if cargo else None)
+    return render(request, "tracker/partials/box_id_field.html", {"form": form, **box_id_hint(cargo)})
+
+
+def box_id_hint(cargo):
+    if not cargo:
+        return {"box_id_hint": "Choose a cargo company – the Box ID fills in by itself."}
+    return {"box_id_hint": "Auto: " + Box.next_code(cargo)[3]}
 
 
 @login_required

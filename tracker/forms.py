@@ -1,9 +1,10 @@
 from django import forms
 from django.forms import inlineformset_factory
+from django.urls import reverse
 from django.utils import timezone
 
 from . import roles
-from .models import Box, Cargo, ClubCategory, ClubOption, Customer, CustomerRequest, ExtraItem, JapanItem
+from .models import Box, Cargo, parse_box_code, ClubCategory, ClubOption, Customer, CustomerRequest, ExtraItem, JapanItem
 
 INPUT = "field"  # styled in static/css/agom.css
 
@@ -43,8 +44,11 @@ class BoxForm(StyledMixin, forms.ModelForm):
 
     class Meta:
         model = Box
-        fields = ["cargo", "box_no", "cargo_fee_jpy", "japan_ship_date", "myanmar_received_date", "status", "notes"]
+        fields = ["cargo", "code", "box_no", "cargo_fee_jpy", "japan_ship_date", "myanmar_received_date", "status",
+                  "notes"]
+        labels = {"box_no": "Box number"}
         widgets = {
+            "code": forms.TextInput(attrs={"autocapitalize": "characters", "autocomplete": "off", "spellcheck": "false"}),
             "japan_ship_date": forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
             "myanmar_received_date": forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
             "notes": forms.Textarea(attrs={"rows": 3}),
@@ -52,6 +56,13 @@ class BoxForm(StyledMixin, forms.ModelForm):
 
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
+        # Monthly Box ID (OCT26-KB-3) for new boxes; older boxes keep editing their number.
+        if self.instance.code:
+            self.fields.pop("box_no")
+            self.fields["code"].required = True
+        else:
+            self.fields.pop("code")
+            self.fields["box_no"].required = True
         # Japan sender cannot set the Myanmar side; Myanmar checker cannot
         # change which box it is or the Japan ship date.
         if user is not None and not roles.can_see_money(user):
@@ -60,8 +71,8 @@ class BoxForm(StyledMixin, forms.ModelForm):
             if not roles.can_check(user):
                 self.fields.pop("myanmar_received_date")
             if not roles.can_edit_japan(user):
-                for name in ("cargo", "box_no", "japan_ship_date"):
-                    self.fields.pop(name)
+                for name in ("cargo", "code", "box_no", "japan_ship_date"):
+                    self.fields.pop(name, None)
             if not roles.can_check(user):
                 # Arrived / Checked belong to the Myanmar side.
                 self.fields["status"].choices = [
@@ -88,8 +99,21 @@ class BoxForm(StyledMixin, forms.ModelForm):
             attrs["min"] = low.isoformat()
             attrs["data-today"] = today.isoformat()
 
+    def clean_code(self):
+        parsed = parse_box_code(self.cleaned_data["code"])
+        if not parsed:
+            raise forms.ValidationError("Box ID looks like OCT26-KB-3 – month, year, cargo code, number.")
+        return parsed[3]
+
     def clean(self):
         data = super().clean()
+        if data.get("code"):
+            period, cargo_code, seq, _ = parse_box_code(data["code"])
+            cargo = data.get("cargo") or self.instance.cargo
+            if cargo and cargo_code != cargo.code:
+                self.add_error("code", f"This box is for {cargo.code}, so its ID must have {cargo.code} in it.")
+            else:
+                self.instance.period, self.instance.seq = period, seq
         today = timezone.localdate()
         for name in ("japan_ship_date", "myanmar_received_date"):
             value = data.get(name)
@@ -120,22 +144,49 @@ class BoxCreateForm(StyledMixin, forms.ModelForm):
         help_text="Every box should hold exactly one golf bag. Only use this to fix old or unusual boxes.")
 
     cargo_fee_jpy = YenField(label="Cargo fee (JP¥)")
+    # Filled in automatically when a cargo company is chosen (views.box_next_id); stays editable.
+    # Not the model field itself: a number taken in the meantime is bumped on save, not rejected.
+    box_id = forms.CharField(label="Box ID", max_length=30, required=False, widget=forms.TextInput(attrs={
+        "placeholder": "Choose a cargo company first", "autocapitalize": "characters", "autocomplete": "off",
+        "spellcheck": "false"}))
 
     class Meta:
         model = Box
-        fields = ["cargo", "box_no", "cargo_fee_jpy", "notes"]
-        labels = {"cargo": "Cargo company", "box_no": "Box ID", "notes": "Box note"}
+        fields = ["cargo", "cargo_fee_jpy", "notes"]
+        labels = {"cargo": "Cargo company", "notes": "Box note"}
         widgets = {
-            "box_no": forms.NumberInput(attrs={"min": 1, "inputmode": "numeric", "placeholder": "e.g. 3"}),
             "notes": forms.Textarea(attrs={"rows": 2, "placeholder": "Optional"}),
         }
+
+    field_order = ["cargo", "box_id", "cargo_fee_jpy", "notes"]
 
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
         if user is None or not roles.is_manager(user):
             self.fields.pop("allow_no_bag")  # the Japan sender must always record the bag
         self.fields["cargo"].empty_label = "Choose cargo company…"
-        self.fields["box_no"].help_text = "Number only – shown as CODE-number, e.g. GN-3"
+        # the cargo select fills in the Box ID (HTMX); explicit target/swap so the form's own aren't inherited
+        self.fields["cargo"].widget.attrs.update({
+            "hx-get": reverse("box_next_id"), "hx-trigger": "change", "hx-include": "this",
+            "hx-target": "#box-id-field", "hx-swap": "outerHTML"})
+
+    def clean(self):
+        data = super().clean()
+        cargo, raw = data.get("cargo"), (data.get("box_id") or "").strip()
+        if not cargo:
+            return data
+        if not raw:                                    # no JavaScript / left empty: number it now
+            raw = Box.next_code(cargo)[0]
+        parsed = parse_box_code(raw)
+        if not parsed:
+            self.add_error("box_id", f"Box ID looks like {Box.next_code(cargo)[0]} – month, year, cargo code, number.")
+        elif parsed[1] != cargo.code:
+            self.add_error("box_id", f"This box is for {cargo.code}, so its ID must have {cargo.code} in it "
+                                     f"(e.g. {Box.next_code(cargo)[0]}).")
+        else:
+            self.instance.set_code(parsed[3])
+            data["box_id"] = parsed[3]
+        return data
 
 
 class BagForm(StyledMixin, forms.ModelForm):
