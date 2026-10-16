@@ -141,7 +141,7 @@ class Box(models.Model):
         return self.items.filter(is_bag=True).count()
 
     def money(self, items=None):
-        """Yen totals: bag + items inside + cargo fee. Amounts are per piece, so each line is amount × qty."""
+        """Yen totals: bag + items inside + cargo fee. Each line is amount × qty, or the sum of its piece prices."""
         items = list(self.items.all()) if items is None else items
         bag = sum(i.line_total or 0 for i in items if i.is_bag)
         inside = sum(i.line_total or 0 for i in items if not i.is_bag)
@@ -292,6 +292,13 @@ class JapanItem(models.Model):
         "Japan condition", max_length=5, choices=Condition.choices, default=Condition.NEW
     )
     price_jpy = models.PositiveIntegerField("Amount (JP¥)", null=True, blank=True, help_text="Whole yen, per piece")
+    piece_prices = models.JSONField(
+        "Piece prices (JP¥)", default=list, blank=True,
+        help_text="Different prices per piece, e.g. [45000, 41500] – one per piece (count = qty). "
+                  "Empty: every piece costs the amount above.")
+    line_total_jpy = models.PositiveIntegerField(
+        "Line total (JP¥)", null=True, blank=True, editable=False,
+        help_text="Amount × qty, or the sum of the piece prices (kept up to date on save)")
     customer = models.CharField(max_length=100, blank=True)
     note = models.CharField(max_length=255, blank=True)
     is_bag = models.BooleanField(
@@ -306,10 +313,30 @@ class JapanItem(models.Model):
     def __str__(self):
         return f"{self.box.label}: {self.title}" + (f" {self.flex}" if self.flex else "") + f" ×{self.qty}"
 
+    @staticmethod
+    def compute_line_total(price, qty, pieces):
+        """Sum of the piece prices when they differ, else amount × qty (the amount is per piece)."""
+        if pieces:
+            return sum(pieces)
+        return None if price is None else price * qty
+
     @property
     def line_total(self):
-        """Amount × qty (the amount is per piece)."""
-        return None if self.price_jpy is None else self.price_jpy * self.qty
+        return self.compute_line_total(self.price_jpy, self.qty, self.piece_prices)
+
+    @property
+    def has_piece_prices(self):
+        return bool(self.piece_prices)
+
+    def _tidy_prices(self):
+        """Piece prices only make sense with one per piece; the first also fills the single amount."""
+        pieces = [int(p) for p in (self.piece_prices or []) if p is not None]
+        if len(pieces) != self.qty or self.qty < 2:
+            pieces = []
+        self.piece_prices = pieces
+        if pieces:
+            self.price_jpy = pieces[0]
+        self.line_total_jpy = self.line_total
 
     @property
     def club_label(self):
@@ -322,6 +349,7 @@ class JapanItem(models.Model):
         return self.item_name or self.club_label or "Item"
 
     def save(self, *args, **kwargs):
+        self._tidy_prices()
         super().save(*args, **kwargs)
         if self.customer:
             Customer.ensure(self.customer)

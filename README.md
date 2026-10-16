@@ -102,7 +102,10 @@ Viber / Orders filters, sortable Name / Orders / Last update, 25 rows then "Load
 cards on phones. Each customer has a detail page with all their requests and packed items. Customer names
 typed on requests, Japan items or CSV rows create the customer automatically.
 
-**Item card:** the Japan sender fills only Item name (optional), Customer (optional, suggests existing customers), **Club option**, Flex, Qty and Note.
+**Item card:** the Japan sender fills only Item name (optional), **Club option**, Flex, Qty, Amount and Note. Owner and
+Admin also get Customer (optional, suggests existing customers). The Japan sender never sees customers: no Customer
+field, no customer names on the box page, item or bag rows, and no customer names in their autocomplete (the server
+leaves them out; a customer posted anyway is ignored, so an item's existing customer link stays as it is).
 Club option is two taps – a category (Driver, Driver head, Wood, Hybrid, Iron, Wedge, Putter, Other), then a value
 (Other = free text) – and is saved as structured data (e.g. "Iron · Graphite 5" → type Iron, shaft graphite, club number 5;
 "Driver head 9.5" → type Driver, loft 9.5, head only; "Wood 3W" → type Wood, club number 3W; "Hybrid 4H" → type Hybrid,
@@ -141,7 +144,10 @@ in the meantime, moved to the next free one with a notice. Boxes made before thi
 
 **Money (JP¥):** the box has an optional **Cargo fee** (next to Box ID) and the bag and every item have an
 optional **Amount** – the price per piece, whole yen (`12500`, `12,500` and `¥12,500` all work; phones get the number
-keypad). Item cards show the line total (amount × qty) when qty > 1, Copy keeps the amount, and the Add box modal has a
+keypad). Item cards show the line total (amount × qty) when qty > 1. With qty ≥ 2 a **Different prices** box gives one
+¥ box per piece (Piece 1, Piece 2, …, following qty); the line total is their sum and the box page shows
+`¥45,000 + ¥41,500 = ¥86,500`. Unticking goes back to one price (the first piece's). Piece prices are stored on the item
+(`piece_prices`) with the computed `line_total_jpy`, which box totals add up. Copy keeps the amount(s), and the Add box modal has a
 live **Bag + Items + Cargo fee = Total** line above Save. The box page shows the same line; Shipments shows each box's
 total. Amounts, cargo fees and totals are for Owner, Admin and the Japan sender only – the Myanmar checker never sees
 them (pages, HTMX updates and the money script are all left out for them).
@@ -186,7 +192,7 @@ Run the tests with `python manage.py test`.
 box,cargo,kind,item,color,club_option,flex,qty,amount_jpy,cargo_fee_jpy,customer,note
 ,GN,bag,Titleist Stand Bag,Black,,,1,8000,"12,500",Ko Aung,
 ,GN,,Titleist TSR2,,Driver 10.5°,S,1,"¥25,000",,Ko Aung,with cover
-,GN,,,,Driver head 9.5,,2,6500,,,
+,GN,,,,Driver head 9.5,,2,6500;5800,,,
 ,GN,,Mizuno JPX 923,,Iron · Graphite 5,R,1,,,,
 ,KL,bag,Ping Hoofer,Navy,,,1,,9000,,
 ,KL,,Cleveland RTX 6,,Wedge 52,,1,4200,,,
@@ -195,7 +201,7 @@ box,cargo,kind,item,color,club_option,flex,qty,amount_jpy,cargo_fee_jpy,customer
 * Required: `box` (or `cargo` for a new box), plus `item_name` or `club_option` on each row. Other columns are optional.
 * `item` is the brand + model as one text (parsed like the form), or use separate `brand` and `model` columns (a brand
   in its own column is added if it's new).
-* `amount_jpy` is the price per piece; `cargo_fee_jpy` goes on the box's bag row. Both are whole yen and accept
+* `amount_jpy` is the price per piece (`45000;41500` = a different price for each piece; the count must equal qty); `cargo_fee_jpy` goes on the box's bag row. Both are whole yen and accept
   `12500`, `12,500` or `¥12,500`.
 * `kind` = `bag` marks the box's golf bag (bag name in `item_name`, plus `color`, `customer`, `note`; qty 1);
   empty (or `item`) is an item inside the bag. Each box needs **exactly one** bag row – or must already have its

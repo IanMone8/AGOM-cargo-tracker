@@ -40,8 +40,9 @@ def is_htmx(request):
     return request.headers.get("HX-Request") == "true"
 
 
-def catalog_context():
-    """Values for the <datalist> dropdowns used by item / request forms."""
+def catalog_context(user=None):
+    """Values for the <datalist> dropdowns used by item / request forms.
+    Customer names only for people who may see customers (never the Japan sender)."""
     entries = list(Catalog.objects.all())
     lofts = sorted({l for c in entries for l in c.loft_list}, key=lambda v: (len(v), v))
     return {
@@ -49,7 +50,8 @@ def catalog_context():
         "catalog_models": [c.brand_model for c in entries],
         "catalog_lofts": lofts,
         "item_categories": ITEM_CATEGORIES,
-        "customer_names": list(Customer.objects.values_list("name", flat=True)),
+        "customer_names": (list(Customer.objects.values_list("name", flat=True))
+                           if user is not None and roles.can_use_customers(user) else []),
         "brands": BRANDS,
     }
 
@@ -79,9 +81,9 @@ def with_bag(qs):
 
 
 def with_money(qs):
-    """Annotate money_total = Σ(amount × qty) + cargo fee, and has_money (any amount or fee entered)."""
-    lines = (JapanItem.objects.filter(box=OuterRef("pk"), price_jpy__isnull=False).order_by().values("box")
-             .annotate(t=Sum(F("price_jpy") * F("qty"))).values("t")[:1])
+    """Annotate money_total = Σ line totals + cargo fee, and has_money (any amount or fee entered)."""
+    lines = (JapanItem.objects.filter(box=OuterRef("pk"), line_total_jpy__isnull=False).order_by().values("box")
+             .annotate(t=Sum("line_total_jpy")).values("t")[:1])
     return qs.annotate(
         items_money=Coalesce(Subquery(lines, output_field=IntegerField()), Value(0)),
         money_total=F("items_money") + Coalesce(F("cargo_fee_jpy"), Value(0)),
@@ -184,8 +186,9 @@ def box_create(request):
     data = request.POST or None
     override = bool(data and roles.is_manager(request.user) and data.get("allow_no_bag"))
     form = BoxCreateForm(data, user=request.user)
-    bag_form = BagForm(data, prefix="bag", optional=override)
-    formset = ItemFormSet(data, prefix="items")
+    customers = roles.can_use_customers(request.user)
+    bag_form = BagForm(data, prefix="bag", optional=override, customers=customers)
+    formset = ItemFormSet(data, prefix="items", form_kwargs={"customers": customers})
     if request.method == "POST" and all([form.is_valid(), bag_form.is_valid(), formset.is_valid()]):
         wanted = form.instance.code
         with transaction.atomic():
@@ -210,7 +213,7 @@ def box_create(request):
             response["HX-Redirect"] = reverse("box_detail", args=[box.pk])
             return response
         return redirect("box_detail", pk=box.pk)
-    ctx = {"form": form, "bag_form": bag_form, "formset": formset, **catalog_context(),
+    ctx = {"form": form, "bag_form": bag_form, "formset": formset, **catalog_context(request.user),
            **box_id_hint(form.cleaned_data.get("cargo") if form.is_bound and hasattr(form, "cleaned_data") else None)}
     if is_htmx(request):
         return render(request, "tracker/partials/box_modal.html", ctx)
@@ -282,7 +285,7 @@ def box_item_card(request):
         index = max(0, int(request.GET.get("items-TOTAL_FORMS", "0")))
     except ValueError:
         index = 0
-    form = ItemFormSet(prefix="items").empty_form
+    form = ItemFormSet(prefix="items", form_kwargs={"customers": roles.can_use_customers(request.user)}).empty_form
     form.prefix = f"items-{index}"
     return render(request, "tracker/partials/item_card_new.html", {
         "item_form": form, "index": index, "next_total": index + 1,
@@ -325,7 +328,7 @@ def box_detail(request, pk):
         **bag_context(box),
         "extras": box.extra_items.all(),
         "summary": box.summary(),
-        **catalog_context(),
+        **catalog_context(request.user),
     })
 
 
@@ -336,7 +339,7 @@ def box_bag(request, pk):
     box = get_object_or_404(visible_boxes(request.user), pk=pk)
     _require_box_items(request.user, box)
     bag = box.items.filter(is_bag=True).first()
-    form = BagForm(request.POST or None, instance=bag, prefix="bag")
+    form = BagForm(request.POST or None, instance=bag, prefix="bag", customers=roles.can_use_customers(request.user))
     if request.method == "POST" and form.is_valid():
         bag = form.save(commit=False)
         bag.box = box
@@ -485,17 +488,18 @@ def _require_box_items(user, box):
 def item_add(request, pk):
     box = get_object_or_404(visible_boxes(request.user), pk=pk)
     _require_box_items(request.user, box)
-    form = JapanItemForm(request.POST or None)
+    customers = roles.can_use_customers(request.user)
+    form = JapanItemForm(request.POST or None, customers=customers)
     if request.method == "POST" and form.is_valid():
         item = form.save(commit=False)
         item.box = box
         item.save()
         box.refresh_status()
         return _box_fragments(request, box, "tracker/partials/item_added.html", {
-            "item": item, "form": JapanItemForm(), **catalog_context(),
+            "item": item, "form": JapanItemForm(customers=customers), **catalog_context(request.user),
         })
     return render(request, "tracker/partials/item_form.html", {
-        "box": box, "form": form, **catalog_context(),
+        "box": box, "form": form, **catalog_context(request.user),
     })
 
 
@@ -807,7 +811,7 @@ def customer_detail(request, pk, order_form=None):
         "status_choices": CustomerRequest.Status.choices,
         "order_form": order_form or CustomerOrderForm(),
         "show_order_form": order_form is not None or request.GET.get("new_order") == "1",
-        **catalog_context(),
+        **catalog_context(request.user),
     })
 
 
@@ -894,7 +898,8 @@ def csv_import(request):
     result = None
     if request.method == "POST" and form.is_valid():
         result = import_japan_csv(form.cleaned_data["file"], replace=form.cleaned_data["replace"],
-                                  allow_bag_exception=form.cleaned_data["allow_bag_exception"])
+                                  allow_bag_exception=form.cleaned_data["allow_bag_exception"],
+                                  customers=roles.can_use_customers(request.user))
         if not result.errors:
             bags = f" and {result.created_bags} golf bag(s)" if result.created_bags else ""
             messages.success(
@@ -910,7 +915,7 @@ def csv_import(request):
 @login_required
 @roles.require(roles.can_import_csv)
 def csv_template(request):
-    response = HttpResponse(template_csv(), content_type="text/csv")
+    response = HttpResponse(template_csv(customers=roles.can_use_customers(request.user)), content_type="text/csv")
     response["Content-Disposition"] = 'attachment; filename="japan_list_template.csv"'
     return response
 

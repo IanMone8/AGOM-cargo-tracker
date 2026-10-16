@@ -343,6 +343,14 @@ textarea.field { resize: vertical; }
 .yen-wrap { position: relative; }
 .yen-wrap .yen-sign { position: absolute; left: .8rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-weight: 600; pointer-events: none; }
 .yen-wrap .field { padding-left: 1.75rem; font-variant-numeric: tabular-nums; }
+/* "Different prices": one ¥ box per piece (item cards, qty >= 2) */
+[data-money-line].has-pieces { grid-column: 1 / -1; }
+.piece-toggle { display: inline-flex; align-items: center; gap: .5rem; margin-top: .5rem; min-height: 2.25rem;
+  font-size: .8rem; font-weight: 600; color: var(--text); cursor: pointer; }
+.piece-toggle[hidden], .piece-grid[hidden] { display: none; }
+.piece-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr)); gap: .5rem; margin-top: .25rem; }
+.piece-price { display: block; font-size: .75rem; font-weight: 600; color: var(--text-muted); }
+.piece-price .yen-wrap { display: block; }
 .money-summary { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-end; gap: .2rem .45rem; color: var(--text-muted); }
 .money-summary b { color: var(--text); font-variant-numeric: tabular-nums; }
 .money-summary .op { color: var(--text-muted); }

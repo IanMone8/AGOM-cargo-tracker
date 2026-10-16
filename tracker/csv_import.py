@@ -31,12 +31,12 @@ ALIASES = {"name": "item_name", "item": "item_name", "amount": "price_jpy", "amo
            "japan_condition": "condition", "shaft": "shaft_material", "row_type": "kind", "row": "kind"}
 BOX_RE = re.compile(r"^\s*([A-Za-z]+)\s*-?\s*(\d+)\s*$")
 
-# amount_jpy is per piece; cargo_fee_jpy goes on the box's bag row.
+# amount_jpy is per piece ("45000;41500": a different price for each piece); cargo_fee_jpy goes on the bag row.
 # box left empty: each bag row starts a new box with the next monthly Box ID for its cargo company.
 TEMPLATE_ROWS = [
     ["", "GN", "bag", "Titleist Stand Bag", "Black", "", "", "1", "8000", "12,500", "Ko Aung", ""],
     ["", "GN", "", "titleist tsr2", "", "Driver 10.5°", "S", "1", "¥25,000", "", "Ko Aung", "with cover"],
-    ["", "GN", "", "", "", "Driver head 9.5", "", "2", "6500", "", "", ""],
+    ["", "GN", "", "", "", "Driver head 9.5", "", "2", "6500;5800", "", "", ""],  # different piece prices
     ["", "GN", "", "Mizuno JPX 923", "", "Iron · Graphite 5", "R", "1", "", "", "", ""],
     ["", "KL", "bag", "Ping Hoofer", "Navy", "", "", "1", "", "9000", "", ""],
     ["", "KL", "", "Cleveland RTX 6", "", "Wedge 52", "", "1", "4200", "", "", ""],
@@ -86,11 +86,13 @@ class _Fields:
         self._data[name] = value
 
 
-def template_csv():
+def template_csv(customers=True):
+    """The example file. customers=False (the Japan sender) leaves out the customer column."""
+    keep = [i for i, c in enumerate(COLUMNS) if customers or c != "customer"]
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(COLUMNS)
-    writer.writerows(TEMPLATE_ROWS)
+    writer.writerow([COLUMNS[i] for i in keep])
+    writer.writerows([r[i] for i in keep] for r in TEMPLATE_ROWS)
     return buf.getvalue()
 
 
@@ -154,6 +156,28 @@ def _parse_yen(value, name, errors, row):
     return int(text)
 
 
+def _parse_amount(value, qty, errors, row):
+    """amount_jpy: one price per piece ("25000"), or different piece prices "45000;41500" (one per piece).
+    Returns (amount, piece prices); the amount is the first piece's price when they differ."""
+    if ";" not in (value or ""):
+        return _parse_yen(value, "amount_jpy", errors, row), []
+    parts = [p for p in value.split(";")]
+    before = len(errors)
+    pieces = [_parse_yen(p, "amount_jpy", errors, row) for p in parts]
+    if len(errors) > before:
+        return None, []
+    if None in pieces:
+        errors.append((row, f"amount_jpy '{value}': every piece needs a price (empty part between the ;)"))
+        return None, []
+    if len(pieces) != qty:
+        errors.append((row, f"amount_jpy has {len(pieces)} piece price(s) ('{value}') but qty is {qty} – "
+                            "give one price per piece, separated by ;"))
+        return None, []
+    if len(pieces) == 1:
+        return pieces[0], []
+    return pieces[0], pieces
+
+
 def _parse_int(value, name, errors, row, default=None, minimum=0):
     value = (value or "").replace(",", "").replace("¥", "").strip()
     if value == "":
@@ -215,7 +239,8 @@ def _check_bags(parsed, cargos, replace):
     return problems
 
 
-def import_japan_csv(uploaded_file, replace=False, allow_bag_exception=False):
+def import_japan_csv(uploaded_file, replace=False, allow_bag_exception=False, customers=True):
+    """customers=False (the Japan sender): a customer column is ignored."""
     result = ImportResult()
     raw = uploaded_file.read()
     try:
@@ -296,7 +321,7 @@ def import_japan_csv(uploaded_file, replace=False, allow_bag_exception=False):
         if shaft and shaft not in shaft_ok:
             errors.append((row_no, f"shaft_material must be steel or graphite, got '{shaft}'"))
         qty = _parse_int(row.get("qty"), "qty", errors, row_no, default=1, minimum=1)
-        price = _parse_yen(row.get("price_jpy"), "amount_jpy", errors, row_no)
+        price, pieces = _parse_amount(row.get("price_jpy"), 1 if is_bag else (qty or 1), errors, row_no)
         fee = _parse_yen(row.get("cargo_fee_jpy"), "cargo_fee_jpy", errors, row_no)
         if fee is not None and not is_bag:
             errors.append((row_no, "cargo_fee_jpy goes on the box's bag row (kind = bag)"))
@@ -319,7 +344,8 @@ def import_japan_csv(uploaded_file, replace=False, allow_bag_exception=False):
             color=row.get("color", "")[:40],
             condition=condition,
             price_jpy=price,
-            customer=row.get("customer", "")[:100],
+            piece_prices=pieces,
+            customer=row.get("customer", "")[:100] if customers else "",
             note=row.get("note", "")[:255],
             head_only=False,
             is_bag=is_bag,
@@ -329,6 +355,8 @@ def import_japan_csv(uploaded_file, replace=False, allow_bag_exception=False):
                                  shaft_material="")
         elif option:  # the single label wins over the old separate columns
             option.apply_to(_Fields(parsed[-1][1]))
+        kw = parsed[-1][1]               # bulk_create skips save(): store the line total here
+        kw["line_total_jpy"] = JapanItem.compute_line_total(kw["price_jpy"], kw["qty"], kw["piece_prices"])
 
     if not parsed and not result.errors:
         result.errors.append((0, "The file has no data rows."))

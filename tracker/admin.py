@@ -52,8 +52,8 @@ class JapanItemInline(admin.TabularInline):
     model = JapanItem
     formset = BagInlineFormSet
     extra = 0
-    fields = ["is_bag", "type", "item_name", "color", "flex", "loft", "qty", "condition", "price_jpy", "customer",
-              "note"]
+    fields = ["is_bag", "type", "item_name", "color", "flex", "loft", "qty", "condition", "price_jpy", "piece_prices",
+              "customer", "note"]
 
 
 class ExtraItemInline(admin.TabularInline):

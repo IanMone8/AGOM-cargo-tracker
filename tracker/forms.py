@@ -161,6 +161,20 @@ class ItemTextMixin:
         return super().save(commit)
 
 
+class CustomerFieldMixin:
+    """customers=False (the Japan sender) drops the Customer field: it isn't shown, and a posted
+    value is ignored, so an item's existing customer link stays as it is."""
+
+    def __init__(self, *args, customers=True, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not customers:
+            self.fields.pop("customer", None)
+
+    @property
+    def has_customer(self):
+        return "customer" in self.fields
+
+
 BAG_WORDS = {"bag", "golf bag", "caddie bag", "caddy bag", "stand bag", "cart bag"}
 BAG_OVERRIDE_LABEL = "Owner override: save even though this box doesn't have exactly one golf bag"
 
@@ -223,7 +237,7 @@ class BoxCreateForm(StyledMixin, forms.ModelForm):
         return data
 
 
-class BagForm(ItemTextMixin, StyledMixin, forms.ModelForm):
+class BagForm(CustomerFieldMixin, ItemTextMixin, StyledMixin, forms.ModelForm):
     """The box's golf bag (required): stored as a JapanItem with is_bag=True, so it is
     checked in Myanmar, linked to customer orders and attachable like any other item."""
 
@@ -270,15 +284,19 @@ class BagForm(ItemTextMixin, StyledMixin, forms.ModelForm):
         item.head_only = False
 
 
-class JapanItemForm(ItemTextMixin, StyledMixin, forms.ModelForm):
+class JapanItemForm(CustomerFieldMixin, ItemTextMixin, StyledMixin, forms.ModelForm):
     """Japan sender's item card: name, two-tap club option, flex, qty, note.
 
     Other columns (brand, model, shaft, price, customer…) stay in the database
     for old data, CSV import and /admin/, but aren't on the card.
     """
 
+    MAX_PIECES = 50  # "Different prices" shows one ¥ box per piece, up to this many
+
     club_option = forms.CharField(required=False, widget=forms.HiddenInput)
     price_jpy = YenField(label="Amount (JP¥)")
+    different_prices = forms.BooleanField(required=False, label="Different prices",
+                                          widget=forms.CheckboxInput(attrs={"data-diff-prices": ""}))
     club_other = forms.CharField(required=False, max_length=50, label="Other club / item",
                                  widget=forms.TextInput(attrs={"placeholder": "e.g. Head cover, Chipper"}))
 
@@ -298,6 +316,9 @@ class JapanItemForm(ItemTextMixin, StyledMixin, forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["flex"].choices = [("", "—")] + list(self.fields["flex"].choices)[1:]
         self._club, self._other = None, ""
+        self._pieces = []
+        if not self.is_bound and self.instance.piece_prices:
+            self.initial["different_prices"] = True
         # Categories and options come from /admin/, so a new category (e.g. "Chipper") needs no code.
         options = list(ClubOption.objects.filter(active=True, category__active=True)
                        .order_by("sort_order", "id"))
@@ -319,6 +340,49 @@ class JapanItemForm(ItemTextMixin, StyledMixin, forms.ModelForm):
                 if str(o.pk) == value:
                     return g["key"], o.full_label
         return "", ""
+
+    # "Different prices": one ¥ box per piece, named <prefix>-piece_price (several values)
+    @property
+    def piece_values(self):
+        if self.is_bound:
+            return self.data.getlist(self.add_prefix("piece_price")) if hasattr(self.data, "getlist") else []
+        return [f"{p:,}" for p in self.instance.piece_prices or []]
+
+    @property
+    def qty_number(self):
+        try:
+            return int(self["qty"].value() or 1)
+        except (TypeError, ValueError):
+            return 1
+
+    @property
+    def piece_name(self):
+        return self.add_prefix("piece_price")
+
+    @property
+    def shows_pieces(self):
+        return bool(self["different_prices"].value())
+
+    def _clean_pieces(self, data):
+        """Different prices ticked and qty >= 2: one whole-yen price per piece, all filled (or all empty)."""
+        qty = data.get("qty") or 1
+        if not data.get("different_prices") or qty < 2:
+            return []
+        if qty > self.MAX_PIECES:
+            self.add_error("different_prices", f"Different prices works up to {self.MAX_PIECES} pieces.")
+            return []
+        raw = [v.strip() for v in self.piece_values]
+        if not any(raw):
+            return []
+        if len(raw) != qty or not all(raw):
+            self.add_error("different_prices", f"Enter a price for every piece ({qty}).")
+            return []
+        yen = YenField(label="")
+        try:
+            return [yen.clean(v) for v in raw]
+        except forms.ValidationError:
+            self.add_error("different_prices", "Piece prices must be whole yen like 45000 or 45,000.")
+            return []
 
     @property
     def has_free_text(self):
@@ -354,10 +418,14 @@ class JapanItemForm(ItemTextMixin, StyledMixin, forms.ModelForm):
             data["customer"] = " ".join(data["customer"].split())
         if not (data.get("item_name") or value):
             self.add_error(None, "Pick a club option or type an item name.")
+        self._pieces = self._clean_pieces(data)
         return data
 
     def _post_clean(self):
         super()._post_clean()
+        self.instance.piece_prices = self._pieces   # line total = their sum (JapanItem.save)
+        if self._pieces:
+            self.instance.price_jpy = self._pieces[0]
         if self._club:
             self._club.apply_to(self.instance)
         elif self._other:

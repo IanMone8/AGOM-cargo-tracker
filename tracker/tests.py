@@ -220,7 +220,7 @@ class AddBoxModalTests(BaseTest):
         self.assertEqual(box.notes, "fragile")
         bag, iron, putter = box.items.all()   # the bag comes first
         self.assertEqual((bag.is_bag, bag.item_name, bag.color, bag.customer, bag.note, bag.type, bag.qty),
-                         (True, "Titleist Stand Bag", "Black", "Ko Aung", "zip pocket", "Golf bag", 1))
+                         (True, "Titleist Stand Bag", "Black", "", "zip pocket", "Golf bag", 1))  # customer: not the Japan sender's
         self.assertEqual(box.title, "OCT26-GN-9 · Titleist Stand Bag")
         self.assertEqual((iron.type, iron.shaft_material, iron.club_number, iron.flex, iron.note),
                          ("Iron", "graphite", "5", "R", "with covers"))
@@ -1019,10 +1019,14 @@ class ClubOptionTests(BaseTest):
 
     def test_card_has_only_simple_fields_and_picker(self):
         html = self.client.get(reverse("item_add", args=[self.box.pk]), HTTP_HX_REQUEST="true").content.decode()
-        for name in ("item_name", "customer", "club_option", "club_other", "flex", "qty", "note"):
+        for name in ("item_name", "club_option", "club_other", "flex", "qty", "note"):
             self.assertIn(f'name="{name}"', html)
-        self.assertLess(html.index('name="item_name"'), html.index('name="customer"'))   # right below Item name
-        self.assertLess(html.index('name="customer"'), html.index('name="club_option"'))
+        self.assertNotIn('name="customer"', html)                 # no customers for the Japan sender
+        self.client.force_login(self.owner)
+        owner = self.client.get(reverse("item_add", args=[self.box.pk]), HTTP_HX_REQUEST="true").content.decode()
+        self.assertLess(owner.index('name="item_name"'), owner.index('name="customer"'))   # right below Item name
+        self.assertLess(owner.index('name="customer"'), owner.index('name="club_option"'))
+        self.client.force_login(self.japan)
         for gone in ("type", "loft", "brand", "model", "shaft_material"):
             self.assertNotIn(f'name="{gone}"', html)
         cats = ["Driver", "Driver head", "Wood", "Hybrid", "Iron", "Wedge", "Putter", "Other"]
@@ -1186,7 +1190,7 @@ class ItemCardCustomerTests(BaseTest):
     def test_customer_field_autocomplete_and_save(self):
         from .models import Customer
         Customer.objects.create(name="Ko Aung")
-        self.client.force_login(self.japan)
+        self.client.force_login(self.owner)
         # the Add box modal and the box page both carry the customer suggestions
         modal = self.client.get(reverse("box_create"), HTTP_HX_REQUEST="true").content.decode()
         self.assertIn('list="customer-names"', modal)
@@ -1224,15 +1228,18 @@ class GolfBagTests(BaseTest):
     def test_modal_has_required_bag_card_before_items(self):
         self.client.force_login(self.japan)
         html = self.client.get(reverse("box_create"), HTTP_HX_REQUEST="true").content.decode()
-        for name in ("bag-item_name", "bag-color", "bag-customer", "bag-note"):
+        for name in ("bag-item_name", "bag-color", "bag-note"):
             self.assertIn(f'name="{name}"', html)
+        self.assertNotIn('name="bag-customer"', html)            # no customers for the Japan sender
         self.assertLess(html.index('name="bag-item_name"'), html.index("Items inside the bag"))
         self.assertLess(html.index("Items inside the bag"), html.index('name="items-0-club_option"'))
         self.assertIn('name="bag-item_name"', html)
         self.assertRegex(html, r'name="bag-item_name"[^>]*required')
         self.assertNotIn("allow_no_bag", html)               # no override for the Japan sender
         self.client.force_login(self.owner)
-        self.assertContains(self.client.get(reverse("box_create"), HTTP_HX_REQUEST="true"), 'name="allow_no_bag"')
+        owner = self.client.get(reverse("box_create"), HTTP_HX_REQUEST="true")
+        self.assertContains(owner, 'name="allow_no_bag"')
+        self.assertContains(owner, 'name="bag-customer"')
 
     def test_box_needs_its_bag(self):
         r = self.htmx(self.japan, reverse("box_create"), self.modal_data())
@@ -2126,3 +2133,174 @@ class BrandModelItemTests(BaseTest):
                                ("Titleist", "tsr 2", "Titleist tsr 2")])
         from .models import Brand
         self.assertTrue(Brand.objects.filter(display_name="Kasco").exists())   # brand column: added
+
+
+class JapanSenderNoCustomerTests(BaseTest):
+    """The Japan sender never sees customers; Owner / Admin keep the Customer field and names."""
+
+    def setUp(self):
+        super().setUp()
+        from .models import Customer
+        Customer.objects.create(name="Ko Aung")
+        self.item1.customer = "Ko Aung"
+        self.item1.save()
+        self.bag = JapanItem.objects.create(box=self.box, is_bag=True, type="Golf bag", item_name="Ping Hoofer",
+                                            qty=1, customer="Ma Hnin")
+
+    def page(self, user, url):
+        self.client.force_login(user)
+        return self.client.get(url, HTTP_HX_REQUEST="true").content.decode()
+
+    def test_box_page_rows_and_autocomplete(self):
+        html = self.page(self.japan, reverse("box_detail", args=[self.box.pk]))
+        for gone in ("Ko Aung", "Ma Hnin", "customer-chip", "icons/customer"):
+            self.assertNotIn(gone, html)
+        html = self.page(self.owner, reverse("box_detail", args=[self.box.pk]))
+        for shown in ("Ko Aung", "Ma Hnin", "customer-chip", '<datalist id="customer-names"><option value="Ko Aung">'):
+            self.assertIn(shown, html)
+
+    def test_forms_have_no_customer_field_for_japan(self):
+        for url in (reverse("box_create"), reverse("item_add", args=[self.box.pk]), reverse("box_bag", args=[self.box.pk]),
+                    reverse("box_item_card") + "?items-TOTAL_FORMS=3"):
+            html = self.page(self.japan, url)
+            self.assertNotIn("customer", html.replace("customer-names", ""), url)   # no field, label or names
+            self.assertNotIn("Ko Aung", html, url)
+            self.assertIn("customer", self.page(self.owner, url), url)
+
+    def test_posted_customer_is_ignored_and_links_stay(self):
+        from .models import Customer
+        r = self.htmx(self.japan, reverse("item_add", args=[self.box.pk]),
+                      {"item_name": "TSR3", "qty": "1", "customer": "Sneaky"})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(JapanItem.objects.latest("id").customer, "")
+        self.assertFalse(Customer.objects.filter(name="Sneaky").exists())
+        # editing the bag keeps its existing customer link
+        self.htmx(self.japan, reverse("box_bag", args=[self.box.pk]),
+                  {"bag-item_name": "Ping Hoofer Lite", "bag-customer": "Other"})
+        self.bag.refresh_from_db()
+        self.assertEqual((self.bag.item_name, self.bag.customer), ("Ping Hoofer Lite", "Ma Hnin"))
+        # the owner can still set it
+        self.htmx(self.owner, reverse("item_add", args=[self.box.pk]), {"item_name": "TSR4", "qty": "1", "customer": "Ko Aung"})
+        self.assertEqual(JapanItem.objects.latest("id").customer, "Ko Aung")
+
+    def test_copy_output_hides_customer(self):
+        r = self.htmx(self.japan, reverse("item_copy", args=[self.item1.pk]))
+        self.assertNotContains(r, "Ko Aung")
+        self.assertEqual(JapanItem.objects.latest("id").customer, "Ko Aung")    # the link itself is unchanged
+        r = self.htmx(self.owner, reverse("item_copy", args=[self.item1.pk]))
+        self.assertContains(r, "Ko Aung")
+
+    def test_customer_pages_and_csv_refuse_japan(self):
+        from .csv_import import template_csv
+        self.client.force_login(self.japan)
+        for url in (reverse("customer_list"), reverse("customer_by_name") + "?name=Ko+Aung", reverse("csv_template")):
+            self.assertEqual(self.client.get(url).status_code, 403, url)
+        self.assertNotIn("customer", template_csv(customers=False))
+        self.assertNotIn("Ko Aung", template_csv(customers=False))
+        self.client.force_login(self.owner)
+        self.assertIn("customer", self.client.get(reverse("csv_template")).content.decode().splitlines()[0])
+
+    def test_csv_import_without_customers_ignores_column(self):
+        from .csv_import import import_japan_csv
+        f = SimpleUploadedFile("l.csv", b"box,item,qty,customer\nGN-3,Titleist TSR2,1,Ko Aung\n")
+        result = import_japan_csv(f, customers=False)
+        self.assertEqual(result.errors, [])
+        self.assertEqual(JapanItem.objects.latest("id").customer, "")
+
+
+class PiecePriceTests(BaseTest):
+    """Different prices for the same item: one price per piece, line total = their sum."""
+
+    def setUp(self):
+        super().setUp()
+        self.add_bag()
+
+    def add(self, user=None, **data):
+        return self.htmx(user or self.japan, reverse("item_add", args=[self.box.pk]),
+                         {"item_name": "Mizuno JPX", "qty": "2", **data})
+
+    def test_different_prices_sum(self):
+        self.add(different_prices="on", piece_price=["45000", "41,500"])
+        item = JapanItem.objects.latest("id")
+        self.assertEqual((item.piece_prices, item.price_jpy, item.line_total, item.line_total_jpy),
+                         ([45000, 41500], 45000, 86500, 86500))
+        self.assertEqual(self.box.money()["items"], 86500)
+        from .views import with_money
+        self.assertEqual(with_money(Box.objects.filter(pk=self.box.pk)).get().money_total, 86500)
+        html = self.client.get(reverse("box_detail", args=[self.box.pk])).content.decode()
+        self.assertIn("¥45,000 + ¥41,500 = ¥86,500", html)
+        # the Myanmar checker never sees amounts
+        self.ship()
+        self.client.force_login(self.myanmar)
+        html = self.client.get(reverse("box_detail", args=[self.box.pk])).content.decode()
+        for gone in ("45,000", "86,500", "piece_price", "Different prices"):
+            self.assertNotIn(gone, html)
+
+    def test_single_price_is_default_and_untick_ignores_pieces(self):
+        self.add(price_jpy="12,000", piece_price=["45000", "41500"])   # not ticked: one price per piece
+        item = JapanItem.objects.latest("id")
+        self.assertEqual((item.piece_prices, item.line_total_jpy), ([], 24000))
+        self.add(qty="1", price_jpy="5000", different_prices="on", piece_price=["45000"])  # qty 1: one price
+        item = JapanItem.objects.latest("id")
+        self.assertEqual((item.piece_prices, item.price_jpy, item.line_total_jpy), ([], 5000, 5000))
+
+    def test_piece_count_must_follow_qty(self):
+        r = self.add(qty="3", different_prices="on", piece_price=["45000", "41500"])
+        self.assertContains(r, "Enter a price for every piece (3).")
+        self.assertContains(r, 'value="41500"')                     # typed prices are kept
+        self.assertFalse(JapanItem.objects.filter(item_name="Mizuno JPX").exists())
+        r = self.add(qty="2", different_prices="on", piece_price=["45000", "abc"])
+        self.assertContains(r, "Piece prices must be whole yen")
+        # qty changed later (e.g. in /admin/): the pieces no longer fit, so back to one price
+        self.add(different_prices="on", piece_price=["45000", "41500"])
+        item = JapanItem.objects.latest("id")
+        item.qty = 3
+        item.save()
+        self.assertEqual((item.piece_prices, item.price_jpy, item.line_total_jpy), ([], 45000, 135000))
+
+    def test_card_markup(self):
+        self.client.force_login(self.japan)
+        html = self.client.get(reverse("item_add", args=[self.box.pk]), HTTP_HX_REQUEST="true").content.decode()
+        self.assertIn('data-diff-prices', html)
+        self.assertRegex(html, r'data-diff-toggle\s+hidden')       # qty 1: no checkbox yet
+        self.assertIn('data-piece-name="piece_price"', html)
+
+    def test_add_box_modal_and_copy(self):
+        data = {"cargo": self.cargo.pk, "box_id": "OCT26-GN-12", "notes": "", "bag-item_name": "Ping Hoofer",
+                "items-TOTAL_FORMS": "1", "items-INITIAL_FORMS": "0", "items-MIN_NUM_FORMS": "0",
+                "items-MAX_NUM_FORMS": "1000", "items-0-item_name": "Pro V1", "items-0-qty": "3",
+                "items-0-different_prices": "on", "items-0-piece_price": ["1000", "1200", "1500"]}
+        r = self.htmx(self.japan, reverse("box_create"), data)
+        self.assertEqual(r.status_code, 204)
+        item = Box.objects.get(code="OCT26-GN-12").items.get(is_bag=False)
+        self.assertEqual((item.piece_prices, item.line_total_jpy), ([1000, 1200, 1500], 3700))
+        r = self.htmx(self.japan, reverse("item_copy", args=[item.pk]))
+        self.assertContains(r, "¥1,000 + ¥1,200 + ¥1,500 = ¥3,700")
+        copy = JapanItem.objects.latest("id")
+        self.assertEqual((copy.piece_prices, copy.line_total_jpy), ([1000, 1200, 1500], 3700))
+
+    def csv(self, text):
+        from .csv_import import import_japan_csv
+        return import_japan_csv(SimpleUploadedFile("l.csv", text.encode()))
+
+    def test_csv_piece_prices(self):
+        result = self.csv('box,item,qty,amount_jpy\nGN-3,Titleist TSR2,2,"45000;41,500"\nGN-3,Ping G430,2,9000\n')
+        self.assertEqual(result.errors, [])
+        tsr, ping = JapanItem.objects.order_by("-id")[1], JapanItem.objects.latest("id")
+        self.assertEqual((tsr.piece_prices, tsr.price_jpy, tsr.line_total_jpy), ([45000, 41500], 45000, 86500))
+        self.assertEqual((ping.piece_prices, ping.line_total_jpy), ([], 18000))
+        result = self.csv("box,item,qty,amount_jpy\nGN-3,Titleist TSR2,3,45000;41500\n")
+        self.assertEqual(result.errors, [(2, "amount_jpy has 2 piece price(s) ('45000;41500') but qty is 3 – "
+                                             "give one price per piece, separated by ;")])
+        result = self.csv("box,item,qty,amount_jpy\nGN-3,Titleist TSR2,2,45000;\n")
+        self.assertIn("every piece needs a price", result.errors[0][1])
+        result = self.csv("box,item,qty,amount_jpy\nGN-3,Titleist TSR2,2,45000;x\n")
+        self.assertIn("amount_jpy must be whole yen", result.errors[0][1])
+
+    def test_migration_fills_line_totals(self):
+        import importlib
+        from django.apps import apps
+        JapanItem.objects.filter(pk=self.item2.pk).update(price_jpy=4200, line_total_jpy=None)
+        importlib.import_module("tracker.migrations.0012_piece_prices").fill_line_totals(apps, None)
+        self.item2.refresh_from_db()
+        self.assertEqual(self.item2.line_total_jpy, 12600)              # 4200 × 3
