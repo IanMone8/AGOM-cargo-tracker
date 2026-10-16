@@ -979,7 +979,7 @@ class AttachItemSelectTests(BaseTest):
 
 class DashboardHeroTests(BaseTest):
     def test_hero_for_every_role(self):
-        for user in (self.owner, self.japan, self.myanmar):
+        for user in (self.owner, self.japan):   # the Myanmar checker has its own banner (MyanmarBannerTests)
             self.client.force_login(user)
             html = self.client.get(reverse("dashboard")).content.decode()
             with self.subTest(user=user.username):
@@ -1613,3 +1613,73 @@ class LoginPageTests(BaseTest):
         # the default (no-motion) state is the final scene: ball in the cup
         self.assertIn(".ball { transform: translate(1120px, 666px) scale(.82); }", css)
         self.assertNotRegex(css, r"#[0-9A-Fa-f]{3,6}\b")    # colours only from the agom.css tokens
+
+
+class MyanmarBannerTests(BaseTest):
+    """The Myanmar checker sees a Burmese banner with stickers; everyone else keeps the English one."""
+
+    LINES = [
+        "ပျော်ရွှင်စရာလုပ်ငန်းခွင်က အချိန်တိုင်းမရနိုင်ပါ။",
+        "သို့ပေမဲ့ သင်ဟာ ရုပ်ချောနေတာ တစ်ခုတည်းနဲ့ ပျော်ရွှင်ဖို့ထိုက်တန်ပါတယ်။",
+        "ပြုံးလိုက်ပါ ရယ်မောလိုက်ပါ",
+        "သာယာရွှင်လန်းပြီးအလုပ်လုပ်ရတဲ့နေ့လေးကိုပိုင်ဆိုင်နိုင်ပါစေ",
+    ]
+
+    def dashboard(self, user):
+        self.client.force_login(user)
+        return self.client.get(reverse("dashboard")).content.decode()
+
+    def test_myanmar_checker_sees_burmese_banner(self):
+        html = self.dashboard(self.myanmar)
+        self.assertIn('class="hero hero-mm"', html)
+        self.assertIn('lang="my"', html)
+        for line in self.LINES:                       # exact text, one paragraph per line
+            self.assertIn(f">{line}</p>", html)
+        self.assertLess(html.index(self.LINES[0]), html.index(self.LINES[3]))
+        self.assertIn('class="mm-lead">' + self.LINES[0], html)
+        self.assertIn("— Miss Thaw Thaw", html)
+        self.assertIn("family=Noto+Sans+Myanmar:wght@400;600", html)
+        self.assertNotIn("Golf stock route", html)
+
+    def test_other_roles_keep_english_banner(self):
+        superuser = User.objects.create_superuser("admin2", password="pw-12345-x")
+        for user in (self.owner, self.japan, superuser):
+            with self.subTest(user=user.username):
+                html = self.dashboard(user)
+                self.assertIn("Golf stock route", html)
+                self.assertIn("Take with Trust.", html)
+                self.assertNotIn("hero-mm", html)
+                self.assertNotIn('lang="my"', html)
+                self.assertNotIn("Noto+Sans+Myanmar", html)
+                self.assertNotIn(self.LINES[0], html)
+
+    def test_owner_who_is_also_in_myanmar_group_keeps_english_banner(self):
+        self.owner.groups.add(Group.objects.get(name=roles.MYANMAR))
+        self.assertIn("Golf stock route", self.dashboard(self.owner))
+
+    def test_missing_stickers_are_hidden(self):
+        from unittest import mock
+        from . import views
+        with mock.patch.object(views.finders, "find", return_value=None):
+            html = self.dashboard(self.myanmar)
+        self.assertNotIn('class="stickers"', html)
+        present = {"img/display/stickers/happy.webp", "img/display/stickers/ok.webp"}
+        with mock.patch.object(views.finders, "find", side_effect=lambda p: p if p in present else None):
+            html = self.dashboard(self.myanmar)
+        self.assertIn("sticker-happy", html)
+        self.assertIn("sticker-ok", html)
+        self.assertNotIn("sticker-peace", html)
+        self.assertNotIn("sticker-stars", html)
+        self.assertIn("display/stickers/happy.webp", html)     # the small copy, not the original PNG
+        self.assertNotIn("img/stickers/happy.png", html)
+
+    def test_sticker_motion_is_transform_only_and_respects_reduced_motion(self):
+        import re
+        from pathlib import Path
+        css = (Path(__file__).resolve().parent.parent / "static/css/agom.css").read_text()
+        block = re.search(r"@keyframes sticker-bob \{(.*?)\}\n", css, re.S).group(1)
+        self.assertEqual(set(re.findall(r"([a-z-]+)\s*:", block)), {"transform"})
+        reduced = css.index("@media (prefers-reduced-motion: no-preference) {\n  .sticker img")
+        self.assertGreater(reduced, 0)
+        script = (Path(__file__).resolve().parent.parent / "scripts/make_display_images.py").read_text()
+        self.assertIn('STICKERS = ["ok", "peace", "stars", "happy"]', script)

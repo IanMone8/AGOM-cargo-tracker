@@ -8,6 +8,7 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.contrib.staticfiles import finders
 from django.templatetags.static import static
 from django.views.decorators.http import require_POST
 
@@ -92,6 +93,26 @@ def boxes_with_counts(qs=None):
 
 
 # --- Dashboard ---------------------------------------------------------------
+# Stickers on the Myanmar checker's banner (small copies made by scripts/make_display_images.py),
+# with their place in the cluster. happy is the big one.
+STICKERS = [
+    {"name": "happy", "alt": "Happy sticker"},
+    {"name": "ok", "alt": "OK sticker"},
+    {"name": "peace", "alt": "Peace sticker"},
+    {"name": "stars", "alt": "Stars sticker"},
+]
+
+
+def banner_stickers():
+    """Only stickers whose image exists – a missing file is simply not shown."""
+    found = []
+    for s in STICKERS:
+        path = f"img/display/stickers/{s['name']}.webp"
+        if finders.find(path):
+            found.append({**s, "path": path})
+    return found
+
+
 @login_required
 def dashboard(request):
     boxes = visible_boxes(request.user)
@@ -109,6 +130,9 @@ def dashboard(request):
         "in_transit": in_transit,
         "needs_review": needs_review,
         "recent": boxes_with_counts(boxes.order_by("-updated_at"))[:5],
+        # the Myanmar checker gets their own (Burmese) banner
+        "myanmar_banner": roles.is_myanmar_checker(request.user),
+        "stickers": banner_stickers() if roles.is_myanmar_checker(request.user) else [],
     })
 
 

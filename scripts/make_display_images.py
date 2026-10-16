@@ -13,6 +13,7 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parent.parent / "static" / "img"
 OUT = ROOT / "display"
 ICONS = ["plane", "boxes", "box-checked", "warning", "house", "flying-box", "calendar"]
+STICKERS = ["ok", "peace", "stars", "happy"]  # Myanmar checker's dashboard banner
 APP_BG = (244, 246, 239, 255)  # --sand; iPhone shows transparent home-screen icons as black
 
 
@@ -36,6 +37,11 @@ def main():
         src = ROOT / "icons" / f"{name}.png"
         if src.exists():
             fit(Image.open(src), 256).save(OUT / "icons" / f"{name}.webp", "WEBP", quality=86, method=6)
+    (OUT / "stickers").mkdir(parents=True, exist_ok=True)
+    for name in STICKERS:
+        src = ROOT / "stickers" / f"{name}.png"
+        if src.exists():
+            fit(Image.open(src), 240).save(OUT / "stickers" / f"{name}.webp", "WEBP", quality=86, method=6)
     logo = ROOT / "3D logo.png"
     if logo.exists():
         fit(Image.open(logo), 256).save(OUT / "3d-logo.png", optimize=True)

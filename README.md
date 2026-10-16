@@ -47,6 +47,12 @@ on phones the scene fills the top ~40 % and the card sits below. Password has a 
 **Logo:** `static/img/3D logo.png` (shown from its small copy in `static/img/display/`). The sidebar, phone header, login page and
 favicon use it. Until the file exists the image is simply hidden.
 
+**Myanmar checker's banner:** the Myanmar checker (only – not Owner/Admin) sees a Burmese message from
+Miss Thaw Thaw instead of the English banner, in Noto Sans Myanmar (Google Fonts, loaded only for them), with four
+stickers bobbing gently on the hills (off with *reduce motion*). Put the originals in `static/img/stickers/`
+(`ok.png`, `peace.png`, `stars.png`, `happy.png`) and run `python scripts/make_display_images.py` to make the
+small WebP copies in `static/img/display/stickers/`; a sticker whose copy is missing is simply not shown.
+
 **Dashboard icons:** `static/img/icons/plane.png`, `boxes.png`, `box-checked.png` and `warning.png`
 (Cargos, Total boxes, Checked in Myanmar, Needs review). A missing icon is hidden.
 

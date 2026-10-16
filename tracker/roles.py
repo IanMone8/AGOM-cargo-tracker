@@ -41,6 +41,11 @@ def can_check(user):
     return is_manager(user) or _in_group(user, MYANMAR)
 
 
+def is_myanmar_checker(user):
+    """The Myanmar checker themself – not Owner / Admin, who can also check."""
+    return _in_group(user, MYANMAR) and not is_manager(user)
+
+
 def can_import_csv(user):
     """CSV import of Japan lists – Owner / Admin only."""
     return is_manager(user)
