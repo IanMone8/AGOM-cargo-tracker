@@ -354,6 +354,25 @@ textarea.field { resize: vertical; }
 .customer-chip { display: inline-flex; align-items: center; gap: .3rem; }
 .customer-icon { width: 18px; height: 18px; flex: none; object-fit: contain; }
 
+/* ---------- "Item (brand + model)" assist: suggestions, preview, questions ---------- */
+.item-assist:empty { display: none; }
+.item-assist { margin-top: .4rem; display: grid; gap: .35rem; font-size: .8rem; color: var(--text-muted); }
+.item-suggest { display: flex; flex-wrap: wrap; gap: .35rem; }
+.item-chip { padding: .35rem .65rem; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--card);
+  color: var(--text); font-weight: 600; font-size: .8rem; min-height: 2rem; }
+.item-chip:hover, .item-chip:focus-visible { background: var(--mint); border-color: var(--primary); outline: none; }
+.item-chip[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: #fff; }
+.item-preview b { color: var(--text); }
+.item-tag { margin-left: .25rem; padding: .05rem .45rem; border-radius: 999px; background: var(--sage); color: var(--text-muted); font-size: .7rem; font-weight: 700; }
+.item-ask { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .5rem; padding: .45rem .6rem; border-radius: .75rem;
+  background: var(--warn-bg); color: var(--warn-ink); font-weight: 600; }
+.item-ask.item-ok { background: var(--ok-bg); color: var(--ok-ink); }
+.item-btn { padding: .3rem .7rem; border-radius: .6rem; background: var(--card); color: var(--text); font-weight: 700;
+  border: 1px solid var(--line-strong); min-height: 2rem; }
+.item-btn:hover { background: var(--mint); }
+.item-btn-ghost { background: transparent; }
+.item-link { text-decoration: underline; font-weight: 600; }
+
 /* ---------- Club option picker (two taps, big targets) ---------- */
 .club-row { display: flex; flex-wrap: wrap; gap: .5rem; }
 .club-panel { margin-top: .6rem; padding: .6rem; border-radius: 1rem; background: var(--sage); border: 1px dashed var(--line-strong); }

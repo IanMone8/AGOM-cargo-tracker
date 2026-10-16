@@ -3,7 +3,7 @@ from django.contrib import admin, messages
 from django.core.exceptions import ValidationError
 from django.forms.models import BaseInlineFormSet
 
-from .models import Box, Cargo, Catalog, ClubCategory, ClubOption, Customer, CustomerRequest, ExtraItem, JapanItem, ReceiveCheck
+from .models import Box, Brand, BrandModel, Cargo, Catalog, ClubCategory, ClubOption, Customer, CustomerRequest, ExtraItem, JapanItem, ReceiveCheck
 
 
 @admin.register(Cargo)
@@ -220,3 +220,35 @@ class ClubOptionAdmin(admin.ModelAdmin):
     @admin.display(description="Shown as")
     def full_label(self, obj):
         return obj.full_label
+
+
+class BrandModelInline(admin.TabularInline):
+    model = BrandModel
+    extra = 1
+    fields = ["display_name", "match_key", "active"]
+    readonly_fields = ["match_key"]
+
+
+@admin.register(Brand)
+class BrandAdmin(admin.ModelAdmin):
+    """Brands for the "Item (brand + model)" box. The match key is worked out from the name."""
+
+    list_display = ["display_name", "match_key", "active", "model_count"]
+    list_editable = ["active"]
+    search_fields = ["display_name", "match_key"]
+    readonly_fields = ["match_key"]
+    inlines = [BrandModelInline]
+
+    @admin.display(description="Models")
+    def model_count(self, obj):
+        return obj.models.count()
+
+
+@admin.register(BrandModel)
+class BrandModelAdmin(admin.ModelAdmin):
+    list_display = ["display_name", "brand", "match_key", "active"]
+    list_editable = ["active"]
+    list_filter = ["brand", "active"]
+    search_fields = ["display_name", "match_key", "brand__display_name"]
+    readonly_fields = ["match_key"]
+    list_select_related = ["brand"]

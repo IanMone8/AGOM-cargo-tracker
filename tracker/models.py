@@ -553,3 +553,91 @@ class ClubOption(models.Model):
         item.loft, item.shaft_material = self.loft, self.shaft_material
         item.club_number, item.head_only = self.club_number, self.head_only
         item.length_in = self.length_in
+
+
+class Brand(models.Model):
+    """Known brands for the "Item (brand + model)" field. Edit in /admin/."""
+
+    display_name = models.CharField(max_length=60, unique=True, help_text='As it should be shown, e.g. "XXIO", "TaylorMade"')
+    match_key = models.CharField(max_length=60, unique=True, editable=False,
+                                 help_text="Lowercase, no spaces or punctuation – used to recognise the brand")
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["display_name"]
+
+    def __str__(self):
+        return self.display_name
+
+    def save(self, *args, **kwargs):
+        from .brands import match_key, tidy
+        self.display_name = tidy(self.display_name)
+        self.match_key = match_key(self.display_name)
+        super().save(*args, **kwargs)
+
+
+class BrandModel(models.Model):
+    """A model of a brand ("MP1400" of XXIO). Created automatically the first time it's typed."""
+
+    brand = models.ForeignKey(Brand, on_delete=models.CASCADE, related_name="models")
+    display_name = models.CharField(max_length=120)
+    match_key = models.CharField(max_length=120, editable=False)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["brand__display_name", "display_name"]
+        verbose_name = "model"
+        constraints = [models.UniqueConstraint(fields=["brand", "match_key"], name="unique_model_per_brand")]
+
+    def __str__(self):
+        return f"{self.brand.display_name} {self.display_name}"
+
+    def save(self, *args, **kwargs):
+        from .brands import match_key, tidy
+        self.display_name = tidy(self.display_name)
+        self.match_key = match_key(self.display_name)
+        super().save(*args, **kwargs)
+
+
+def brand_choices():
+    return [(b.match_key, b.display_name) for b in Brand.objects.filter(active=True)]
+
+
+def models_for(brand_display):
+    return [(m.match_key, m.display_name)
+            for m in BrandModel.objects.filter(brand__display_name=brand_display, active=True)]
+
+
+def parse_item(text, add_brand=False):
+    """Parse "xxio mp 1400" against the saved brands/models (see brands.parse). Nothing is written.
+
+    add_brand: the user said yes to "Is 'Honma' a brand?" – the first word counts as a (new) brand."""
+    from . import brands
+    known = brand_choices()
+    parsed = brands.parse(text, known, models_for)
+    if parsed.unknown_brand and add_brand:
+        parsed = brands.parse(text, known + [(brands.match_key(parsed.unknown_brand), parsed.unknown_brand)],
+                              models_for)
+    return parsed
+
+
+def remember_item(parsed):
+    """Save a new brand / model the first time it's used (called when the item is saved)."""
+    from .brands import match_key
+    if not parsed or not parsed.brand:
+        return
+    brand, _ = Brand.objects.get_or_create(match_key=match_key(parsed.brand),
+                                           defaults={"display_name": parsed.brand})
+    if parsed.model:
+        BrandModel.objects.get_or_create(brand=brand, match_key=match_key(parsed.model),
+                                         defaults={"display_name": parsed.model})
+
+
+def apply_item_text(item, text, add_brand=False, save_names=True):
+    """Set item.brand / item.model / item.item_name ("XXIO MP1400") from the typed text. Returns the Parsed result."""
+    parsed = parse_item(text, add_brand)
+    item.brand, item.model = (parsed.brand, parsed.model) if parsed.text else ("", "")
+    item.item_name = parsed.display[:200]
+    if save_names:
+        remember_item(parsed)
+    return parsed

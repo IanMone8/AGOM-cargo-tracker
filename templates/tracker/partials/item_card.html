@@ -16,7 +16,7 @@
   </div>
   {% for e in item_form.non_field_errors %}<p class="mb-2 text-xs font-medium text-danger-ink">{{ e }}</p>{% endfor %}
   <div class="grid grid-cols-2 gap-3">
-    <div class="col-span-2">{% include "tracker/_field.html" with field=item_form.item_name %}</div>
+    <div class="col-span-2">{% include "tracker/_item_text_field.html" with field=item_form.item_name add_field=item_form.add_brand %}</div>
     <div class="col-span-2">{% include "tracker/_field.html" with field=item_form.customer %}</div>
 
     <div class="col-span-2 club-picker" data-picker>
@@ -59,6 +59,6 @@
     {% endif %}
     <div class="col-span-2 {% if can_see_money %}sm:col-span-1{% endif %}">{% include "tracker/_field.html" with field=item_form.note %}</div>
   </div>
-  {% for hidden in item_form.hidden_fields %}{% if hidden.name != "club_option" %}{{ hidden }}{% endif %}{% endfor %}
+  {% for hidden in item_form.hidden_fields %}{% if hidden.name != "club_option" and hidden.name != "add_brand" %}{{ hidden }}{% endif %}{% endfor %}
   {% if item_form.DELETE %}<input type="hidden" name="{{ item_form.DELETE.html_name }}" value="{% if item_form.DELETE.value %}on{% endif %}" data-delete-flag>{% endif %}
 </div>

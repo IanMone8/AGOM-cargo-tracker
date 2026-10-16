@@ -166,6 +166,8 @@ def box_list(request):
             qs = qs.filter(cargo=form.cleaned_data["cargo"])
         if form.cleaned_data["status"]:
             qs = qs.filter(status=form.cleaned_data["status"])
+        if form.cleaned_data["brand"]:
+            qs = qs.filter(pk__in=JapanItem.objects.filter(brand__iexact=form.cleaned_data["brand"]).values("box"))
     ctx = {"form": form, "boxes": boxes_with_counts(qs)}
     if is_htmx(request) and request.headers.get("HX-Target") == "box-results":
         return render(request, "tracker/partials/box_results.html", ctx)
@@ -247,6 +249,33 @@ def box_id_hint(cargo):
 
 @login_required
 @roles.require(roles.can_edit_japan)
+def item_suggest(request):
+    """HTMX, while typing in "Item (brand + model)": saved combos to pick, plus how the text will be saved."""
+    from .brands import search
+    from .models import BrandModel, parse_item
+    q = next((v for k, v in request.GET.items() if k.endswith("item_name")), "")
+    add = next((v for k, v in request.GET.items() if k.endswith("add_brand")), "")
+    combos = [(m.brand.match_key + m.match_key, str(m))
+              for m in BrandModel.objects.filter(active=True, brand__active=True).select_related("brand")]
+    plain = parse_item(q)
+    parsed = parse_item(q, add_brand=True) if add == "yes" else plain
+    new_brand = plain.unknown_brand if add == "yes" else ""     # "Yes, add brand" tapped, saved with the item
+    suggestions = [c for c in search(q, combos) if c != parsed.display]
+    did_you_mean = ""
+    if parsed.brand_guess:                         # "xxip mp1400" -> "XXIO mp1400"
+        did_you_mean = f"{parsed.brand_guess} {q.split(None, 1)[1] if len(q.split()) > 1 else ''}".strip()
+    elif parsed.model_guess:
+        did_you_mean = f"{parsed.brand} {parsed.model_guess}"
+    if did_you_mean:                               # show it the way it would be saved
+        did_you_mean = parse_item(did_you_mean).display
+    return render(request, "tracker/partials/item_assist.html", {
+        "parsed": parsed, "suggestions": suggestions, "did_you_mean": did_you_mean, "add_brand": add,
+        "new_brand": new_brand,
+    })
+
+
+@login_required
+@roles.require(roles.can_edit_japan)
 def box_item_card(request):
     """Return one more empty item card for the "Add box" modal."""
     try:
@@ -292,6 +321,7 @@ def box_detail(request, pk):
         "can_edit_items": roles.can_edit_box_items(request.user, box),
         "japan_locked": roles.can_edit_japan(request.user) and not roles.can_edit_box_items(request.user, box),
         "items": items,
+        "item_brands": sorted({i.brand for i in box.items.exclude(brand="")}, key=str.lower),
         **bag_context(box),
         "extras": box.extra_items.all(),
         "summary": box.summary(),
@@ -548,8 +578,22 @@ def request_status(request, pk):
 
 
 def _suggestions(req, user):
-    """Japan items that look like this request and are not yet attached."""
+    """Japan items that look like this request and are not yet attached.
+
+    First by brand + model ("xxio mp 1400" finds XXIO MP1400 items), then by words in the name."""
+    from .brands import match_key
+    from .models import parse_item
     qs = visible_items(user).select_related("box__cargo").filter(requests__isnull=True)
+    qs = qs.exclude(box__status=Box.Status.CHECKED)
+    if req.flex:
+        qs = qs.filter(Q(flex=req.flex) | Q(flex=""))
+    parsed = parse_item(req.item_name)
+    if parsed.brand:
+        want = match_key(parsed.model)
+        same = [i for i in qs.filter(brand__iexact=parsed.brand).order_by("-box__id")[:200]
+                if not want or match_key(i.model) == want or want in match_key(i.model)]
+        if same:
+            return same[:5]
     words = [w for w in req.item_name.split() if len(w) > 2][:3]
     cond = Q()
     for w in words:

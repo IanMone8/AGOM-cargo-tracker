@@ -1,6 +1,6 @@
 {% load tracker_tags %}
 {% with check=item.receive_check %}
-<div id="item-{{ item.pk }}" {% if item.is_bag %}data-bag{% endif %} class="card border-l-4 p-4 {% if not check %}border-l-line-strong{% elif check.result == 'matched' %}border-l-ok{% else %}border-l-danger{% endif %}">
+<div id="item-{{ item.pk }}" data-brand="{{ item.brand }}" {% if item.is_bag %}data-bag{% endif %} class="card border-l-4 p-4 {% if not check %}border-l-line-strong{% elif check.result == 'matched' %}border-l-ok{% else %}border-l-danger{% endif %}">
   <div class="flex items-start justify-between gap-3">
     <div class="min-w-0">
       <div class="flex items-center gap-1.5 font-semibold leading-tight">{% if item.is_bag %}<span class="shrink-0 text-primary" aria-label="Golf bag">{% icon "bag" "w-[1.1rem] h-[1.1rem]" %}</span>{% endif %}<span class="min-w-0">{{ item.title }}</span></div>

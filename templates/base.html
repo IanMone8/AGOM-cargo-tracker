@@ -155,6 +155,28 @@
       const picked = e.target.closest('[data-picker]').querySelector('[data-club-picked]');
       picked.textContent = e.target.value ? '✓ ' + e.target.value : '';
     });
+    // "Item (brand + model)": tap a suggestion / "Did you mean" / "Is … a brand?" (partials/item_assist.html)
+    document.addEventListener('click', e => {
+      const pick = e.target.closest('[data-pick]'), ask = e.target.closest('[data-add-brand-set]');
+      if (!pick && !ask) return;
+      const field = e.target.closest('[data-item-field]');
+      if (!field) return;
+      const input = field.querySelector('[data-item-text]'), add = field.querySelector('[data-add-brand]');
+      if (pick) { input.value = pick.dataset.pick; if (add) add.value = ''; }
+      else if (add) add.value = ask.dataset.addBrandSet;
+      htmx.trigger(input, 'refresh');      // show how it will be saved now
+      if (pick) input.focus();
+    });
+    // Box page: brand filter chips show only that brand's rows (bag and items)
+    document.addEventListener('click', e => {
+      const chip = e.target.closest('[data-brand-filter]');
+      if (!chip) return;
+      const brand = chip.dataset.brandFilter;
+      chip.parentElement.querySelectorAll('[data-brand-filter]').forEach(c => c.setAttribute('aria-pressed', c === chip));
+      document.querySelectorAll('#bag-section [data-brand], #item-list [data-brand]').forEach(row => {
+        row.hidden = !!brand && row.dataset.brand !== brand;
+      });
+    });
     // "Copy" on an Add box item card: duplicate it with the next formset index.
     function copyItemCard(btn) {
       const card = btn.closest('.item-card'), total = document.getElementById('id_items-TOTAL_FORMS');

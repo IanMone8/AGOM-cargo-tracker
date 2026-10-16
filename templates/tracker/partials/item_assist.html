@@ -1,0 +1,26 @@
+{# Under "Item (brand + model)": saved combos to tap, and how the text will be saved. JS in base.html handles the taps. #}
+{% if suggestions %}
+  <div class="item-suggest" role="listbox" aria-label="Saved brands and models">
+    {% for s in suggestions %}<button type="button" class="item-chip" role="option" data-pick="{{ s }}">{{ s }}</button>{% endfor %}
+  </div>
+{% endif %}
+{% if parsed.text %}
+  {# A likely typo is offered first; the brand prompt stays below it. #}
+  {% if did_you_mean %}
+    <p class="item-ask"><span>Did you mean</span> <button type="button" class="item-btn" data-pick="{{ did_you_mean }}">{{ did_you_mean }}</button>?</p>
+  {% endif %}
+  {% if new_brand %}
+    <div class="item-ask item-ok" data-ask>
+      <span>✓ “{{ new_brand }}” will be added as a brand – saved as <b>{{ parsed.display }}</b></span>
+      <button type="button" class="item-link" data-add-brand-set="">undo</button>
+    </div>
+  {% elif parsed.unknown_brand and add_brand != "no" %}
+    <div class="item-ask" data-ask>
+      <span>Is “{{ parsed.unknown_brand }}” a brand?</span>
+      <button type="button" class="item-btn" data-add-brand-set="yes">Yes, add brand</button>
+      <button type="button" class="item-btn item-btn-ghost" data-add-brand-set="no">No</button>
+    </div>
+  {% else %}
+    <p class="item-preview">Saved as <b>{{ parsed.display }}</b>{% if parsed.brand %} <span class="item-tag">brand {{ parsed.brand }}</span>{% endif %}{% if parsed.model and parsed.model_is_new and parsed.brand %} <span class="item-tag">new model</span>{% endif %}</p>
+  {% endif %}
+{% endif %}

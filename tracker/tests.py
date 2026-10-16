@@ -299,7 +299,7 @@ class CSVNewFieldsTests(CSVImportTests):
             "GN-3,Qi10 Driver,Club,1,pcs,TaylorMade,Qi10,Driver,1W,10.5,x,Graphite,Diamana 60,Navy,used,30000\n"
         )
         self.assertContains(r, "Imported 1 item(s)")
-        item = self.box.items.get(item_name="Qi10 Driver")
+        item = self.box.items.get(item_name="TaylorMade Qi10")    # brand / model columns win over a brand-less name
         self.assertEqual(
             (item.brand, item.model, item.club_type, item.club_number, item.flex, item.shaft_material,
              item.specification, item.color, item.condition, item.price_jpy, item.quantity_unit),
@@ -315,7 +315,7 @@ class CSVNewFieldsTests(CSVImportTests):
         Cargo.objects.create(code="KL", name="KL Cargo")
         self.client.force_login(self.owner)
         template = self.client.get(reverse("csv_template")).content.decode()
-        self.assertTrue(template.startswith("box,cargo,kind,item_name,color,club_option,flex,qty,amount_jpy,cargo_fee_jpy,"
+        self.assertTrue(template.startswith("box,cargo,kind,item,color,club_option,flex,qty,amount_jpy,cargo_fee_jpy,"
                                             "customer,note"))
         r = self.upload(template, replace="on")
         self.assertContains(r, "Imported 4 item(s) and 2 golf bag(s) into 2 box(es)")
@@ -1414,7 +1414,7 @@ class GolfBagTests(BaseTest):
                      "OCT26-GN-5,bag,,,1\n"
                      "OCT26-GN-5,bag,X,Wedge 52,2\n"
                      "OCT26-GN-5,box,Y,,1\n")
-        for msg in ("Row 2: bag row: put the bag&#x27;s name in item_name", "Row 3: bag row: leave club_option empty",
+        for msg in ("Row 2: bag row: put the bag&#x27;s name in item", "Row 3: bag row: leave club_option empty",
                     "Row 3: bag row: qty must be 1", "Row 4: kind must be bag or item"):
             self.assertContains(r, msg)
 
@@ -1980,3 +1980,149 @@ class MonthlyBoxIdTests(BaseTest):
         self.assertContains(r, "into 2 box(es)")
         self.assertEqual(Box.objects.get(code="OCT26-KB-5").items.count(), 2)
         self.assertTrue(self.box.items.filter(item_name="Head cover").exists())
+
+
+class BrandModelItemTests(BaseTest):
+    """ "Item (brand + model)": parsed into brand + model, shown as "XXIO MP1400"."""
+
+    def add(self, text, **extra):
+        return self.htmx(self.japan, reverse("item_add", args=[self.box.pk]),
+                         {"item_name": text, "qty": "1", **extra})
+
+    def latest(self):
+        return JapanItem.objects.latest("id")
+
+    def test_seeded_brands(self):
+        from .models import Brand
+        names = set(Brand.objects.values_list("display_name", flat=True))
+        for b in ("XXIO", "Titleist", "TaylorMade", "Scotty Cameron", "Fourteen", "PXG"):
+            self.assertIn(b, names)
+        self.assertEqual(Brand.objects.get(display_name="TaylorMade").match_key, "taylormade")
+
+    def test_case_space_and_punctuation_variants_give_one_model(self):
+        from .models import BrandModel
+        for text in ("xxio mp 1400", "XXIO MP1400", "Xxio Mp-1400", "  xxio   mp1400 ", "XXIOmp1400"):
+            with self.subTest(text=text):
+                self.add(text)
+                item = self.latest()
+                self.assertEqual((item.brand, item.item_name), ("XXIO", "XXIO mp 1400"))
+        self.assertEqual(BrandModel.objects.filter(brand__display_name="XXIO").count(), 1)  # first spelling kept
+        self.assertEqual(self.latest().model, "mp 1400")
+
+    def test_brand_display_spelling_and_new_model_as_typed(self):
+        self.add("taylormade  Qi10   Max")
+        item = self.latest()
+        self.assertEqual((item.brand, item.model, item.item_name), ("TaylorMade", "Qi10 Max", "TaylorMade Qi10 Max"))
+        self.assertEqual(item.title, "TaylorMade Qi10 Max")
+        self.add("TAYLORMADE qi 10 max")                         # same model key -> saved spelling
+        self.assertEqual(self.latest().item_name, "TaylorMade Qi10 Max")
+
+    def test_longest_brand_wins(self):
+        from .models import Brand
+        Brand.objects.create(display_name="Scotty")
+        self.add("scotty cameron phantom 5")
+        self.assertEqual((self.latest().brand, self.latest().model), ("Scotty Cameron", "phantom 5"))
+
+    def test_unknown_brand_prompt(self):
+        from .models import Brand
+        self.client.force_login(self.japan)
+        r = self.client.get(reverse("item_suggest"), {"item_name": "Ryoma D1"}, HTTP_HX_REQUEST="true")
+        self.assertContains(r, "Is “Ryoma” a brand?")
+        self.assertContains(r, 'data-add-brand-set="yes">Yes, add brand')
+        self.assertContains(r, 'data-add-brand-set="no">No')
+        self.add("Ryoma D1")                                      # not answered / "No": all of it is the model
+        self.assertEqual((self.latest().brand, self.latest().model, self.latest().item_name), ("", "Ryoma D1", "Ryoma D1"))
+        self.assertFalse(Brand.objects.filter(display_name="Ryoma").exists())
+        r = self.client.get(reverse("item_suggest"), {"item_name": "Ryoma D1", "add_brand": "yes"}, HTTP_HX_REQUEST="true")
+        self.assertContains(r, "✓ “Ryoma” will be added as a brand – saved as <b>Ryoma D1</b>")
+        self.assertFalse(Brand.objects.filter(display_name="Ryoma").exists())   # only when the item is saved
+        self.add("Ryoma D1", add_brand="yes")                     # "Yes, add brand"
+        self.assertEqual((self.latest().brand, self.latest().model), ("Ryoma", "D1"))
+        self.assertTrue(Brand.objects.filter(display_name="Ryoma", match_key="ryoma").exists())
+        self.add("ryoma d-1")                                     # now known
+        self.assertEqual(self.latest().item_name, "Ryoma D1")
+
+    def test_did_you_mean(self):
+        from .models import Brand, BrandModel
+        BrandModel.objects.create(brand=Brand.objects.get(display_name="XXIO"), display_name="MP1400")
+        self.client.force_login(self.japan)
+        r = self.client.get(reverse("item_suggest"), {"item_name": "xxip mp1400"}, HTTP_HX_REQUEST="true")
+        self.assertContains(r, 'data-pick="XXIO MP1400">XXIO MP1400</button>')
+        r = self.client.get(reverse("item_suggest"), {"item_name": "xxio mp1410"}, HTTP_HX_REQUEST="true")
+        self.assertContains(r, 'data-pick="XXIO MP1400"')
+        r = self.client.get(reverse("item_suggest"), {"item_name": "Pro V1"}, HTTP_HX_REQUEST="true")
+        self.assertNotContains(r, "Did you mean")                 # short word, not close enough
+
+    def test_suggestions_search_match_keys(self):
+        from .models import Brand, BrandModel
+        xxio = Brand.objects.get(display_name="XXIO")
+        BrandModel.objects.create(brand=xxio, display_name="MP1400")
+        BrandModel.objects.create(brand=Brand.objects.get(display_name="Titleist"), display_name="TSR2")
+        self.client.force_login(self.japan)
+        r = self.client.get(reverse("item_suggest"), {"items-0-item_name": "xxio 14"}, HTTP_HX_REQUEST="true")
+        self.assertContains(r, 'data-pick="XXIO MP1400"')
+        self.assertNotContains(r, "TSR2")
+        self.client.force_login(self.myanmar)
+        self.assertEqual(self.client.get(reverse("item_suggest"), {"item_name": "x"}).status_code, 403)
+
+    def test_bag_and_modal_use_the_same_field(self):
+        self.client.force_login(self.japan)
+        html = self.client.get(reverse("box_create"), HTTP_HX_REQUEST="true").content.decode()
+        self.assertIn("Item (brand + model)", html)
+        self.assertIn("Bag (brand + model)", html)
+        self.assertEqual(html.count('name="items-0-add_brand"'), 1)
+        self.assertIn('hx-get="/items/suggest/"', html)
+        self.assertIn('hx-target="next .item-assist"', html)
+
+    def test_migration_converts_existing_names(self):
+        import importlib
+        from django.apps import apps
+        convert = importlib.import_module("tracker.migrations.0011_brands_and_models").seed_and_convert
+        a = JapanItem.objects.create(box=self.box, item_name="titleist  tsr-2", brand="", model="")
+        b = JapanItem.objects.create(box=self.box, item_name="Golf balls", brand="", model="")
+        c = JapanItem.objects.create(box=self.box, item_name="Kasco Zeus", brand="Kasco", model="")
+        convert(apps, None)
+        a.refresh_from_db(); b.refresh_from_db(); c.refresh_from_db()
+        self.assertEqual((a.brand, a.model, a.item_name), ("Titleist", "tsr-2", "Titleist tsr-2"))
+        self.assertEqual((b.brand, b.model, b.item_name), ("", "", "Golf balls"))          # no brand: unchanged
+        self.assertEqual((c.brand, c.model, c.item_name), ("Kasco", "Zeus", "Kasco Zeus"))  # brand already on an item
+
+    def test_brand_filters(self):
+        other = Box.objects.create(cargo=self.cargo, box_no=4)
+        self.add("xxio mp1400")
+        JapanItem.objects.create(box=other, item_name="Titleist TSR2", brand="Titleist", model="TSR2")
+        self.client.force_login(self.owner)
+        r = self.client.get(reverse("box_list"), {"brand": "XXIO"})
+        self.assertContains(r, "GN-3")
+        self.assertNotContains(r, "GN-4")
+        html = self.client.get(reverse("box_detail", args=[self.box.pk])).content.decode()
+        self.assertIn('data-brand-filter="XXIO"', html)
+        self.assertIn('data-brand="XXIO"', html)
+
+    def test_customer_order_matches_brand_and_model(self):
+        self.ship()
+        self.add("XXIO MP1400")
+        item = self.latest()
+        req = CustomerRequest.objects.create(customer="Ko Aung", item_name="xxio mp-1400")
+        self.client.force_login(self.owner)
+        r = self.client.get(reverse("request_attach", args=[req.pk]), HTTP_HX_REQUEST="true")
+        self.assertContains(r, f'"japan_item": "{item.pk}"')
+
+    def csv(self, text):
+        self.client.force_login(self.owner)
+        f = SimpleUploadedFile("l.csv", text.encode(), content_type="text/csv")
+        return self.client.post(reverse("csv_import"), {"file": f})
+
+    def test_csv_item_text_or_brand_model_columns(self):
+        self.add_bag()
+        r = self.csv("box,item,brand,model\n"
+                     "GN-3,xxio mp 1400,,\n"
+                     "GN-3,,Kasco,Zeus 1\n"
+                     "GN-3,,titleist,tsr 2\n")
+        self.assertContains(r, "Imported 3 item(s)")
+        got = list(self.box.items.filter(is_bag=False).exclude(pk__in=[self.item1.pk, self.item2.pk])
+                   .order_by("id").values_list("brand", "model", "item_name"))
+        self.assertEqual(got, [("XXIO", "mp 1400", "XXIO mp 1400"), ("Kasco", "Zeus 1", "Kasco Zeus 1"),
+                               ("Titleist", "tsr 2", "Titleist tsr 2")])
+        from .models import Brand
+        self.assertTrue(Brand.objects.filter(display_name="Kasco").exists())   # brand column: added

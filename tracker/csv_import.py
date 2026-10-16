@@ -18,16 +18,16 @@ from dataclasses import dataclass, field
 from django.db import transaction
 
 from .forms import is_bag_word
-from .models import Box, Cargo, ClubOption, Customer, JapanItem, parse_box_code
+from .models import Box, Cargo, ClubOption, Customer, JapanItem, parse_box_code, parse_item, remember_item
 
 # Template columns (simple). Older files may also use: type, quantity_unit, brand, model,
 # club_type, club_number, loft, shaft_material, specification, color, condition, price_jpy.
-COLUMNS = ["box", "cargo", "kind", "item_name", "color", "club_option", "flex", "qty", "amount_jpy", "cargo_fee_jpy",
+COLUMNS = ["box", "cargo", "kind", "item", "color", "club_option", "flex", "qty", "amount_jpy", "cargo_fee_jpy",
            "customer", "note"]
 KINDS = {"": "item", "item": "item", "bag": "bag", "golf bag": "bag"}
 REQUIRED = []          # box or cargo – checked per row
 # Friendlier header names that map onto the real columns.
-ALIASES = {"name": "item_name", "amount": "price_jpy", "amount_jpy": "price_jpy", "unit": "quantity_unit",
+ALIASES = {"name": "item_name", "item": "item_name", "amount": "price_jpy", "amount_jpy": "price_jpy", "unit": "quantity_unit",
            "japan_condition": "condition", "shaft": "shaft_material", "row_type": "kind", "row": "kind"}
 BOX_RE = re.compile(r"^\s*([A-Za-z]+)\s*-?\s*(\d+)\s*$")
 
@@ -35,7 +35,7 @@ BOX_RE = re.compile(r"^\s*([A-Za-z]+)\s*-?\s*(\d+)\s*$")
 # box left empty: each bag row starts a new box with the next monthly Box ID for its cargo company.
 TEMPLATE_ROWS = [
     ["", "GN", "bag", "Titleist Stand Bag", "Black", "", "", "1", "8000", "12,500", "Ko Aung", ""],
-    ["", "GN", "", "Titleist TSR2", "", "Driver 10.5°", "S", "1", "¥25,000", "", "Ko Aung", "with cover"],
+    ["", "GN", "", "titleist tsr2", "", "Driver 10.5°", "S", "1", "¥25,000", "", "Ko Aung", "with cover"],
     ["", "GN", "", "", "", "Driver head 9.5", "", "2", "6500", "", "", ""],
     ["", "GN", "", "Mizuno JPX 923", "", "Iron · Graphite 5", "R", "1", "", "", "", ""],
     ["", "KL", "bag", "Ping Hoofer", "Navy", "", "", "1", "", "9000", "", ""],
@@ -245,11 +245,19 @@ def import_japan_csv(uploaded_file, replace=False, allow_bag_exception=False):
     parsed = []     # (box key, item kwargs, row number)
     fees = {}       # box key -> cargo fee from the bag row
     auto_open = {}  # cargo code -> the new (auto-numbered) box the next item rows go into
+    names = []      # parsed brand + model per row, remembered (new brands/models) once the file is valid
 
     for row_no, row in enumerate(reader, start=2):
         row = {k: (v or "").strip() for k, v in row.items() if k}
         if not any(row.values()):
             continue
+        # "item" (one text, parsed like the form: "xxio mp 1400" -> XXIO MP1400) or separate brand / model columns.
+        # A brand in its own column counts as a brand even when it's new (there's no "Is it a brand?" in a file).
+        columns = " ".join(x for x in (row.get("brand", ""), row.get("model", "")) if x)
+        item_parsed = parse_item(row.get("item_name", ""))
+        if columns and not item_parsed.brand:       # no brand in the item text: use the brand / model columns
+            item_parsed = parse_item(columns, add_brand=bool(row.get("brand")))
+        row["item_name"] = item_parsed.display
         errors = result.errors
         kind = KINDS.get(" ".join(row.get("kind", "").lower().split()))
         if kind is None:
@@ -262,7 +270,7 @@ def import_japan_csv(uploaded_file, replace=False, allow_bag_exception=False):
             continue
         if is_bag:
             if not row.get("item_name"):
-                errors.append((row_no, "bag row: put the bag's name in item_name, e.g. Titleist Stand Bag"))
+                errors.append((row_no, "bag row: put the bag's name in item, e.g. Titleist Stand Bag"))
             if row.get("club_option"):
                 errors.append((row_no, "bag row: leave club_option empty (the bag is not a club)"))
             if row.get("qty", "") not in ("", "1"):
@@ -274,7 +282,7 @@ def import_japan_csv(uploaded_file, replace=False, allow_bag_exception=False):
                 errors.append((row_no, f"Unknown club_option '{row['club_option']}' – use a label like 'Wedge 52°' "
                                        "(see Admin → Club options)"))
         if not (row.get("item_name") or row.get("club_option") or row.get("type")):
-            errors.append((row_no, "item_name or club_option is required"))
+            errors.append((row_no, "item (brand + model) or club_option is required"))
         flex = row.get("flex", "").upper()
         if flex and flex not in flex_ok:
             errors.append((row_no, f"flex must be one of {', '.join(JapanItem.Flex.values)}, got '{flex}'"))
@@ -294,6 +302,7 @@ def import_japan_csv(uploaded_file, replace=False, allow_bag_exception=False):
             errors.append((row_no, "cargo_fee_jpy goes on the box's bag row (kind = bag)"))
         elif fee is not None:
             fees[key] = fee
+        names.append(item_parsed)
         parsed.append((key, dict(
             type=row.get("type", "")[:50],
             item_name=row.get("item_name", "")[:200],
@@ -301,8 +310,8 @@ def import_japan_csv(uploaded_file, replace=False, allow_bag_exception=False):
             loft=row.get("loft", "")[:20],
             qty=qty,
             quantity_unit=unit,
-            brand=row.get("brand", "")[:60],
-            model=row.get("model", "")[:120],
+            brand=item_parsed.brand[:60],
+            model=item_parsed.model[:120],
             club_type=row.get("club_type", "")[:50],
             club_number=row.get("club_number", "")[:20],
             shaft_material=shaft,
@@ -354,6 +363,8 @@ def import_japan_csv(uploaded_file, replace=False, allow_bag_exception=False):
                 box.cargo_fee_jpy = fees[key]
                 box.save(update_fields=["cargo_fee_jpy", "updated_at"])
             boxes[key] = box
+        for item_parsed in names:
+            remember_item(item_parsed)
         JapanItem.objects.bulk_create(JapanItem(box=boxes[key], **kwargs) for key, kwargs, _ in parsed)
         for name in {kwargs["customer"] for _, kwargs, _ in parsed if kwargs["customer"]}:
             Customer.ensure(name)  # bulk_create skips save(), so add customers here

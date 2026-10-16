@@ -70,6 +70,13 @@
       <button class="btn btn-soft shrink-0 whitespace-nowrap" hx-get="{% url 'item_add' box.pk %}" hx-target="#item-form-slot">{% icon "plus" %} Add item</button>
     {% endif %}
   </div>
+  {% if item_brands %}
+    {# brand filter for the bag and the items (client side) #}
+    <div class="mb-3 flex flex-wrap gap-2" role="group" aria-label="Filter by brand" data-brand-filters>
+      <button type="button" class="item-chip" aria-pressed="true" data-brand-filter="">All brands</button>
+      {% for b in item_brands %}<button type="button" class="item-chip" aria-pressed="false" data-brand-filter="{{ b }}">{{ b }}</button>{% endfor %}
+    </div>
+  {% endif %}
   <div id="item-form-slot"></div>
   <div id="item-list" class="space-y-3">
     {% for item in items %}{% include "tracker/partials/item_row.html" with oob=False %}{% endfor %}

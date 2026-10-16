@@ -1,0 +1,6 @@
+{# "Item (brand + model)" with live suggestions. Context: field (the item_name bound field), add_field (hidden add_brand) #}
+<div data-item-field>
+  {% include "tracker/_field.html" %}
+  {{ add_field }}
+  <div class="item-assist" aria-live="polite"></div>
+</div>

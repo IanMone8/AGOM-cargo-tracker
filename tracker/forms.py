@@ -1,10 +1,10 @@
 from django import forms
 from django.forms import inlineformset_factory
-from django.urls import reverse
+from django.urls import reverse, reverse_lazy
 from django.utils import timezone
 
 from . import roles
-from .models import Box, Cargo, parse_box_code, ClubCategory, ClubOption, Customer, CustomerRequest, ExtraItem, JapanItem
+from .models import Box, Cargo, parse_box_code, parse_item, remember_item, ClubCategory, ClubOption, Customer, CustomerRequest, ExtraItem, JapanItem
 
 INPUT = "field"  # styled in static/css/agom.css
 
@@ -127,6 +127,40 @@ class BoxForm(StyledMixin, forms.ModelForm):
         return data
 
 
+ITEM_TEXT_ATTRS = {
+    # suggestions + "Did you mean…?" / "Is 'Honma' a brand?" while typing (views.item_suggest)
+    "hx-get": reverse_lazy("item_suggest"), "hx-trigger": "input changed delay:250ms, focus once, refresh",
+    "hx-include": "closest [data-item-field]", "hx-target": "next .item-assist", "hx-swap": "innerHTML",
+    "autocomplete": "off", "autocapitalize": "words", "spellcheck": "false", "data-item-text": "",
+}
+
+
+class ItemTextMixin:
+    """The "Item (brand + model)" box: parsed on save into brand + model ("xxio mp 1400" -> "XXIO MP1400").
+    New brands (after "Yes, add brand") and new models are only created when the item is saved."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # "yes" after "Yes, add brand", "no" after "No" (set by the buttons under the box)
+        self.fields["add_brand"] = forms.CharField(required=False, widget=forms.HiddenInput(attrs={"data-add-brand": ""}))
+
+    def clean_item_name(self):
+        text = self.cleaned_data.get("item_name") or ""
+        add = (self.data.get(self.add_prefix("add_brand")) or "") == "yes"
+        self._parsed = parse_item(text, add_brand=add)
+        return self._parsed.display[:200]
+
+    def _post_clean(self):
+        super()._post_clean()
+        parsed = getattr(self, "_parsed", None)
+        if parsed is not None:
+            self.instance.brand, self.instance.model = (parsed.brand, parsed.model) if parsed.text else ("", "")
+
+    def save(self, commit=True):
+        remember_item(getattr(self, "_parsed", None))
+        return super().save(commit)
+
+
 BAG_WORDS = {"bag", "golf bag", "caddie bag", "caddy bag", "stand bag", "cart bag"}
 BAG_OVERRIDE_LABEL = "Owner override: save even though this box doesn't have exactly one golf bag"
 
@@ -189,7 +223,7 @@ class BoxCreateForm(StyledMixin, forms.ModelForm):
         return data
 
 
-class BagForm(StyledMixin, forms.ModelForm):
+class BagForm(ItemTextMixin, StyledMixin, forms.ModelForm):
     """The box's golf bag (required): stored as a JapanItem with is_bag=True, so it is
     checked in Myanmar, linked to customer orders and attachable like any other item."""
 
@@ -198,9 +232,9 @@ class BagForm(StyledMixin, forms.ModelForm):
     class Meta:
         model = JapanItem
         fields = ["item_name", "color", "customer", "price_jpy", "note"]
-        labels = {"item_name": "Bag name", "color": "Color", "customer": "Customer"}
+        labels = {"item_name": "Bag (brand + model)", "color": "Color", "customer": "Customer"}
         widgets = {
-            "item_name": forms.TextInput(attrs={"placeholder": "e.g. Titleist Stand Bag", "autocomplete": "off"}),
+            "item_name": forms.TextInput(attrs={"placeholder": "e.g. Titleist Stand Bag", **ITEM_TEXT_ATTRS}),
             "color": forms.TextInput(attrs={"placeholder": "e.g. Black / white"}),
             "customer": forms.TextInput(attrs={"list": "customer-names", "placeholder": "Optional – who it's for",
                                                "autocomplete": "off"}),
@@ -236,7 +270,7 @@ class BagForm(StyledMixin, forms.ModelForm):
         item.head_only = False
 
 
-class JapanItemForm(StyledMixin, forms.ModelForm):
+class JapanItemForm(ItemTextMixin, StyledMixin, forms.ModelForm):
     """Japan sender's item card: name, two-tap club option, flex, qty, note.
 
     Other columns (brand, model, shaft, price, customer…) stay in the database
@@ -251,9 +285,9 @@ class JapanItemForm(StyledMixin, forms.ModelForm):
     class Meta:
         model = JapanItem
         fields = ["item_name", "customer", "flex", "qty", "price_jpy", "note"]
-        labels = {"item_name": "Item name", "customer": "Customer"}
+        labels = {"item_name": "Item (brand + model)", "customer": "Customer"}
         widgets = {
-            "item_name": forms.TextInput(attrs={"list": "catalog-models", "placeholder": "Optional, e.g. Titleist TSR2"}),
+            "item_name": forms.TextInput(attrs={"placeholder": "Optional, e.g. XXIO MP1400", **ITEM_TEXT_ATTRS}),
             "customer": forms.TextInput(attrs={"list": "customer-names", "placeholder": "Optional – who it's for",
                                                "autocomplete": "off"}),
             "qty": forms.NumberInput(attrs={"min": 1, "inputmode": "numeric"}),
@@ -359,6 +393,15 @@ class Meta:
 class BoxFilterForm(StyledMixin, forms.Form):
     cargo = forms.ModelChoiceField(Cargo.objects.all(), required=False, empty_label="All cargo")
     status = forms.ChoiceField(choices=[("", "All statuses")] + Box.Status.choices, required=False)
+    brand = forms.ChoiceField(required=False, label="Brand", widget=forms.Select(attrs={"aria-label": "Brand"}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from .models import Brand
+        # brands that are actually on items, so the list stays short
+        used = set(JapanItem.objects.exclude(brand="").values_list("brand", flat=True))
+        self.fields["brand"].choices = [("", "All brands")] + [
+            (b.display_name, b.display_name) for b in Brand.objects.filter(display_name__in=used)]
 
 
 class CSVImportForm(StyledMixin, forms.Form):

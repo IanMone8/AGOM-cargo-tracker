@@ -124,6 +124,15 @@ and admin) and then get a clear warning. A box without a bag shows **No bag reco
 When upgrading, the migration marks an existing box's single item of type *Bag* as its golf bag; boxes with no
 or several bag items are left for the owner to fix.
 
+**Item (brand + model):** item cards and the Golf bag card have one box, "Item (brand + model)". While typing it suggests
+saved combos (every word is matched on letters/digits only, so "xxio 14" finds "XXIO MP1400") and shows how it will
+be saved. On save the **longest known brand** at the start is the brand (shown in its own spelling, "xxio" → "XXIO") and
+the rest is the model; models are recognised ignoring case, spaces and punctuation ("mp 1400", "MP1400", "Mp-1400"), and
+a new one is saved as first typed. Items show "XXIO MP1400" everywhere. If the first word isn't a known brand you get
+"Is 'Honma' a brand? [Yes, add brand] [No]" (not answering = No: the whole text is the model, no brand), and a one-tap
+"Did you mean …?" for a brand or model that is 1–2 letters off. Brands and models are in **Admin → Brands / Models**.
+Shipments has a Brand filter, the box page has brand chips, and customer orders find items by brand + model.
+
 **Box ID:** new boxes get a monthly ID per cargo company, `<MON><YY>-<CARGO>-<n>` (e.g. `OCT26-KB-3`): the month
 in Japan time, the cargo code, and the next number for that company that month (highest so far + 1, so deleting a box
 never causes a duplicate; it starts at 1 each month). In the Add box modal it fills in as soon as a cargo company is
@@ -174,7 +183,7 @@ Run the tests with `python manage.py test`.
 ## CSV format for Japan lists
 
 ```
-box,cargo,kind,item_name,color,club_option,flex,qty,amount_jpy,cargo_fee_jpy,customer,note
+box,cargo,kind,item,color,club_option,flex,qty,amount_jpy,cargo_fee_jpy,customer,note
 ,GN,bag,Titleist Stand Bag,Black,,,1,8000,"12,500",Ko Aung,
 ,GN,,Titleist TSR2,,Driver 10.5°,S,1,"¥25,000",,Ko Aung,with cover
 ,GN,,,,Driver head 9.5,,2,6500,,,
@@ -184,6 +193,8 @@ box,cargo,kind,item_name,color,club_option,flex,qty,amount_jpy,cargo_fee_jpy,cus
 ```
 
 * Required: `box` (or `cargo` for a new box), plus `item_name` or `club_option` on each row. Other columns are optional.
+* `item` is the brand + model as one text (parsed like the form), or use separate `brand` and `model` columns (a brand
+  in its own column is added if it's new).
 * `amount_jpy` is the price per piece; `cargo_fee_jpy` goes on the box's bag row. Both are whole yen and accept
   `12500`, `12,500` or `¥12,500`.
 * `kind` = `bag` marks the box's golf bag (bag name in `item_name`, plus `color`, `customer`, `note`; qty 1);
