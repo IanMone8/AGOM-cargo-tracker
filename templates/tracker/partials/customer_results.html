@@ -6,6 +6,9 @@
     <div role="columnheader" class="crm-col-address">Address</div>
     <div role="columnheader" class="crm-col-viber">Viber</div>
     {% include "tracker/partials/customer_th.html" with col="orders" label="Orders" %}
+    <div role="columnheader" class="crm-col-paid">Paid (Ks)</div>
+    {% include "tracker/partials/customer_th.html" with col="balance" label="Balance (Ks)" %}
+    <div role="columnheader" class="crm-col-money">Money</div>
     <div role="columnheader">Status</div>
     {% include "tracker/partials/customer_th.html" with col="updated" label="Last update" %}
     <div role="columnheader"><span class="sr-only">Favourite</span></div>

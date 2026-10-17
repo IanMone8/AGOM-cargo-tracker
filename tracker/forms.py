@@ -28,9 +28,14 @@ WHOLE_YEN = "Whole yen only, e.g. 12500"
 _YEN_TEXT = re.compile(r"[0-9]+")
 
 
+WHOLE_KS = "Whole Kyat only, e.g. 450000"
+
+
 def parse_whole_yen(value):
-    """ "12500", "12,500", "¥12,500" -> 12500; "" -> None. Decimals, negatives and other text raise ValueError."""
+    """ "12500", "12,500", "¥12,500" (or "450,000 Ks") -> 12500; "" -> None.
+    Decimals, negatives and other text raise ValueError."""
     text = str(value or "").replace("¥", "").replace("￥", "").replace(",", "").replace(" ", "").strip()
+    text = re.sub(r"(?i)(ks|kyats?)$", "", text)
     if not text:
         return None
     if not _YEN_TEXT.fullmatch(text):
@@ -41,13 +46,16 @@ def parse_whole_yen(value):
 class YenField(forms.IntegerField):
     """Whole yen, optional, >= 0. Accepts "12500", "12,500" and "¥12,500"; stored as an integer.
     Decimals ("12500.5"), negatives and other text get "Whole yen only, e.g. 12500". In the browser the box
-    only takes digits and shows 12,500 once you leave it (static/js/money.js)."""
+    only takes digits and shows 12,500 once you leave it (static/js/numbers.js)."""
+    message = WHOLE_YEN
+    marker = "data-yen"
 
     def __init__(self, *, label, **kwargs):
         kwargs.setdefault("required", False)
         kwargs.setdefault("min_value", 0)
         kwargs.setdefault("widget", forms.TextInput(attrs={
-            "inputmode": "numeric", "pattern": "[0-9]*", "autocomplete": "off", "placeholder": "0", "data-yen": "",
+            "inputmode": "numeric", "pattern": "[0-9]*", "autocomplete": "off", "placeholder": "0",
+            self.marker: "", "data-digits": self.message,
         }))
         super().__init__(label=label, **kwargs)
 
@@ -57,7 +65,13 @@ class YenField(forms.IntegerField):
         try:
             return parse_whole_yen(value)
         except ValueError:
-            raise forms.ValidationError(WHOLE_YEN + ".", code="invalid")
+            raise forms.ValidationError(self.message + ".", code="invalid")
+
+
+class KsField(YenField):
+    """Whole Myanmar Kyat (no exchange rate): "450000", "450,000" or "450,000 Ks"."""
+    message = WHOLE_KS
+    marker = "data-ks"
 
 
 class BoxForm(StyledMixin, forms.ModelForm):
@@ -556,9 +570,11 @@ class CustomerForm(StyledMixin, forms.ModelForm):
 class CustomerOrderForm(StyledMixin, forms.ModelForm):
     """New order (customer request) started from a customer's page."""
 
+    price_ks = KsField(label="Price (Ks)")
+
     class Meta:
         model = CustomerRequest
-        fields = ["item_name", "type", "flex", "loft", "qty", "note"]
+        fields = ["item_name", "type", "flex", "loft", "qty", "price_ks", "note"]
         labels = {"item_name": "Item"}
         widgets = {
             "item_name": forms.TextInput(attrs={"list": "catalog-models", "placeholder": "e.g. Ping G430 Max Driver"}),
@@ -567,3 +583,151 @@ class CustomerOrderForm(StyledMixin, forms.ModelForm):
             "qty": forms.NumberInput(attrs={"min": 1, "inputmode": "numeric"}),
             "note": forms.TextInput(attrs={"placeholder": "Optional"}),
         }
+
+
+class OrderPriceForm(StyledMixin, forms.Form):
+    """Set or change an order's price on its card."""
+    price_ks = KsField(label="Price (Ks)")
+
+
+class PaymentForm(StyledMixin, forms.Form):
+    """"+ Add payment" for a customer: the amount is split over their orders (oldest unpaid first unless the
+    split is typed in), whatever isn't put on an order is kept as credit. Optionally the customer's existing
+    credit is used first. Refunds take money back from orders and/or credit.
+
+    Posted split: alloc_<order pk> per order and alloc_credit; empty everywhere = automatic split.
+    """
+
+    kind = forms.ChoiceField(choices=[("payment", "Payment"), ("refund", "Refund")], initial="payment",
+                             widget=forms.RadioSelect)
+    date = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"))
+    amount_ks = KsField(label="Amount (Ks)")
+    method = forms.ModelChoiceField(queryset=None, required=False, empty_label="Choose…")
+    proof = forms.ImageField(label="Proof photo", required=False,
+                             widget=forms.ClearableFileInput(attrs={"accept": "image/*"}))
+    note = forms.CharField(required=False, max_length=255, widget=forms.TextInput(attrs={"placeholder": "Optional"}))
+    use_credit = forms.BooleanField(required=False, initial=True, label="Use the customer's credit first")
+    for_order = forms.IntegerField(required=False, widget=forms.HiddenInput)
+
+    def __init__(self, *args, customer, orders, credit, **kwargs):
+        super().__init__(*args, **kwargs)
+        from .models import PaymentMethod
+        self.customer, self.orders, self.credit = customer, list(orders), credit
+        self.fields["method"].queryset = PaymentMethod.objects.filter(active=True)
+        self.fields["date"].initial = timezone.localdate()
+        self.plan = []
+
+    # --- the split ---------------------------------------------------------------------------------------
+    def posted_split(self):
+        """{order pk or None: Kyat} as typed, or None when nothing was typed (= automatic split)."""
+        split, typed = {}, False
+        keys = [(o.pk, f"alloc_{o.pk}") for o in self.orders] + [(None, "alloc_credit")]
+        for pk, name in keys:
+            raw = (self.data.get(name) or "").strip()
+            if not raw:
+                continue
+            typed = True
+            try:
+                value = parse_whole_yen(raw)
+            except ValueError:
+                raise forms.ValidationError(f"{WHOLE_KS} – got '{raw}'.")
+            if value:
+                split[pk] = value
+        return split if typed else None
+
+    def clean(self):
+        from .models import suggest_allocation
+        data = super().clean()
+        if self.errors:
+            return data
+        kind, amount = data["kind"], data.get("amount_ks") or 0
+        by_pk = {o.pk: o for o in self.orders}
+        only = by_pk.get(data.get("for_order")) if data.get("for_order") else None
+        if data.get("for_order") and only is None:
+            raise forms.ValidationError("That order no longer belongs to this customer.")
+        balances = {o.pk: o.balance_ks for o in self.orders}
+        plan = []
+
+        # 1. credit first (payments only): no money changes hands, it just moves onto the orders
+        if kind == "payment" and data.get("use_credit") and self.credit > 0:
+            targets = [only] if only else self.orders
+            room = sum(balances[o.pk] for o in targets)
+            use = min(self.credit, room)
+            if use:
+                split, _ = suggest_allocation(targets, use)
+                if only:
+                    split = [(only, use)]
+                plan.append(("credit", use, [(o.pk, ks) for o, ks in split] + [(None, -use)]))
+                for o, ks in split:
+                    balances[o.pk] -= ks
+
+        if amount <= 0:
+            if not plan:
+                self.add_error("amount_ks", "Enter the amount.")
+            self.plan = plan
+            return data
+        if not data.get("method"):
+            self.add_error("method", "Choose how it was paid.")
+
+        # 2. the money itself
+        typed = self.posted_split()
+        if typed is None:                                    # automatic split
+            if kind == "payment":
+                todo = [_Left(o, balances[o.pk]) for o in self.orders]
+                split, left = suggest_allocation(todo, amount, only=_Left(only, 0) if only else None)
+                typed = {s.order.pk: ks for s, ks in split}
+                if left:
+                    typed[None] = left
+            else:                                            # refund: from credit first, then the latest paid orders
+                typed, left = {}, amount
+                from_credit = min(max(self.credit, 0), left)
+                if from_credit:
+                    typed[None], left = from_credit, left - from_credit
+                for o in sorted(self.orders, key=lambda o: (o.created_at, o.pk), reverse=True):
+                    if left <= 0:
+                        break
+                    take = min(max(o.paid_ks, 0), left)
+                    if take:
+                        typed[o.pk], left = take, left - take
+                if left:
+                    raise forms.ValidationError(
+                        f"Only {amount - left:,} Ks can be refunded (paid orders + credit); type the split if needed.")
+        total = sum(typed.values())
+        if total != amount:
+            raise forms.ValidationError(
+                f"The split ({total:,} Ks) must equal the {'refund' if kind == 'refund' else 'payment'} amount "
+                f"({amount:,} Ks).")
+        if kind == "refund":
+            if typed.get(None, 0) > max(self.credit, 0):
+                raise forms.ValidationError(f"Only {max(self.credit, 0):,} Ks credit can be refunded.")
+            for pk, ks in typed.items():
+                if pk is not None and ks > by_pk[pk].paid_ks:
+                    raise forms.ValidationError(f"{by_pk[pk].item_name}: only {by_pk[pk].paid_ks:,} Ks was paid.")
+        sign = -1 if kind == "refund" else 1
+        plan.append((kind, amount, [(pk, sign * ks) for pk, ks in typed.items()]))
+        self.plan = plan
+        return data
+
+    def save(self, user):
+        from django.db import transaction
+        from .models import Payment, PaymentAllocation
+        data, made = self.cleaned_data, []
+        with transaction.atomic():
+            for kind, amount, split in self.plan:
+                money = kind in ("payment", "refund")
+                p = Payment.objects.create(
+                    customer=self.customer, kind=kind, date=data["date"], amount_ks=amount,
+                    method=data.get("method") if money else None, note=data.get("note", "") if money else "",
+                    recorded_by=user, proof=data.get("proof") if money else None)
+                PaymentAllocation.objects.bulk_create(
+                    PaymentAllocation(payment=p, order_id=pk, amount_ks=ks) for pk, ks in split if ks)
+                made.append(p)
+        return made
+
+
+class _Left:
+    """An order with what's still owed after credit was used (for suggest_allocation)."""
+
+    def __init__(self, order, balance):
+        self.order, self.balance_ks = order, balance
+        self.created_at, self.pk = (order.created_at, order.pk) if order else (None, None)

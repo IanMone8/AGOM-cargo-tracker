@@ -215,9 +215,13 @@ textarea.field { resize: vertical; }
 .crm-c-star { order: 2; }
 .crm-c-menu { order: 3; }
 .crm-c-phone { order: 4; margin-left: 3.05rem; }           /* line up under the name, past the avatar */
-.crm-c-status { order: 5; }
-.crm-c-updated { order: 6; margin-left: auto; font-size: .78rem; color: var(--text-muted); white-space: nowrap; }
-.crm-col-address, .crm-col-viber, .crm-c-orders { display: none; }
+.crm-c-money { order: 5; margin-left: 3.05rem; }
+.crm-c-status { order: 6; }
+.crm-c-updated { order: 7; margin-left: auto; font-size: .78rem; color: var(--text-muted); white-space: nowrap; }
+.crm-col-address, .crm-col-viber, .crm-c-orders, .crm-col-paid, .crm-col-balance { display: none; }
+.crm-c-paid, .crm-c-balance { font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; padding-right: .75rem; }
+.crm-c-balance.is-owed { color: var(--danger-ink); }
+.crm-head .crm-col-paid, .crm-head .crm-sort[href*="sort=balance"] { justify-self: end; text-align: right; padding-right: .75rem; }
 
 .crm-avatar { display: grid; place-items: center; flex: none; width: 2.4rem; height: 2.4rem; border-radius: 999px; font-size: .8rem; font-weight: 800;
   letter-spacing: .02em; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7), 0 2px 0 rgba(0, 0, 0, .08); }
@@ -250,13 +254,16 @@ textarea.field { resize: vertical; }
 .crm-menu-panel a:hover { background: var(--mint); color: var(--primary-hover); }
 .crm-more { padding: .75rem; text-align: center; }
 
+/* Columns: md shows name, phone, balance, money, status; xl adds orders, paid; 1440px+ Viber, last update; 1600px+ address */
 @media (min-width: 768px) {
   .crm-head, .crm-row { display: grid; align-items: center; gap: .4rem;
-    grid-template-columns: minmax(100px, 2fr) 120px 56px 68px 100px 108px 32px 32px; }
+    grid-template-columns: minmax(100px, 2fr) 116px 120px 132px 100px 32px 32px; }
   .crm-row { padding: .6rem 1rem; }
   .crm-row > * { order: 0; margin-left: 0; min-width: 0; }
-  .crm-c-updated { justify-self: start; }
-  .crm-col-viber, .crm-c-orders { display: block; }
+  .crm-c-updated { display: none; }
+  .crm-c-money { margin-left: 0; }
+  .crm-col-balance { display: block; }
+  .crm-head .crm-sort[href*="sort=updated"], .crm-head .crm-sort[href*="sort=orders"] { display: none; }
   .crm-c-orders { font-weight: 800; font-variant-numeric: tabular-nums; }
   .crm-head { position: sticky; top: 4.25rem; z-index: 20; padding: .7rem 1rem; border-radius: 1.25rem 1.25rem 0 0;
     background: var(--sage); border-bottom: 1px solid var(--card-border);
@@ -269,7 +276,17 @@ textarea.field { resize: vertical; }
 }
 @media (min-width: 1024px) { .crm-head { top: 0; } }
 @media (min-width: 1280px) {
-  .crm-head, .crm-row { gap: .6rem; grid-template-columns: minmax(140px, 2fr) 132px minmax(100px, 2fr) 108px 72px 104px 112px 34px 34px; }
+  .crm-head, .crm-row { gap: .5rem; grid-template-columns: minmax(120px, 2fr) 118px 52px 92px 120px 132px 100px 30px 30px; }
+  .crm-c-orders, .crm-col-paid { display: block; }
+  .crm-head .crm-sort[href*="sort=orders"] { display: inline-flex; }
+}
+@media (min-width: 1440px) {
+  .crm-head, .crm-row { grid-template-columns: minmax(120px, 2fr) 118px 106px 48px 92px 116px 128px 96px 92px 30px 30px; }
+  .crm-col-viber, .crm-c-updated { display: block; }
+  .crm-head .crm-sort[href*="sort=updated"] { display: inline-flex; }
+}
+@media (min-width: 1600px) {
+  .crm-head, .crm-row { gap: .6rem; grid-template-columns: minmax(140px, 2fr) 128px minmax(100px, 2fr) 112px 60px 100px 124px 136px 104px 96px 34px 34px; }
   .crm-col-address { display: block; }
   .crm-row .crm-col-address { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: .875rem; }
 }
@@ -420,3 +437,40 @@ textarea.field { resize: vertical; }
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25), 0 2px 0 var(--primary-hover); }
 .club-btn[aria-pressed="true"]:hover { background: var(--primary-hover); }
 .club-val { flex: 1 0 auto; }
+
+/* ---------- Customer payments (Myanmar Kyat) ---------- */
+.owes-badge { display: inline-flex; align-items: center; padding: .15rem .6rem; border-radius: 999px; font-size: .75rem; font-weight: 800;
+  background: var(--danger-ink); color: #fff; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.order-owes { box-shadow: inset 4px 0 0 var(--danger-ink), var(--edge-light), var(--lift-1), var(--lift-2); }
+.money-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; }
+@media (min-width: 640px) { .money-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.money-grid > div { padding: .7rem .85rem; border-radius: 1rem; background: var(--sage); }
+.money-grid dt { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); }
+.money-grid dd { margin-top: .1rem; font-size: 1.15rem; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text); }
+.money-grid .is-owed { background: var(--danger-bg); }
+.money-grid .is-owed dd { color: var(--danger-ink); }
+.money-grid .is-credit { background: var(--info-bg); }
+.money-grid .is-credit dd { color: var(--info-ink); }
+.ks-wrap { position: relative; display: inline-flex; align-items: center; width: 100%; }
+.ks-wrap .field { padding-right: 2.6rem; font-variant-numeric: tabular-nums; }
+.ks-unit { position: absolute; right: .8rem; font-size: .8rem; font-weight: 700; color: var(--text-muted); pointer-events: none; }
+.price-form { display: inline-flex; align-items: center; gap: .4rem; }
+.price-form .ks-wrap { width: 9.5rem; }
+.seg { display: inline-flex; padding: .2rem; border-radius: .9rem; background: var(--sage); }
+.seg-btn { position: relative; display: inline-flex; cursor: pointer; }
+.seg-btn input { position: absolute; opacity: 0; pointer-events: none; }
+.seg-btn span { padding: .4rem .9rem; border-radius: .7rem; font-size: .85rem; font-weight: 700; color: var(--text-muted); }
+.seg-btn input:checked + span { background: var(--card); color: var(--primary-hover); box-shadow: 0 1px 3px rgba(31, 58, 43, .15); }
+.seg-btn input:focus-visible + span { outline: 2px solid var(--primary); outline-offset: 1px; }
+.split { display: grid; gap: .45rem; padding: .85rem; border-radius: 1rem; border: 1px dashed var(--line-strong); background: var(--bg); }
+.split-row { display: grid; grid-template-columns: minmax(0, 1fr) 9.5rem; align-items: center; gap: .6rem; padding: .35rem 0; }
+.split-row + .split-row { border-top: 1px solid var(--card-border); }
+.split-row.is-paid { opacity: .7; }
+.split-row.is-other { opacity: .45; }
+.split-credit { border-top: 1px solid var(--line-strong) !important; }
+.split-sum { font-size: .8rem; font-weight: 700; color: var(--ok-ink); }
+.split-sum.is-off { color: var(--danger-ink); }
+.pay-for { margin-left: .25rem; color: var(--primary-hover); }
+.settle-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; padding: .55rem .75rem; border-radius: 1rem; background: var(--sage); }
+.proof-thumb img { width: 64px; height: 64px; object-fit: cover; border-radius: .75rem; border: 1px solid var(--card-border); }
+@media (max-width: 420px) { .split-row { grid-template-columns: minmax(0, 1fr) 8rem; } }

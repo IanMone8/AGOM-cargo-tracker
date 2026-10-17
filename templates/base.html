@@ -89,7 +89,9 @@
   </div>
 {% endwith %}
   <div id="modal"></div>
+  <script src="{% static_v 'js/numbers.js' %}" defer></script>
   {% if can_see_money %}<script src="{% static_v 'js/money.js' %}" defer></script>{% endif %}
+  {% block scripts %}{% endblock %}
   <script>
     function toggleSidebar(open) {
       document.getElementById('sidebar').classList.toggle('-translate-x-full', !open);

@@ -8,7 +8,7 @@ const MAX_PIECES = 50;   // JapanItemForm.MAX_PIECES
 const QTY = '[name="qty"], [name$="-qty"]', AMOUNT = '[name="price_jpy"], [name$="-price_jpy"]';
 const escAttr = v => String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 // same markup as templates/tracker/_piece_price.html
-const pieceHtml = (name, n, value) => `<label class="piece-price">Piece ${n}<span class="yen-wrap mt-1"><span class="yen-sign" aria-hidden="true">¥</span><input type="text" name="${escAttr(name)}" value="${escAttr(value)}" class="field" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="0" data-yen data-piece aria-label="Piece ${n} amount (JP¥)"></span></label>`;
+const pieceHtml = (name, n, value) => `<label class="piece-price">Piece ${n}<span class="yen-wrap mt-1"><span class="yen-sign" aria-hidden="true">¥</span><input type="text" name="${escAttr(name)}" value="${escAttr(value)}" class="field" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="0" data-yen data-digits="Whole yen only, e.g. 12500" data-piece aria-label="Piece ${n} amount (JP¥)"></span></label>`;
 
 // "Different prices" on an item card: the checkbox shows for qty >= 2; ticked, one ¥ box per piece (count follows qty).
 function syncPieces(card, ticked) {
@@ -75,58 +75,5 @@ document.addEventListener('change', e => {
   if (!e.target.matches('[data-diff-prices]')) return;
   syncPieces(e.target.closest('.item-card'), e.target.checked);
   updateMoney();
-});
-// Whole yen only (like the phone field): while typing, anything that isn't a digit is dropped – no decimal point,
-// no minus – and the caret stays where it was.
-document.addEventListener('input', e => {
-  const el = e.target;
-  if (!el.matches || !el.matches('[data-yen]')) return;
-  const caret = el.selectionStart ?? el.value.length;
-  const digits = el.value.replace(/[^0-9]/g, '');
-  if (digits === el.value) return;
-  const before = el.value.slice(0, caret).replace(/[^0-9]/g, '').length;
-  el.value = digits;
-  el.setSelectionRange(before, before);
-  if (/[^0-9,]/.test(e.data || '')) yenNote(el);    // e.g. a decimal point or minus: say why it's gone
-  updateMoney();
-}, true);
-// Pasting "¥12,500" gives 12500; "12,500.50" keeps only the whole yen before the point (not 1250050).
-document.addEventListener('paste', e => {
-  const el = e.target;
-  if (!el.matches || !el.matches('[data-yen]')) return;
-  const text = (e.clipboardData || window.clipboardData).getData('text');
-  const whole = text.split(/[.]/)[0].replace(/[^0-9]/g, '');
-  e.preventDefault();
-  el.setRangeText(whole, el.selectionStart, el.selectionEnd, 'end');
-  if (whole !== text.trim()) yenNote(el);
-  el.dispatchEvent(new Event('input', {bubbles: true}));
-});
-// a short "Whole yen only" note under the box (decimals and minus signs are not allowed)
-function yenNote(el) {
-  const wrap = el.closest('.yen-wrap') || el;
-  let note = wrap.nextElementSibling;
-  if (!note || !note.matches('.yen-note')) {
-    note = document.createElement('p');
-    note.className = 'yen-note'; note.setAttribute('role', 'status');
-    wrap.after(note);
-  }
-  note.textContent = 'Whole yen only, e.g. 12500';
-  clearTimeout(note._t); note._t = setTimeout(() => note.remove(), 3000);
-}
-// pattern="[0-9]*": take the 12,500 separators out just before the browser checks the form (a click on a submit
-// button – also what Enter does – comes before the check); the server stores whole yen either way.
-document.addEventListener('click', e => {
-  const btn = e.target.closest && e.target.closest('button:not([type=button]), input[type=submit]');
-  if (btn && btn.form) btn.form.querySelectorAll('[data-yen]').forEach(el => el.value = el.value.replace(/[^0-9]/g, ''));
-}, true);
-// show thousands separators once you leave the box (the server accepts 12,500 and ¥12,500)
-document.addEventListener('focusout', e => {
-  if (!e.target.matches('[data-yen]') || !e.target.value.trim()) return;
-  const n = yenNum(e.target.value); if (String(n) === e.target.value.replace(/[^0-9]/g, '')) e.target.value = n.toLocaleString('en-US');
-});
-document.addEventListener('focusin', e => {
-  if (!e.target.matches('[data-yen]')) return;
-  const plain = e.target.value.replace(/[^0-9]/g, '');
-  if (plain !== e.target.value) e.target.value = plain;
 });
 document.body.addEventListener('htmx:afterSettle', () => { document.querySelectorAll('.item-card').forEach(c => syncPieces(c)); updateMoney(); });

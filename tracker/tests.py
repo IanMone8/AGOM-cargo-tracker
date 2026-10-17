@@ -2634,3 +2634,237 @@ class WholeYenTests(BaseTest):
             r = csv(f"box,item,amount_jpy\nGN-3,D,{bad}\n")
             self.assertEqual(r.errors, [(2, f"amount_jpy: whole yen only, e.g. 12500 (12,500 and ¥12,500 work too) – got '{bad}'")])
         self.assertFalse(JapanItem.objects.filter(item_name="D").exists())
+
+
+class CustomerPaymentTests(BaseTest):
+    """Order prices and customer payments in whole Myanmar Kyat, split over orders, credit, refunds."""
+
+    def setUp(self):
+        super().setUp()
+        import datetime
+        from django.utils import timezone
+        from .models import Customer, PaymentMethod
+        self.customer = Customer.objects.create(name="Ko Aung")
+        now = timezone.now()
+        def order(name, price, days_ago):
+            o = CustomerRequest.objects.create(customer="Ko Aung", item_name=name, qty=1, price_ks=price)
+            CustomerRequest.objects.filter(pk=o.pk).update(created_at=now - datetime.timedelta(days=days_ago))
+            o.refresh_from_db()
+            return o
+        self.old = order("XXIO MP1400", 300000, 30)       # oldest
+        self.bag = order("Titleist Bag", 500000, 10)
+        self.cash = PaymentMethod.objects.get(name="Cash")
+        self.kpay = PaymentMethod.objects.get(name="KPay")
+
+    def pay(self, amount, user=None, **extra):
+        self.client.force_login(user or self.myanmar)
+        data = {"kind": "payment", "date": "2026-10-17", "amount_ks": amount, "method": self.cash.pk, **extra}
+        return self.client.post(reverse("payment_add", args=[self.customer.pk]), data)
+
+    def money(self):
+        from .models import add_order_money, customer_money
+        orders = add_order_money(self.customer.requests())
+        return {o.item_name: (o.paid_ks, o.balance_ks, o.pay_status[0]) for o in orders}, \
+            customer_money(self.customer, orders)
+
+    def test_methods_seeded(self):
+        from .models import PaymentMethod
+        self.assertEqual(list(PaymentMethod.objects.values_list("name", flat=True)),
+                         ["Cash", "KPay", "KBZ Special", "AYA Pay", "AYA Special", "CB Special"])
+
+    def test_oldest_unpaid_first(self):
+        r = self.pay("400,000")
+        self.assertEqual(r.status_code, 302)
+        orders, money = self.money()
+        self.assertEqual(orders["XXIO MP1400"], (300000, 0, "paid"))
+        self.assertEqual(orders["Titleist Bag"], (100000, 400000, "deposit"))
+        self.assertEqual((money["total"], money["paid"], money["balance"], money["credit"]), (800000, 400000, 400000, 0))
+        self.assertEqual(money["status"][:2], ("owes", "Owes 400,000 Ks"))
+        from .models import suggest_allocation, add_order_money
+        orders = add_order_money(self.customer.requests())
+        split, left = suggest_allocation(orders, 600000)
+        self.assertEqual([(o.item_name, ks) for o, ks in split], [("Titleist Bag", 400000)])
+        self.assertEqual(left, 200000)
+
+    def test_single_order_payment_and_manual_split(self):
+        self.pay("200000", for_order=self.bag.pk)                        # "+ Add payment" on the bag's card
+        orders, _ = self.money()
+        self.assertEqual(orders["Titleist Bag"][0], 200000)
+        self.assertEqual(orders["XXIO MP1400"][0], 0)
+        self.pay("350000", **{f"alloc_{self.old.pk}": "100,000", f"alloc_{self.bag.pk}": "200000",
+                              "alloc_credit": "50000"})
+        orders, money = self.money()
+        self.assertEqual((orders["XXIO MP1400"][0], orders["Titleist Bag"][0], money["credit"]), (100000, 400000, 50000))
+
+    def test_split_must_equal_amount(self):
+        from .models import Payment
+        r = self.pay("500000", **{f"alloc_{self.old.pk}": "300000", f"alloc_{self.bag.pk}": "100000"})
+        self.assertContains(r, "The split (400,000 Ks) must equal the payment amount (500,000 Ks).")
+        self.assertContains(r, f'name="alloc_{self.old.pk}" value="300000"')     # what was typed is kept
+        self.assertFalse(Payment.objects.exists())
+        self.assertContains(self.pay("12500.5"), "Whole Kyat only, e.g. 450000.")
+        self.assertContains(self.pay("100000", method=""), "Choose how it was paid.")
+
+    def test_credit_kept_and_used_first_for_the_next_order(self):
+        self.pay("900000")                                               # 100,000 more than both orders
+        orders, money = self.money()
+        self.assertEqual((money["balance"], money["credit"]), (0, 100000))
+        self.assertEqual(money["status"][:2], ("credit", "Credit 100,000 Ks"))
+        new = CustomerRequest.objects.create(customer="Ko Aung", item_name="Ping G430", qty=1, price_ks=150000)
+        page = self.client.get(reverse("customer_detail", args=[self.customer.pk])).content.decode()
+        self.assertIn("Use Ko Aung's credit first (100,000 Ks)", page)
+        self.pay("50000", use_credit="on")
+        orders, money = self.money()
+        self.assertEqual(orders["Ping G430"], (150000, 0, "paid"))
+        self.assertEqual((money["credit"], money["status"][0]), (0, "clear"))
+        from .models import Payment
+        self.assertEqual(list(Payment.objects.order_by("id").values_list("kind", "amount_ks")),
+                         [("payment", 900000), ("credit", 100000), ("payment", 50000)])
+
+    def test_refunds(self):
+        self.pay("300000", for_order=self.old.pk)
+        self.pay("100000", kind="refund", **{f"alloc_{self.old.pk}": "100000"})
+        orders, money = self.money()
+        self.assertEqual(orders["XXIO MP1400"], (200000, 100000, "deposit"))
+        r = self.pay("50000", kind="refund", alloc_credit="50000")
+        self.assertContains(r, "Only 0 Ks credit can be refunded.")
+        r = self.pay("999999", kind="refund", **{f"alloc_{self.old.pk}": "999999"})
+        self.assertContains(r, "XXIO MP1400: only 200,000 Ks was paid.")
+        page = self.client.get(reverse("customer_detail", args=[self.customer.pk])).content.decode()
+        self.assertIn("−100,000 Ks", page)                                 # history shows the refund split
+
+    def test_overpaid(self):
+        self.pay("350000", **{f"alloc_{self.old.pk}": "350000"})
+        orders, _ = self.money()
+        self.assertEqual(orders["XXIO MP1400"], (350000, 0, "over"))
+        html = self.client.get(reverse("customer_detail", args=[self.customer.pk])).content.decode()
+        self.assertIn('data-pay-status="over">Overpaid', html)
+
+    def test_order_status_pills(self):
+        from .models import order_pay_state
+        self.assertEqual(order_pay_state(None, 0, False), ("no_price", 0))
+        self.assertEqual(order_pay_state(100, 0, False), ("unpaid", 100))
+        self.assertEqual(order_pay_state(100, 40, False), ("deposit", 60))
+        self.assertEqual(order_pay_state(100, 100, False), ("paid", 0))
+        self.assertEqual(order_pay_state(100, 150, False), ("over", 0))
+        self.assertEqual(order_pay_state(None, 0, True), ("settled", 0))
+
+    def test_all_clear_across_old_orders(self):
+        old_unpriced = CustomerRequest.objects.create(customer="Ko Aung", item_name="Old Putter", qty=1)
+        self.pay("800000")
+        _, money = self.money()
+        self.assertEqual(money["status"][:2], ("not_recorded", "Not recorded"))   # one order has no price
+        self.client.force_login(self.myanmar)
+        self.assertEqual(self.client.post(reverse("customer_settle", args=[self.customer.pk]),
+                                          {"orders": [old_unpriced.pk]}).status_code, 403)
+        self.client.force_login(self.owner)
+        self.client.post(reverse("customer_settle", args=[self.customer.pk]), {"orders": [old_unpriced.pk]})
+        orders, money = self.money()
+        self.assertEqual(orders["Old Putter"], (0, 0, "settled"))
+        self.assertEqual(money["status"][:2], ("clear", "All clear"))
+        html = self.client.get(reverse("customer_list") + "?money=clear").content.decode()
+        self.assertIn("Ko Aung", html)
+        self.assertIn('data-money-status="clear">All clear', html)
+
+    def test_admin_bulk_old_order_action(self):
+        self.owner.is_staff = True
+        self.owner.save()
+        self.client.force_login(self.owner)
+        r = self.client.post("/admin/tracker/customerrequest/", {
+            "action": "mark_paid_old_order", "_selected_action": [self.old.pk, self.bag.pk]}, follow=True)
+        self.assertContains(r, "Marked 2 order(s) as paid (old order).")
+        orders, money = self.money()
+        self.assertEqual({v[2] for v in orders.values()}, {"settled"})
+        self.assertEqual(money["status"][0], "clear")
+
+    def test_customers_table_money_columns_filter_and_sort(self):
+        from .models import Customer
+        Customer.objects.create(name="Ma Hnin")
+        CustomerRequest.objects.create(customer="Ma Hnin", item_name="TSR2", qty=1, price_ks=100000)
+        self.pay("100000")
+        self.client.force_login(self.owner)
+        html = self.client.get(reverse("customer_list")).content.decode()
+        for col in ("Paid (Ks)", "Balance (Ks)", "Money"):
+            self.assertIn(col, html)
+        self.assertIn('data-money-status="owes">Owes 700,000 Ks', html)
+        self.assertIn('data-money-status="not_paid">Not paid', html)
+        html = self.client.get(reverse("customer_list") + "?sort=balance&dir=desc").content.decode()
+        self.assertLess(html.index(">Ko Aung<"), html.index(">Ma Hnin<"))
+        html = self.client.get(reverse("customer_list") + "?money=owes").content.decode()
+        self.assertIn(">Ma Hnin<", html)
+        self.assertNotIn(">Ma Hnin<", self.client.get(reverse("customer_list") + "?money=credit").content.decode())
+
+    def test_customer_page_summary_badges_and_reminder(self):
+        from .models import reminder_text, add_order_money
+        self.pay("0", **{"amount_ks": ""})                                 # nothing recorded
+        self.client.force_login(self.myanmar)
+        html = self.client.get(reverse("customer_detail", args=[self.customer.pk])).content.decode()
+        self.assertIn('<span class="owes-badge" data-owes>Owes 800,000 Ks</span>', html)
+        for label, value in (("total", "800,000 Ks"), ("paid", "0 Ks"), ("balance", "800,000 Ks"), ("credit", "0 Ks")):
+            self.assertIn(f'data-money="{label}">{value}<', html)
+        self.assertEqual(html.count('class="owes-badge">Owes'), 2)                  # both unpaid order cards
+        text = reminder_text(self.customer, sorted(add_order_money(self.customer.requests()), key=lambda o: o.created_at))
+        self.assertEqual(text, "Ko Aung ရှင့် ကျန်ငွေ စုစုပေါင်း 800,000 Ks ပါ။\n"
+                               "(XXIO MP1400 300,000 Ks, Titleist Bag 500,000 Ks) /\nTotal balance due: 800,000 Ks.")
+        self.assertIn("data-copy-reminder=", html)
+        self.assertIn('data-balance="300000" data-balance-text="300,000 Ks"', html)   # Fulfilled warning
+        self.pay("800000")
+        html = self.client.get(reverse("customer_detail", args=[self.customer.pk])).content.decode()
+        self.assertNotIn("data-copy-reminder", html)
+        self.assertNotIn("owes-badge", html)
+
+    def test_order_price_ks(self):
+        self.client.force_login(self.myanmar)
+        r = self.client.post(reverse("order_price", args=[self.old.pk]), {"price_ks": "450,000"}, HTTP_HX_REQUEST="true")
+        self.assertContains(r, "450,000 Ks")
+        self.old.refresh_from_db()
+        self.assertEqual(self.old.price_ks, 450000)
+        r = self.client.post(reverse("order_price", args=[self.old.pk]), {"price_ks": "4.5"}, HTTP_HX_REQUEST="true")
+        self.assertContains(r, "Whole Kyat only, e.g. 450000.")
+        self.client.post(reverse("customer_new_order", args=[self.customer.pk]),
+                         {"item_name": "Pro V1", "qty": "1", "price_ks": "60,000"})
+        self.assertEqual(CustomerRequest.objects.get(item_name="Pro V1").price_ks, 60000)
+        html = self.client.get(reverse("customer_detail", args=[self.customer.pk])).content.decode()
+        self.assertRegex(html, r'name="price_ks"[^>]*inputmode="numeric"[^>]*pattern="\[0-9\]\*"[^>]*data-ks')
+
+    def test_permissions(self):
+        from .models import Payment
+        self.client.force_login(self.japan)
+        for url in (reverse("customer_detail", args=[self.customer.pk]), reverse("customer_list")):
+            self.assertEqual(self.client.get(url).status_code, 403)
+        self.assertEqual(self.pay("1000", user=self.japan).status_code, 403)
+        self.assertEqual(self.client.post(reverse("order_price", args=[self.old.pk]), {"price_ks": "1"}).status_code, 403)
+        self.assertFalse(Payment.objects.exists())
+        self.assertEqual(self.pay("1000", user=self.myanmar).status_code, 302)       # Myanmar checker may add
+        p = Payment.objects.get()
+        self.client.force_login(self.myanmar)
+        self.assertEqual(self.client.post(reverse("payment_delete", args=[p.pk])).status_code, 403)
+        page = self.client.get(reverse("customer_detail", args=[self.customer.pk])).content.decode()
+        self.assertNotIn(reverse("payment_delete", args=[p.pk]), page)
+        self.assertNotIn("settle-form", page)
+        self.client.force_login(self.owner)
+        self.client.post(reverse("payment_delete", args=[p.pk]))
+        self.assertFalse(Payment.objects.exists())
+        # the Japan sender's box page never shows order prices
+        self.old.attach(self.item1)
+        self.client.force_login(self.japan)
+        self.assertNotIn("300,000", self.client.get(reverse("box_detail", args=[self.box.pk])).content.decode())
+
+    def test_proof_photo_thumbnail_and_private_url(self):
+        import io, tempfile
+        from django.test import override_settings
+        from PIL import Image
+        buf = io.BytesIO()
+        Image.new("RGB", (1200, 800), (60, 140, 90)).save(buf, "PNG")
+        with tempfile.TemporaryDirectory() as media, override_settings(MEDIA_ROOT=media):
+            photo = SimpleUploadedFile("slip.png", buf.getvalue(), content_type="image/png")
+            self.pay("1000", proof=photo, method=self.kpay.pk)
+            from .models import Payment
+            p = Payment.objects.get()
+            self.assertTrue(p.proof_thumb)
+            self.assertLessEqual(max(Image.open(p.proof_thumb.path).size), 240)
+            html = self.client.get(reverse("customer_detail", args=[self.customer.pk])).content.decode()
+            self.assertIn(reverse("payment_proof_size", args=[p.pk, "thumb"]), html)
+            self.assertEqual(self.client.get(reverse("payment_proof", args=[p.pk])).status_code, 200)
+            self.client.force_login(self.japan)
+            self.assertEqual(self.client.get(reverse("payment_proof", args=[p.pk])).status_code, 403)

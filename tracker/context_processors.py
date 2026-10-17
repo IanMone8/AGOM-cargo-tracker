@@ -14,4 +14,6 @@ def roles(request):
         "can_import_csv": r.can_import_csv(user),
         "can_use_requests": r.can_use_requests(user),
         "can_use_customers": r.can_use_customers(user),
+        "can_use_payments": r.can_use_payments(user),
+        "can_edit_payments": r.can_edit_payments(user),
     }

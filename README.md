@@ -167,6 +167,22 @@ live **Bag + Items + Cargo fee = Total** line above Save. The box page shows the
 total. Amounts, cargo fees and totals are for Owner, Admin and the Japan sender only – the Myanmar checker never sees
 them (pages, HTMX updates and the money script are all left out for them).
 
+**Customer payments (Myanmar Kyat, whole numbers, no exchange rate):** each order has a **Price (Ks)** (digits only,
+shown as 450,000 Ks; set it on the order card or the New order form). Payments are recorded per customer and split
+over their orders (`Payment` + `PaymentAllocation`, signed Kyat): **+ Add payment** on the customer page suggests the
+oldest unpaid order first and fills each order's balance; **Add payment** on an order card puts it all on that order;
+every amount can be changed, the split must equal the amount, and whatever isn't put on an order is kept as the
+customer's **credit** – offered first ("Use credit first") when the next order needs paying. **Refund** takes money
+back from orders and/or credit. Methods: Cash, KPay, KBZ Special, AYA Pay, AYA Special, CB Special (Admin → Payment
+methods). Optional proof photo (thumbnail in the history; the files are only served to people who may see payments).
+Order status: Price not set / No payment / Deposit paid / Fully paid / Overpaid (and "Paid (old order)"). Customers
+table: Paid, Balance and Money status (All clear / Owes X Ks / Not paid / Not recorded / Credit X Ks), a Money filter
+and sort by Balance. The customer page has Total / Paid / Balance / Credit, the balance per order, the payment history
+with each split, a red "Owes X Ks" badge, **Copy reminder** (Burmese + English) and a warning before marking an order
+Fulfilled while it still owes money. Owner / Admin can delete payments, edit them in /admin/, and "Mark selected orders
+as Paid (old order)" on the customer page or in /admin/. Owner, Admin and the Myanmar checker see and add payments;
+the Japan sender never sees customer prices or payments.
+
 **Customer icon:** `static/img/icons/customer.png` (display WebP copy made by `scripts/make_display_images.py`,
 background cut out) is the sidebar's **Customers** menu icon, like the Shipments and Cargo history icons (24px, the
 same in the phone menu; the line icon shows instead if the file is missing). Customer names themselves have no icon

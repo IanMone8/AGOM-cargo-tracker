@@ -26,6 +26,15 @@ BADGES = {
 
 
 @register.filter
+def ks(value):
+    """450000 -> "450,000 Ks" (whole Myanmar Kyat); empty for no amount. Negative: "−50,000 Ks"."""
+    if value in (None, ""):
+        return ""
+    value = int(value)
+    return f"{'−' if value < 0 else ''}{abs(value):,} Ks"
+
+
+@register.filter
 def yen(value):
     """12500 -> "¥12,500" (whole yen); empty for no amount."""
     if value in (None, ""):

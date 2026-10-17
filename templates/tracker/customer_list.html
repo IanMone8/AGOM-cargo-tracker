@@ -43,6 +43,14 @@
       <option value="none" {% if orders == 'none' %}selected{% endif %}>No open requests</option>
     </select>
   </label>
+  <label class="filter-pill"><span aria-hidden="true" class="text-[0.8rem] font-extrabold">Ks</span>
+    <select name="money" aria-label="Money filter">
+      <option value="" {% if not money %}selected{% endif %}>Money: All</option>
+      <option value="owes" {% if money == 'owes' %}selected{% endif %}>Owes money</option>
+      <option value="clear" {% if money == 'clear' %}selected{% endif %}>All clear</option>
+      <option value="credit" {% if money == 'credit' %}selected{% endif %}>Has credit</option>
+    </select>
+  </label>
 </form>
 
 <div id="customer-results">{% include "tracker/partials/customer_results.html" %}</div>

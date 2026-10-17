@@ -4,7 +4,7 @@ from django.core.exceptions import ValidationError
 from django.forms.models import BaseInlineFormSet
 
 from .models import (Box, Brand, BrandModel, Cargo, Catalog, ClubCategory, ClubOption, Customer, CustomerRequest, ExtraItem,
-                     JapanItem, ReceiveCheck, club_value_problem)
+                     JapanItem, Payment, PaymentAllocation, PaymentMethod, ReceiveCheck, club_value_problem)
 
 
 @admin.register(Cargo)
@@ -181,11 +181,80 @@ class ExtraItemAdmin(admin.ModelAdmin):
 
 @admin.register(CustomerRequest)
 class CustomerRequestAdmin(admin.ModelAdmin):
-    list_display = ["customer", "type", "item_name", "flex", "loft", "qty", "status", "box", "created_at"]
+    list_display = ["customer", "type", "item_name", "flex", "loft", "qty", "price_ks", "status", "box", "created_at"]
     list_filter = ["status", "type"]
     search_fields = ["customer", "item_name", "note"]
     autocomplete_fields = ["box"]
     raw_id_fields = ["japan_item"]
+    actions = ["mark_paid_old_order"]
+
+    @admin.action(description="Mark selected orders as Paid (old order)")
+    def mark_paid_old_order(self, request, queryset):
+        from .models import settle_old_orders
+        done = 0
+        by_customer = {}
+        for order in queryset:
+            by_customer.setdefault(order.customer.lower(), []).append(order)
+        for orders in by_customer.values():
+            customer = Customer.ensure(orders[0].customer)
+            payment = settle_old_orders(customer, orders, request.user)
+            done += payment.allocations.count() if payment else 0
+        self.message_user(request, f"Marked {done} order(s) as paid (old order).")
+
+
+@admin.register(PaymentMethod)
+class PaymentMethodAdmin(admin.ModelAdmin):
+    list_display = ["name", "sort_order", "active"]
+    list_editable = ["sort_order", "active"]
+
+
+class AllocationInlineFormSet(BaseInlineFormSet):
+    """A payment's split must add up to its amount (refunds: minus the amount; "credit used": nets to 0)."""
+
+    def clean(self):
+        super().clean()
+        if any(self.errors):
+            return
+        payment = self.instance
+        rows = [f.cleaned_data for f in self.forms if f.cleaned_data and not f.cleaned_data.get("DELETE")]
+        total = sum(r.get("amount_ks") or 0 for r in rows)
+        kind, amount = payment.kind, payment.amount_ks or 0
+        if kind == Payment.Kind.CREDIT:
+            orders = sum(r.get("amount_ks") or 0 for r in rows if r.get("order"))
+            if total != 0 or orders != amount:
+                raise ValidationError(f"Credit used: the orders get {amount:,} Ks and credit −{amount:,} Ks.")
+        elif kind != Payment.Kind.SETTLED:
+            want = -amount if kind == Payment.Kind.REFUND else amount
+            if total != want:
+                raise ValidationError(f"The split ({total:,} Ks) must equal the amount ({want:,} Ks); "
+                                      "use a row without an order for the customer's credit.")
+        customer = payment.customer
+        for r in rows:
+            order = r.get("order")
+            if order and customer and order.customer.lower() != customer.name.lower():
+                raise ValidationError(f"{order} is not {customer}'s order.")
+
+
+class PaymentAllocationInline(admin.TabularInline):
+    model = PaymentAllocation
+    formset = AllocationInlineFormSet
+    extra = 1
+    raw_id_fields = ["order"]
+
+
+@admin.register(Payment)
+class PaymentAdmin(admin.ModelAdmin):
+    list_display = ["date", "customer", "kind", "amount_ks", "method", "recorded_by"]
+    list_filter = ["kind", "method", "date"]
+    search_fields = ["customer__name", "note"]
+    autocomplete_fields = ["customer"]
+    readonly_fields = ["recorded_by", "created_at"]
+    inlines = [PaymentAllocationInline]
+
+    def save_model(self, request, obj, form, change):
+        if not obj.recorded_by_id:
+            obj.recorded_by = request.user
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(Catalog)

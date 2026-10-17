@@ -71,6 +71,17 @@ def can_use_customers(user):
     return can_use_requests(user)
 
 
+def can_use_payments(user):
+    """Order prices (Ks), customer payments, balances and credit: Owner / Admin and the Myanmar checker –
+    never the Japan sender."""
+    return can_use_customers(user)
+
+
+def can_edit_payments(user):
+    """Delete / edit a recorded payment, and mark old orders as paid: Owner / Admin only."""
+    return is_manager(user)
+
+
 def can_edit_box_items(user, box):
     """Edit the Japan side of a box (box header, add/delete items, CSV import).
 
