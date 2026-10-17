@@ -1841,13 +1841,12 @@ class YenAmountTests(BaseTest):
         self.assertContains(r, "amount_jpy: whole yen only, e.g. 12500")
         self.assertContains(r, "cargo_fee_jpy goes on the box&#x27;s bag row")
 
-    def test_customer_icon_instead_of_emoji(self):
+    def test_customer_name_without_icon(self):
         self.item1.customer = "Ko Aung"
         self.item1.save()
         self.client.force_login(self.owner)
         html = self.client.get(reverse("box_detail", args=[self.box.pk])).content.decode()
-        self.assertIn('<img src="/static/img/display/icons/customer.webp', html)
-        self.assertIn('alt="Customer" width="18" height="18"', html)
+        self.assertRegex(html, r'class="customer-chip[^"]*">Ko Aung</a>')     # the name alone
         self.assertNotIn("👤", html)
 
 
@@ -2502,9 +2501,9 @@ class ClubCategoryValueTests(BaseTest):
         self.assertTrue(JapanItem.objects.filter(item_name="New", loft="10.5").exists())
 
 
-class CustomerIconEverywhereTests(BaseTest):
-    """Customer names show the customer icon (display WebP, 18px, alt="Customer") – never a 👤 emoji."""
-    ICON = '<img src="/static/img/display/icons/customer.webp'
+class CustomerIconSidebarTests(BaseTest):
+    """The customer icon is the sidebar's "Customers" menu icon – never next to customer names."""
+    ICON = "/static/img/display/icons/customer.webp"
 
     def setUp(self):
         super().setUp()
@@ -2519,25 +2518,38 @@ class CustomerIconEverywhereTests(BaseTest):
         self.open_req = CustomerRequest.objects.create(customer="Ma Hnin", item_name="Ping Hoofer", qty=1)  # Attach: the bag
         self.client.force_login(self.owner)
 
-    def get(self, url):
-        return self.client.get(url, HTTP_HX_REQUEST="true").content.decode()
-
-    def test_icon_next_to_customer_names(self):
+    def test_sidebar_customers_icon_like_the_other_menu_icons(self):
         import re
-        box = self.get(reverse("box_detail", args=[self.box.pk]))
-        # item row chip, bag row chip and the item's request line
-        self.assertGreaterEqual(len(re.findall(re.escape(self.ICON) + r'[^>]*alt="Customer"[^>]*>(?:</span>)?\s*Ko Aung', box)), 1)
-        self.assertEqual(box.count('alt="Customer" width="18" height="18"'), 3)
-        for url in (reverse("customer_list"), reverse("customer_detail", args=[self.customer.pk]),
-                    reverse("request_attach", args=[self.open_req.pk])):
-            html = self.get(url)
-            self.assertIn(self.ICON, html, url)
-            self.assertIn('alt="Customer"', html, url)
-            self.assertIn('onerror="this.remove()"', html, url)      # hidden if the file is missing
-        # item and bag cards for owner / admin: next to the Customer field
-        modal = self.get(reverse("box_create"))
-        self.assertRegex(modal, re.escape(self.ICON) + r'[^>]*>Customer</span>')
-        self.assertEqual(len(re.findall(r'alt="Customer"[^>]*>Customer</span>', modal)), 2)    # bag + item card
+        html = self.client.get(reverse("customer_list")).content.decode()
+        link = re.search(r'<a href="/customers/" class="sidebar-link active">(.*?)</a>', html, re.S)
+        self.assertIsNotNone(link)                                                  # active on the customer pages
+        self.assertIn(f'<img src="{self.ICON}', link.group(1))
+        self.assertIn('class="h-6 w-6 object-contain"', link.group(1))              # same as Shipments / Cargo history
+        self.assertIn("this.nextElementSibling.hidden=false;this.remove()", link.group(1))   # missing file: line icon
+        self.assertTrue(link.group(1).rstrip().endswith("Customers"))
+        shipments = re.search(r'<a href="/boxes/" class="sidebar-link ">(.*?)</a>', html, re.S).group(1)
+        self.assertEqual(re.sub(r"[\w-]+\.webp|Shipments|<path d=\"[^\"]*\"", "", shipments),
+                         re.sub(r"[\w-]+\.webp|Customers|<path d=\"[^\"]*\"", "", link.group(1)))
+        box = self.client.get(reverse("box_detail", args=[self.box.pk])).content.decode()
+        self.assertRegex(box, r'<a href="/customers/" class="sidebar-link ">')    # not active elsewhere
+        self.client.force_login(self.japan)                                         # no Customers menu for Japan
+        self.assertNotIn(self.ICON, self.client.get(reverse("box_detail", args=[self.box.pk])).content.decode())
+
+    def test_no_icon_next_to_customer_names(self):
+        pages = [reverse("box_detail", args=[self.box.pk]), reverse("customer_list"),
+                 reverse("customer_detail", args=[self.customer.pk])]
+        for url in pages:
+            html = self.client.get(url).content.decode()
+            self.assertEqual(html.count(self.ICON), 1, url)                         # the sidebar's only
+            self.assertNotIn('alt="Customer"', html, url)
+        partials = [reverse("request_attach", args=[self.open_req.pk]), reverse("box_create"),
+                    reverse("item_add", args=[self.box.pk])]
+        for url in partials:
+            html = self.client.get(url, HTTP_HX_REQUEST="true").content.decode()
+            self.assertNotIn("customer.webp", html, url)
+        listing = self.client.get(reverse("customer_list")).content.decode()
+        self.assertIn('<span class="crm-avatar"', listing)                         # initials circles kept
+        self.assertIn(">KA</span>", listing)
 
     def test_no_person_emoji_left_in_templates(self):
         from pathlib import Path

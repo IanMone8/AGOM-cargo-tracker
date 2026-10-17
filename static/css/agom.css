@@ -361,7 +361,6 @@ textarea.field { resize: vertical; }
 
 /* Customer icon next to a name (hidden if the image is missing) */
 .customer-chip { display: inline-flex; align-items: center; gap: .3rem; }
-.customer-icon { width: 18px; height: 18px; flex: none; object-fit: contain; }
 
 /* ---------- "Item (brand + model)": combo box (one dropdown list), preview, questions ---------- */
 .combo-box { position: relative; }

@@ -9,11 +9,11 @@
         {% if item.club_label and item.item_name %}<span class="rounded-md bg-mint px-1.5 py-0.5 text-primary-hover">{{ item.club_label }}</span>{% endif %}
         <span class="rounded-md bg-sage px-1.5 py-0.5 text-ink-muted">{{ item.get_condition_display }}</span>
         {% if can_see_money and item.price_jpy is not None %}<span class="rounded-md bg-sage px-1.5 py-0.5 text-ink" data-amount>{% if item.piece_prices %}{% for p in item.piece_prices %}{{ p|yen }}{% if not forloop.last %} + {% endif %}{% endfor %} = {{ item.line_total|yen }}{% else %}{{ item.price_jpy|yen }}{% if item.qty > 1 %} × {{ item.qty }} = {{ item.line_total|yen }}{% endif %}{% endif %}</span>{% endif %}
-        {% if item.customer and can_use_customers %}<a href="{% url 'customer_by_name' %}?name={{ item.customer|urlencode }}" class="customer-chip rounded-md bg-mint px-1.5 py-0.5 text-primary-hover hover:underline">{% include "tracker/_customer_icon.html" %}{{ item.customer }}</a>{% endif %}
+        {% if item.customer and can_use_customers %}<a href="{% url 'customer_by_name' %}?name={{ item.customer|urlencode }}" class="customer-chip rounded-md bg-mint px-1.5 py-0.5 text-primary-hover hover:underline">{{ item.customer }}</a>{% endif %}
       </div>
       {% if item.specification %}<div class="mt-1 text-xs text-ink-muted">{{ item.specification }}</div>{% endif %}
       {% if item.note %}<div class="mt-0.5 text-xs italic text-ink-muted">{{ item.note }}</div>{% endif %}
-      {% if can_use_requests %}{% for r in item.requests.all %}<div class="mt-0.5 text-xs text-info-ink">Request: <span class="customer-chip align-middle">{% include "tracker/_customer_icon.html" %}{{ r.customer }}</span> ×{{ r.qty }}</div>{% endfor %}{% endif %}
+      {% if can_use_requests %}{% for r in item.requests.all %}<div class="mt-0.5 text-xs text-info-ink">Request: {{ r.customer }} ×{{ r.qty }}</div>{% endfor %}{% endif %}
     </div>
     <div class="shrink-0 text-right">
       <div class="text-xl font-extrabold">×{{ item.qty }}</div><div class="text-[0.7rem] text-ink-muted">{% if item.is_bag %}bag{% else %}{{ item.get_quantity_unit_display }}{% endif %}</div>

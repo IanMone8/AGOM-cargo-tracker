@@ -39,7 +39,7 @@
       <a href="{% url 'box_list' %}" class="sidebar-link {% if name == 'box_list' or name == 'box_detail' or name == 'box_edit' or name == 'box_create' %}active{% endif %}">{% include "tracker/_nav_icon.html" with file="flying-box.webp" fallback="box" %} Shipments</a>
       <a href="{% url 'cargo_history' %}" class="sidebar-link {% if name == 'cargo_history' %}active{% endif %}">{% include "tracker/_nav_icon.html" with file="calendar.webp" fallback="history" %} Cargo history</a>
       {% if can_use_customers %}
-      <a href="{% url 'customer_list' %}" class="sidebar-link {% if 'customer_' in name %}active{% endif %}">{% icon "contact" %} Customers</a>
+      <a href="{% url 'customer_list' %}" class="sidebar-link {% if 'customer_' in name %}active{% endif %}">{% include "tracker/_nav_icon.html" with file="customer.webp" fallback="contact" %} Customers</a>
       {% endif %}
       {% if can_import_csv %}
       <p class="px-3 pb-1 pt-5 text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-primary-hover">Data</p>

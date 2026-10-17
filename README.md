@@ -167,10 +167,10 @@ live **Bag + Items + Cargo fee = Total** line above Save. The box page shows the
 total. Amounts, cargo fees and totals are for Owner, Admin and the Japan sender only – the Myanmar checker never sees
 them (pages, HTMX updates and the money script are all left out for them).
 
-**Customer icon:** every customer name – box page item and bag rows and their request lines, customer orders, the
-Customers list, the customer page, the Attach panel, and the Customer field on item / bag cards (Owner / Admin) – shows
-`static/img/icons/customer.png` (display WebP copy made by `scripts/make_display_images.py`, background cut out) at
-18px, alt "Customer"; it's hidden if the file is missing. No 👤 emoji is used anywhere.
+**Customer icon:** `static/img/icons/customer.png` (display WebP copy made by `scripts/make_display_images.py`,
+background cut out) is the sidebar's **Customers** menu icon, like the Shipments and Cargo history icons (24px, the
+same in the phone menu; the line icon shows instead if the file is missing). Customer names themselves have no icon
+or emoji; the Customers list keeps its coloured initials circles.
 
 **Locking:** once the Myanmar check has started on a box (it has a received date, or any item is checked),
 the Japan sender can no longer edit that box or add or delete its items.
