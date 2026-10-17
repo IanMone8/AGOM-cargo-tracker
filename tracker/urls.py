@@ -37,10 +37,8 @@ urlpatterns = [
     path("payments/<int:pk>/proof/", views.payment_proof, name="payment_proof"),
     path("payments/<int:pk>/proof/<str:size>/", views.payment_proof, name="payment_proof_size"),
     path("requests/<int:pk>/price/", views.order_price, name="order_price"),
-    path("requests/attach-items/", views.request_attach_items, name="request_attach_items"),
     path("requests/<int:pk>/status/", views.request_status, name="request_status"),
-    path("requests/<int:pk>/attach/", views.request_attach, name="request_attach"),
-    path("requests/<int:pk>/detach/", views.request_detach, name="request_detach"),
+    path("requests/<int:pk>/edit/", views.order_edit, name="order_edit"),
     path("import/", views.csv_import, name="csv_import"),
     path("import/template.csv", views.csv_template, name="csv_template"),
 ]

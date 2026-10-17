@@ -128,17 +128,18 @@ class PageTests(BaseTest):
 
 
 class RequestTests(BaseTest):
-    def test_attach_and_detach(self):
+    def test_status_is_set_by_hand(self):
         req = CustomerRequest.objects.create(customer="Ko Aung", item_name="TSR2 driver", flex="S")
-        self.client.force_login(self.owner)
-        r = self.client.get(reverse("request_attach", args=[req.pk]), HTTP_HX_REQUEST="true")
-        self.assertContains(r, "GN-3")  # suggestion
-        self.htmx(self.owner, reverse("request_attach", args=[req.pk]), {"japan_item": self.item1.pk})
+        self.assertEqual(req.status, "ordered")                                       # new orders start Ordered
+        for status in ("arrived", "delivered", "cancelled", "ordered"):
+            r = self.htmx(self.owner, reverse("request_status", args=[req.pk]), {"status": status})
+            req.refresh_from_db()
+            self.assertEqual(req.status, status)
+            self.assertContains(r, f'<option value="{status}" selected>')
+        self.htmx(self.owner, reverse("request_status", args=[req.pk]), {"status": "in_box"})   # old values: ignored
         req.refresh_from_db()
-        self.assertEqual((req.status, req.box, req.japan_item), ("in_box", self.box, self.item1))
-        self.htmx(self.owner, reverse("request_detach", args=[req.pk]))
-        req.refresh_from_db()
-        self.assertEqual((req.status, req.box), ("ordered", None))
+        self.assertEqual(req.status, "ordered")
+        self.assertEqual([v for v, _ in CustomerRequest.Status.choices], ["ordered", "arrived", "delivered", "cancelled"])
 
 
 class CSVImportTests(BaseTest):
@@ -393,16 +394,16 @@ class JapanSenderHiddenPagesTests(BaseTest):
     def test_japan_cannot_use_csv_or_requests(self):
         req = CustomerRequest.objects.create(customer="Ko Aung", item_name="TSR2")
         self.client.force_login(self.japan)
-        for name, args in [("csv_import", []), ("csv_template", []), ("request_attach", [req.pk])]:
+        for name, args in [("csv_import", []), ("csv_template", []), ("order_edit", [req.pk])]:
             with self.subTest(name=name):
                 self.assertEqual(self.client.get(reverse(name, args=args)).status_code, 403)
-        for name in ("request_status", "request_detach"):
+        for name in ("request_status", "order_edit"):
             with self.subTest(name=name):
-                self.assertEqual(self.client.post(reverse(name, args=[req.pk]), {"status": "fulfilled"}).status_code, 403)
+                self.assertEqual(self.client.post(reverse(name, args=[req.pk]), {"status": "delivered"}).status_code, 403)
         f = SimpleUploadedFile("l.csv", b"box,type,item_name\nGN-3,Bag,Stand bag\n", content_type="text/csv")
         self.assertEqual(self.client.post(reverse("csv_import"), {"file": f}).status_code, 403)
         req.refresh_from_db()
-        self.assertEqual(req.status, "open")
+        self.assertEqual(req.status, "ordered")
         self.assertFalse(JapanItem.objects.filter(item_name="Stand bag").exists())
 
     def test_japan_sidebar_and_dashboard_hide_links(self):
@@ -523,13 +524,6 @@ class MyanmarSeesShippedOnlyTests(BaseTest):
         self.assertFalse(ReceiveCheck.objects.exists())
         self.box.refresh_from_db()
         self.assertEqual(self.box.status, Box.Status.PACKED)
-        # not offered when attaching customer requests
-        r = self.client.get(reverse("request_attach", args=[req.pk]))
-        self.assertNotContains(r, label)
-        r = self.client.get(reverse("request_attach_items"), {"box": self.box.pk})
-        self.assertNotContains(r, "TSR2")
-        self.assertEqual(self.client.post(reverse("request_attach", args=[req.pk]),
-                                          {"japan_item": self.item1.pk}).status_code, 404)
 
     def test_visible_after_japan_sender_ships(self):
         self.client.force_login(self.japan)
@@ -797,9 +791,8 @@ class CustomerTableTests(BaseTest):
         self.tun = Customer.objects.create(name="U Tun")
         self.zaw = Customer.objects.create(name="Ko Zaw")
         CustomerRequest.objects.create(customer="Ko Aung", item_name="Qi10")                      # open -> Waiting
-        self.item1.customer = "ma hnin"                                                           # in a shipped box -> In box
-        self.item1.save()
-        CustomerRequest.objects.create(customer="U Tun", item_name="Putter", status="fulfilled")  # all done
+        CustomerRequest.objects.create(customer="Ma Hnin", item_name="Bag", status="arrived")     # arrived -> Arrived
+        CustomerRequest.objects.create(customer="U Tun", item_name="Putter", status="delivered")  # all done
         self.client.force_login(self.myanmar)
 
     def rows(self, **params):
@@ -817,7 +810,7 @@ class CustomerTableTests(BaseTest):
         self.assertIn("Viber member", html)
         self.assertIn("Not member", html)
         self.assertIn('crm-tag-waiting"><i></i>Waiting', html)
-        self.assertIn('crm-tag-in_box"><i></i>In box', html)
+        self.assertIn('crm-tag-arrived"><i></i>Arrived', html)
         self.assertIn('crm-tag-delivered"><i></i>All delivered', html)
         self.assertIn('crm-tag-none"><i></i>No orders', html)
         self.assertIn("just now", html)                                     # last update
@@ -841,8 +834,8 @@ class CustomerTableTests(BaseTest):
     def test_filters(self):
         self.assertEqual(self.rows(viber="yes")[0], ["Ko Aung"])
         self.assertNotIn("Ko Aung", self.rows(viber="no")[0])
-        self.assertEqual(self.rows(orders="open")[0], ["Ko Aung"])
-        self.assertEqual(self.rows(orders="none")[0], ["Ko Zaw", "Ma Hnin", "U Tun"])
+        self.assertEqual(self.rows(orders="open")[0], ["Ko Aung", "Ma Hnin"])        # not delivered yet
+        self.assertEqual(self.rows(orders="none")[0], ["Ko Zaw", "U Tun"])
         self.assertEqual(self.rows(q="inya")[0], ["Ko Aung"])
 
     def test_favourite_toggle_sorts_to_top(self):
@@ -911,7 +904,7 @@ class CustomerPhoneAndOrderTests(BaseTest):
                              {"item_name": "Ping G430 Max", "type": "Driver", "flex": "SR", "loft": "10.5", "qty": "2"})
         self.assertRedirects(r, detail + "#orders")
         order = CustomerRequest.objects.get(item_name="Ping G430 Max")
-        self.assertEqual((order.customer, order.status, order.qty, order.flex), ("Ko Aung", "open", 2, "SR"))
+        self.assertEqual((order.customer, order.status, order.qty, order.flex), ("Ko Aung", "ordered", 2, "SR"))
         r = self.client.get(detail)
         self.assertContains(r, "Ping G430 Max")
         row = self.client.get(reverse("customer_list")).content.decode()
@@ -931,55 +924,6 @@ class CustomerPhoneAndOrderTests(BaseTest):
         r = self.client.post(reverse("customer_new_order", args=[self.ko.pk]), {"item_name": "X", "qty": "1"})
         self.assertEqual(r.status_code, 403)
         self.assertFalse(CustomerRequest.objects.exists())
-
-
-class AttachItemSelectTests(BaseTest):
-    """Regression: items for "pick a box and item" must arrive inside a real <select>."""
-
-    def setUp(self):
-        super().setUp()
-        self.ship()
-        self.req = CustomerRequest.objects.create(customer="Ma Hnin", item_name="Wedge")
-        self.client.force_login(self.myanmar)
-
-    def test_item_response_is_a_select_with_all_options_inside(self):
-        import re
-        r = self.client.get(reverse("request_attach_items"), {"box": self.box.pk, "req": self.req.pk},
-                            HTTP_HX_REQUEST="true")
-        html = r.content.decode()
-        m = re.fullmatch(r'\s*(?:\{#.*?#\})?\s*<select id="attach-items-%d" name="japan_item"[^>]*>(.*)</select>\s*' % self.req.pk,
-                         html, re.S)
-        self.assertIsNotNone(m, "response must be exactly one <select> element")
-        inner = m.group(1)
-        self.assertEqual(inner.count("<option"), 3)          # placeholder + 2 items
-        self.assertIn(f'<option value="{self.item1.pk}">', inner)
-        self.assertNotIn("</select>", inner)
-        self.assertNotIn("disabled", html.split(">")[0])     # enabled once a box is picked
-
-    def test_box_select_replaces_the_item_select(self):
-        html = self.client.get(reverse("request_attach", args=[self.req.pk]), HTTP_HX_REQUEST="true").content.decode()
-        box_select = html[html.index('<select name="box"'):].split(">")[0]
-        self.assertIn(f'hx-target="#attach-items-{self.req.pk}"', box_select)
-        self.assertIn('hx-swap="outerHTML"', box_select)      # explicit, not inherited from the form
-        self.assertIn(f'id="attach-items-{self.req.pk}"', html)
-        self.assertIn("Choose a box first", html)
-
-    def test_empty_box_and_unknown_box(self):
-        from .models import Box as BoxModel
-        empty = BoxModel.objects.create(cargo=self.cargo, box_no=9, status="shipped")
-        html = self.client.get(reverse("request_attach_items"), {"box": empty.pk, "req": self.req.pk}).content.decode()
-        self.assertIn("No items in this box", html)
-        self.assertIn("<select", html)
-        html = self.client.get(reverse("request_attach_items"), {"box": 99999, "req": self.req.pk}).content.decode()
-        self.assertIn("<select", html)
-        self.assertIn("Choose a box first", html)
-
-    def test_attach_links_request_and_sets_in_box(self):
-        r = self.client.post(reverse("request_attach", args=[self.req.pk]),
-                             {"box": self.box.pk, "japan_item": self.item2.pk}, HTTP_HX_REQUEST="true")
-        self.assertContains(r, "In box")
-        self.req.refresh_from_db()
-        self.assertEqual((self.req.status, self.req.japan_item, self.req.box), ("in_box", self.item2, self.box))
 
 
 class DashboardHeroTests(BaseTest):
@@ -1129,7 +1073,7 @@ class ClubOptionTests(BaseTest):
     def test_copy_saved_item(self):
         self.item1.loft, self.item1.head_only, self.item1.customer = "9.5", True, "Ko Aung"
         self.item1.save()
-        CustomerRequest.objects.create(customer="Ko Aung", item_name="TSR2", japan_item=self.item1, status="in_box")
+        CustomerRequest.objects.create(customer="Ko Aung", item_name="TSR2", japan_item=self.item1)   # old link
         r = self.client.post(reverse("item_copy", args=[self.item1.pk]), HTTP_HX_REQUEST="true")
         self.assertEqual(r.status_code, 200)
         copy = JapanItem.objects.latest("id")
@@ -1350,18 +1294,12 @@ class GolfBagTests(BaseTest):
         self.assertContains(r, "Mismatch summary")
         self.assertContains(r, "<b>Titleist Stand Bag</b>")
 
-    # --- Customer orders and attach ----------------------------------------
-    def test_bag_attach_and_customer_orders(self):
+    # --- Customer orders ------------------------------------------------------
+    def test_bag_for_a_customer_shows_on_their_page(self):
         bag = self.add_bag()
         bag.customer = "Ko Aung"
         bag.save()
-        req = CustomerRequest.objects.create(customer="Ko Aung", item_name="Stand bag")
         self.client.force_login(self.owner)
-        r = self.client.get(reverse("request_attach_items"), {"box": self.box.pk, "req": req.pk})
-        self.assertContains(r, f'<option value="{bag.pk}">Golf bag: Titleist Stand Bag')
-        self.client.post(reverse("request_attach", args=[req.pk]), {"japan_item": bag.pk}, HTTP_HX_REQUEST="true")
-        req.refresh_from_db()
-        self.assertEqual((req.japan_item, req.status), (bag, CustomerRequest.Status.IN_BOX))
         from .models import Customer
         r = self.client.get(reverse("customer_detail", args=[Customer.objects.get(name="Ko Aung").pk]))
         self.assertContains(r, "Titleist Stand Bag")
@@ -1499,9 +1437,7 @@ class CustomerRequestsPageRemovedTests(BaseTest):
         req = CustomerRequest.objects.get(item_name="Qi10")
         r = self.client.get(reverse("customer_detail", args=[ko.pk]))
         self.assertContains(r, f'id="request-{req.pk}"')
-        self.htmx(self.owner, reverse("request_attach", args=[req.pk]), {"japan_item": self.item1.pk})
-        req.refresh_from_db()
-        self.assertEqual(req.japan_item, self.item1)
+        self.assertNotContains(r, "Attach to box item")
 
 
 class PaletteTests(TestCase):
@@ -1569,10 +1505,12 @@ class PaletteTests(TestCase):
         self.assertNotRegex(tags, r"violet|purple|indigo|#[0-9a-fA-F]{6}")
 
     def test_badges_use_status_pills(self):
-        from .templatetags.tracker_tags import badge
-        self.assertEqual(badge("in_box"), "pill pill-info")      # was purple
+        from .templatetags.tracker_tags import badge, order_badge
         self.assertEqual(badge("missing"), "pill pill-danger")
         self.assertEqual(badge("checked"), "pill pill-ok")
+        # customer orders: Ordered sage, Arrived teal, Delivered green, Cancelled grey
+        self.assertEqual([order_badge(s) for s in ("ordered", "arrived", "delivered", "cancelled")],
+                         ["pill-neutral", "pill-info", "pill-ok", "pill-grey"])
 
 
 class LoginPageTests(BaseTest):
@@ -2105,15 +2043,6 @@ class BrandModelItemTests(BaseTest):
         self.assertIn('data-brand-filter="XXIO"', html)
         self.assertIn('data-brand="XXIO"', html)
 
-    def test_customer_order_matches_brand_and_model(self):
-        self.ship()
-        self.add("XXIO MP1400")
-        item = self.latest()
-        req = CustomerRequest.objects.create(customer="Ko Aung", item_name="xxio mp-1400")
-        self.client.force_login(self.owner)
-        r = self.client.get(reverse("request_attach", args=[req.pk]), HTTP_HX_REQUEST="true")
-        self.assertContains(r, f'"japan_item": "{item.pk}"')
-
     def csv(self, text):
         self.client.force_login(self.owner)
         f = SimpleUploadedFile("l.csv", text.encode(), content_type="text/csv")
@@ -2514,8 +2443,6 @@ class CustomerIconSidebarTests(BaseTest):
         self.bag = JapanItem.objects.create(box=self.box, is_bag=True, type="Golf bag", item_name="Ping Hoofer",
                                             qty=1, customer="Ko Aung")
         self.req = CustomerRequest.objects.create(customer="Ko Aung", item_name="TSR2", qty=1)
-        self.req.attach(self.item1)
-        self.open_req = CustomerRequest.objects.create(customer="Ma Hnin", item_name="Ping Hoofer", qty=1)  # Attach: the bag
         self.client.force_login(self.owner)
 
     def test_sidebar_customers_icon_like_the_other_menu_icons(self):
@@ -2542,7 +2469,7 @@ class CustomerIconSidebarTests(BaseTest):
             html = self.client.get(url).content.decode()
             self.assertEqual(html.count(self.ICON), 1, url)                         # the sidebar's only
             self.assertNotIn('alt="Customer"', html, url)
-        partials = [reverse("request_attach", args=[self.open_req.pk]), reverse("box_create"),
+        partials = [reverse("order_edit", args=[self.req.pk]), reverse("box_create"),
                     reverse("item_add", args=[self.box.pk])]
         for url in partials:
             html = self.client.get(url, HTTP_HX_REQUEST="true").content.decode()
@@ -2807,7 +2734,7 @@ class CustomerPaymentTests(BaseTest):
         self.assertEqual(text, "Ko Aung ရှင့် ကျန်ငွေ စုစုပေါင်း 800,000 Ks ပါ။\n"
                                "(XXIO MP1400 300,000 Ks, Titleist Bag 500,000 Ks) /\nTotal balance due: 800,000 Ks.")
         self.assertIn("data-copy-reminder=", html)
-        self.assertIn('data-balance="300000" data-balance-text="300,000 Ks"', html)   # Fulfilled warning
+        self.assertIn('data-balance="300000" data-balance-text="300,000 Ks"', html)   # Delivered warning
         self.pay("800000")
         html = self.client.get(reverse("customer_detail", args=[self.customer.pk])).content.decode()
         self.assertNotIn("data-copy-reminder", html)
@@ -2846,7 +2773,8 @@ class CustomerPaymentTests(BaseTest):
         self.client.post(reverse("payment_delete", args=[p.pk]))
         self.assertFalse(Payment.objects.exists())
         # the Japan sender's box page never shows order prices
-        self.old.attach(self.item1)
+        self.old.japan_item, self.old.box = self.item1, self.box         # an old link from before attaching was removed
+        self.old.save()
         self.client.force_login(self.japan)
         self.assertNotIn("300,000", self.client.get(reverse("box_detail", args=[self.box.pk])).content.decode())
 
@@ -2868,3 +2796,100 @@ class CustomerPaymentTests(BaseTest):
             self.assertEqual(self.client.get(reverse("payment_proof", args=[p.pk])).status_code, 200)
             self.client.force_login(self.japan)
             self.assertEqual(self.client.get(reverse("payment_proof", args=[p.pk])).status_code, 403)
+
+
+class SimpleOrderFlowTests(BaseTest):
+    """Customer orders: no attaching to box items; one status set by hand (Ordered → Arrived → Delivered, Cancelled)."""
+
+    def setUp(self):
+        super().setUp()
+        from .models import Customer
+        self.customer = Customer.objects.create(name="Ko Aung")
+        self.order = CustomerRequest.objects.create(customer="Ko Aung", item_name="XXIO MP1400", qty=2, note="black grip",
+                                                    price_ks=300000)
+
+    def test_status_migration(self):
+        import importlib
+        from django.apps import apps
+        arrived_box = Box.objects.create(cargo=self.cargo, box_no=8, status=Box.Status.ARRIVED)
+        checked_box = Box.objects.create(cargo=self.cargo, box_no=9, status=Box.Status.CHECKED)
+        self.ship()
+        made = {}
+        for key, old, box in (("open", "open", None), ("ordered", "ordered", None), ("in_arrived", "in_box", arrived_box),
+                              ("in_checked", "in_box", checked_box), ("in_shipped", "in_box", self.box),
+                              ("fulfilled", "fulfilled", None), ("cancelled", "cancelled", None)):
+            o = CustomerRequest.objects.create(customer="X", item_name=key, box=box)
+            CustomerRequest.objects.filter(pk=o.pk).update(status=old)
+            made[key] = o
+        importlib.import_module("tracker.migrations.0017_simple_order_status").simplify(apps, None)
+        got = {k: CustomerRequest.objects.get(pk=o.pk).status for k, o in made.items()}
+        self.assertEqual(got, {"open": "ordered", "ordered": "ordered", "in_arrived": "arrived", "in_checked": "arrived",
+                               "in_shipped": "ordered", "fulfilled": "delivered", "cancelled": "cancelled"})
+        self.assertEqual(CustomerRequest.objects.get(pk=made["in_shipped"].pk).box, self.box)   # the link is kept
+
+    def test_attach_is_gone(self):
+        from django.urls import NoReverseMatch
+        for name in ("request_attach", "request_attach_items", "request_detach"):
+            with self.assertRaises(NoReverseMatch):
+                reverse(name, args=[self.order.pk]) if name != "request_attach_items" else reverse(name)
+        self.client.force_login(self.owner)
+        self.assertEqual(self.client.get(f"/requests/{self.order.pk}/attach/").status_code, 404)
+        self.order.japan_item, self.order.box = self.item1, self.box        # an old link: kept but not shown
+        self.order.save()
+        page = self.client.get(reverse("customer_detail", args=[self.customer.pk])).content.decode()
+        for gone in ("Attach to box item", "📦", "detach", "Request:"):
+            self.assertNotIn(gone, page)
+        box_page = self.client.get(reverse("box_detail", args=[self.box.pk])).content.decode()
+        self.assertNotIn("Request:", box_page)
+
+    def test_card_shows_the_simple_order(self):
+        self.client.force_login(self.myanmar)
+        page = self.client.get(reverse("customer_detail", args=[self.customer.pk])).content.decode()
+        card = page[page.index(f'id="request-{self.order.pk}"'):]
+        card = card[:card.index('<section id="payments"')]
+        for shown in ("Ko Aung", "XXIO MP1400", "×2", "black grip", 'name="status"', ">Edit</button>",
+                      "300,000 Ks", "Add payment"):
+            self.assertIn(shown, card)
+        self.assertIn("status-select pill-neutral", card)                   # Ordered: sage
+        self.assertEqual([o for o in ("Ordered", "Arrived", "Delivered", "Cancelled") if f">{o}</option>" in card],
+                         ["Ordered", "Arrived", "Delivered", "Cancelled"])
+        r = self.htmx(self.myanmar, reverse("request_status", args=[self.order.pk]), {"status": "arrived"})
+        self.assertContains(r, "status-select pill-info")                   # Arrived: teal
+        r = self.htmx(self.myanmar, reverse("request_status", args=[self.order.pk]), {"status": "delivered"})
+        self.assertContains(r, "status-select pill-ok")
+        r = self.htmx(self.myanmar, reverse("request_status", args=[self.order.pk]), {"status": "cancelled"})
+        self.assertContains(r, "status-select pill-grey")
+
+    def test_edit_order(self):
+        self.client.force_login(self.myanmar)
+        r = self.client.get(reverse("order_edit", args=[self.order.pk]), HTTP_HX_REQUEST="true")
+        self.assertContains(r, 'value="XXIO MP1400"')
+        r = self.htmx(self.myanmar, reverse("order_edit", args=[self.order.pk]),
+                      {"item_name": "XXIO MP1500", "qty": "3", "note": "", "type": "Driver", "flex": "S", "loft": "10.5"})
+        self.assertContains(r, "XXIO MP1500")
+        self.order.refresh_from_db()
+        self.assertEqual((self.order.item_name, self.order.qty, self.order.flex, self.order.status),
+                         ("XXIO MP1500", 3, "S", "ordered"))
+        r = self.client.get(reverse("request_status", args=[self.order.pk]), HTTP_HX_REQUEST="true")   # Cancel
+        self.assertContains(r, f'id="request-{self.order.pk}"')
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.status, "ordered")
+
+    def test_delivered_warning_and_cancelled_orders_owe_nothing(self):
+        from .models import add_order_money, customer_money
+        self.client.force_login(self.myanmar)
+        page = self.client.get(reverse("customer_detail", args=[self.customer.pk])).content.decode()
+        self.assertIn('data-balance="300000" data-balance-text="300,000 Ks" data-was="ordered"', page)
+        self.order.status = "cancelled"
+        self.order.save()
+        orders = add_order_money(self.customer.requests())
+        money = customer_money(self.customer, orders)
+        self.assertEqual((money["total"], money["balance"], money["status"][0]), (0, 0, "clear"))
+
+    def test_items_packed_section_uses_the_customer_name_on_items(self):
+        self.item1.customer = "ko aung"
+        self.item1.save()
+        self.client.force_login(self.owner)
+        page = self.client.get(reverse("customer_detail", args=[self.customer.pk])).content.decode()
+        self.assertIn("Items packed for Ko Aung", page)
+        self.assertIn("TSR2", page[page.index("Items packed for Ko Aung"):])

@@ -1,0 +1,17 @@
+{% comment %} "Edit" on an order card (swaps the card; Save / Cancel bring it back). {% endcomment %}
+<form id="request-{{ r.pk }}" class="card space-y-3 p-4" hx-post="{% url 'order_edit' r.pk %}" hx-target="this" hx-swap="outerHTML">
+  <p class="text-sm font-semibold text-ink-muted">Edit order for <b class="text-ink">{{ r.customer }}</b></p>
+  {% for e in form.non_field_errors %}<p class="text-sm text-danger-ink">{{ e }}</p>{% endfor %}
+  <div class="grid grid-cols-2 gap-3 sm:grid-cols-6">
+    <div class="col-span-2 sm:col-span-3">{% include "tracker/_field.html" with field=form.item_name %}</div>
+    <div class="col-span-2 sm:col-span-3">{% include "tracker/_field.html" with field=form.type %}</div>
+    <div>{% include "tracker/_field.html" with field=form.flex %}</div>
+    <div>{% include "tracker/_field.html" with field=form.loft %}</div>
+    <div>{% include "tracker/_field.html" with field=form.qty %}</div>
+    <div class="col-span-2 sm:col-span-3">{% include "tracker/_field.html" with field=form.note %}</div>
+  </div>
+  <div class="flex gap-2">
+    <button class="btn btn-primary flex-1 sm:flex-none sm:px-8">Save</button>
+    <button type="button" class="btn btn-ghost" hx-get="{% url 'request_status' r.pk %}" hx-target="#request-{{ r.pk }}" hx-swap="outerHTML">Cancel</button>
+  </div>
+</form>

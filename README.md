@@ -84,11 +84,14 @@ You can still pick a status by hand on the *Edit* page. A manual choice override
 
 Everyone can view the dashboard, shipments and cargo history. **CSV import** is for Owner and Admin only.
 There is no separate Customer requests page: customer orders are added and tracked on each customer's page
-(**+ New order**, status, attach to a box item). Customers are for Owner, Admin and the Myanmar checker; the
+(**+ New order**). An order card shows the customer, item, qty and note, a status dropdown set by hand –
+**Ordered → Arrived → Delivered**, or **Cancelled** (sage / teal / green / grey) – and **Edit** (plus price and payment
+info). Setting Delivered while the order still owes money asks first. Orders are not attached to box items any more
+(old links stay in the database but aren't used). Customers are for Owner, Admin and the Myanmar checker; the
 Japan sender doesn't see them.
 
 **Shipped boxes only for Myanmar:** the Myanmar checker doesn't see a box (dashboard, Shipments,
-Cargo history, order attach lists, or by direct link) until the Japan sender sets it to **Shipped** – with the one-tap **Mark as shipped** button on the box page
+Cargo history, or by direct link) until the Japan sender sets it to **Shipped** – with the one-tap **Mark as shipped** button on the box page
 (or Edit box → Status → Shipped → Save).
 
 **Dates:** *Received in Myanmar* can't be before *Shipped from Japan* (same day is allowed) – checked in the
@@ -96,8 +99,8 @@ app and in Django admin. Calendars don't offer dates before today (a date alread
 Marking a box Shipped without a date records today, and the Myanmar check can't start before the ship date.
 
 **Customers:** (Owner, Admin, Myanmar checker – not the Japan sender) a CRM-style table: avatar + name,
-tap-to-call phone, address, Viber pill, orders (requests + items packed), a status tag (Waiting / In box /
-All delivered / No orders), last update and a favourite star (starred customers stay on top). Live search,
+tap-to-call phone, address, Viber pill, orders (requests + items packed), a status tag from the orders (Waiting = has Ordered orders, Arrived = has Arrived
+orders not yet delivered, All delivered, No orders), last update and a favourite star (starred customers stay on top). Live search,
 Viber / Orders filters, sortable Name / Orders / Last update, 25 rows then "Load more"; rows become compact
 cards on phones. Each customer has a detail page with all their requests and packed items. Customer names
 typed on requests, Japan items or CSV rows create the customer automatically.
@@ -121,8 +124,7 @@ Brand, model, price, etc. are kept for old data, CSV and admin.
 
 **One golf bag per box:** every box holds exactly one golf bag and all golf items are packed inside it.
 The bag (name, color, optional customer, note) is stored as a Japan item flagged `is_bag`, so it is
-checked in Myanmar (its own Matched / Missing / Wrong qty row at the top), can be linked to customer orders
-and attached to requests like any other item. A box only becomes **Checked** when the bag and every item are checked.
+checked in Myanmar (its own Matched / Missing / Wrong qty row at the top) like any other item. A box only becomes **Checked** when the bag and every item are checked.
 Box lists, Cargo history, requests and the box page show the bag next to the box ID ("JP-7 · Titleist Stand Bag").
 The rule is enforced in the Add box modal, on the box page (the bag can be edited but not copied; only Owner/Admin
 can delete it), in CSV import and in `/admin/`. Owner/Admin can override it (a tick box in the modal, CSV import
@@ -179,7 +181,7 @@ Order status: Price not set / No payment / Deposit paid / Fully paid / Overpaid 
 table: Paid, Balance and Money status (All clear / Owes X Ks / Not paid / Not recorded / Credit X Ks), a Money filter
 and sort by Balance. The customer page has Total / Paid / Balance / Credit, the balance per order, the payment history
 with each split, a red "Owes X Ks" badge, **Copy reminder** (Burmese + English) and a warning before marking an order
-Fulfilled while it still owes money. Owner / Admin can delete payments, edit them in /admin/, and "Mark selected orders
+Delivered while it still owes money. Owner / Admin can delete payments, edit them in /admin/, and "Mark selected orders
 as Paid (old order)" on the customer page or in /admin/. Owner, Admin and the Myanmar checker see and add payments;
 the Japan sender never sees customer prices or payments.
 
@@ -311,5 +313,9 @@ static/          css/agom.css (golf theme), img/ (logos, icons; small copies in 
 * Japan items store: name, type, qty, quantity unit, brand, model, club / item type, club number, loft, flex,
   shaft material, specification, color, Japan condition, amount (optional), customer and note.
 * `ReceiveCheck` is one-to-one with `JapanItem`, so tapping a button again overwrites the check.
-* `CustomerRequest` has optional `box` **and** `japan_item` links. Attaching sets the status to *In box*; detaching sets it back to *Ordered*.
+* `CustomerRequest` still has optional `box` and `japan_item` links from the old "Attach to box item" (kept so no data
+  is lost; not used or shown). Its status is set by hand: Ordered / Arrived / Delivered / Cancelled (migration 0017
+  mapped Open/Ordered → Ordered, In box → Arrived if its box had arrived, else Ordered, Fulfilled → Delivered).
+  The customer page's "Items packed for <name>" lists Japan items whose Customer field (set by Owner / Admin) is
+  that name – it doesn't use those links.
 * `Catalog` entries feed the type / model / loft suggestions in the item and request forms. Manage them in `/admin/`.

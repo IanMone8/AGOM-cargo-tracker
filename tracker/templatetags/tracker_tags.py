@@ -17,12 +17,15 @@ BADGES = {
     "matched": "pill-ok",
     "missing": "pill-danger",
     "wrong_qty": "pill-warn",
-    # order (customer request) status
-    "open": "pill-warn",
-    "ordered": "pill-info",
-    "in_box": "pill-info",
-    "fulfilled": "pill-ok",
 }
+
+# customer order status (set by hand): Ordered sage, Arrived teal, Delivered green, Cancelled grey
+ORDER_BADGES = {"ordered": "pill-neutral", "arrived": "pill-info", "delivered": "pill-ok", "cancelled": "pill-grey"}
+
+
+@register.filter
+def order_badge(status):
+    return ORDER_BADGES.get(status, "pill-neutral")
 
 
 @register.filter

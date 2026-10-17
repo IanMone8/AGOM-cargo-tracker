@@ -23,6 +23,7 @@ from .forms import (
     CSVImportForm,
     CustomerForm,
     CustomerOrderForm,
+    OrderEditForm,
     OrderPriceForm,
     PaymentForm,
     ExtraItemForm,
@@ -608,79 +609,31 @@ def order_price(request, pk):
         req.save(update_fields=["price_ks", "updated_at"])
         return render_order_card(request, req)
     return render_order_card(request, req, price_error=form.errors["price_ks"][0])
+
+
 @login_required
 @roles.require(roles.can_use_requests)
-@require_POST
 def request_status(request, pk):
+    """The order card's status dropdown: Ordered / Arrived / Delivered / Cancelled, set by hand.
+    GET just returns the card (Cancel on the Edit form)."""
     req = get_object_or_404(CustomerRequest, pk=pk)
     status = request.POST.get("status")
-    if status in CustomerRequest.Status.values:
+    if request.method == "POST" and status in CustomerRequest.Status.values:
         req.status = status
         req.save(update_fields=["status", "updated_at"])
     return render_order_card(request, req)
 
 
-def _suggestions(req, user):
-    """Japan items that look like this request and are not yet attached.
-
-    First by brand + model ("xxio mp 1400" finds XXIO MP1400 items), then by words in the name."""
-    from .brands import match_key
-    from .models import parse_item
-    qs = visible_items(user).select_related("box__cargo").filter(requests__isnull=True)
-    qs = qs.exclude(box__status=Box.Status.CHECKED)
-    if req.flex:
-        qs = qs.filter(Q(flex=req.flex) | Q(flex=""))
-    parsed = parse_item(req.item_name)
-    if parsed.brand:
-        want = match_key(parsed.model)
-        same = [i for i in qs.filter(brand__iexact=parsed.brand).order_by("-box__id")[:200]
-                if not want or match_key(i.model) == want or want in match_key(i.model)]
-        if same:
-            return same[:5]
-    words = [w for w in req.item_name.split() if len(w) > 2][:3]
-    cond = Q()
-    for w in words:
-        cond &= Q(item_name__icontains=w)
-    if not words:
-        return JapanItem.objects.none()
-    qs = qs.filter(cond)
-    if req.flex:
-        qs = qs.filter(Q(flex=req.flex) | Q(flex=""))
-    return qs.exclude(box__status=Box.Status.CHECKED).order_by("-box__id")[:5]
-
-
 @login_required
 @roles.require(roles.can_use_requests)
-def request_attach(request, pk):
+def order_edit(request, pk):
+    """"Edit" on an order card: item, type, flex, loft, qty, note (price is set on the card)."""
     req = get_object_or_404(CustomerRequest, pk=pk)
-    if request.method == "POST":
-        item = get_object_or_404(visible_items(request.user), pk=request.POST.get("japan_item"))
-        req.attach(item)
+    form = OrderEditForm(request.POST or None, instance=req)
+    if request.method == "POST" and form.is_valid():
+        form.save()
         return render_order_card(request, req)
-    boxes = with_bag(visible_boxes(request.user)).select_related("cargo").exclude(status=Box.Status.CHECKED)
-    return render(request, "tracker/partials/request_attach.html", {
-        "r": req, "suggestions": _suggestions(req, request.user), "boxes": boxes,
-    })
-
-
-@login_required
-@roles.require(roles.can_use_requests)
-def request_attach_items(request):
-    box = visible_boxes(request.user).filter(pk=request.GET.get("box") or 0).first()
-    req_pk = request.GET.get("req", "")
-    return render(request, "tracker/partials/attach_item_options.html", {
-        "items": list(box.items.all()) if box else None,
-        "req_pk": req_pk if req_pk.isdigit() else "",
-    })
-
-
-@login_required
-@roles.require(roles.can_use_requests)
-@require_POST
-def request_detach(request, pk):
-    req = get_object_or_404(CustomerRequest, pk=pk)
-    req.detach()
-    return render_order_card(request, req)
+    return render(request, "tracker/partials/order_edit.html", {"r": req, "form": form})
 
 
 # --- Customers ------------------------------------------------------------------
@@ -721,13 +674,13 @@ def customer_rows(user, q="", viber="", orders="", money=""):
         r, it = reqs.get(_name_key(c.name), []), items.get(_name_key(c.name), [])
         c.request_count, c.item_count = len(r), len(it)
         c.order_count = len(r) + len(it)
-        c.open_count = sum(x["status"] != CustomerRequest.Status.FULFILLED for x in r)
-        c.in_box_count = sum(x["box__status"] != Box.Status.CHECKED for x in it)
-        if c.open_count:
+        S = CustomerRequest.Status
+        c.open_count = sum(x["status"] in (S.ORDERED, S.ARRIVED) for x in r)      # not delivered (or cancelled) yet
+        if any(x["status"] == S.ORDERED for x in r):
             c.tag = ("waiting", "Waiting")
-        elif c.in_box_count:
-            c.tag = ("in_box", "In box")
-        elif c.order_count:
+        elif any(x["status"] == S.ARRIVED for x in r):
+            c.tag = ("arrived", "Arrived")
+        elif r:
             c.tag = ("delivered", "All delivered")
         else:
             c.tag = ("none", "No orders")
@@ -737,10 +690,11 @@ def customer_rows(user, q="", viber="", orders="", money=""):
         c.total_ks = c.paid_ks = c.balance_ks = unpriced = 0
         for x in r:
             p = paid.get(x["pk"], {})
-            key, balance = order_pay_state(x["price_ks"], p.get("ks") or 0, bool(p.get("settled")))
+            key, balance = order_pay_state(x["price_ks"], p.get("ks") or 0, bool(p.get("settled")),
+                                           x["status"] == CustomerRequest.Status.CANCELLED)
             c.paid_ks += p.get("ks") or 0
             c.balance_ks += balance
-            c.total_ks += x["price_ks"] or 0
+            c.total_ks += 0 if key == "cancelled" else (x["price_ks"] or 0)
             unpriced += key == "no_price"
         c.credit_ks = credit.get(c.pk) or 0
         c.money = money_status(c.total_ks, c.paid_ks, c.balance_ks, c.credit_ks, unpriced, bool(r))
@@ -858,7 +812,7 @@ def customer_favourite(request, pk):
 @roles.require(roles.can_use_customers)
 def customer_detail(request, pk, order_form=None, payment_form=None):
     customer = get_object_or_404(Customer, pk=pk)
-    reqs = add_order_money(customer.requests().select_related("box__cargo", "japan_item"))
+    reqs = add_order_money(customer.requests())
     money = customer_money(customer, reqs)
     items = (visible_items(request.user).filter(customer__iexact=customer.name)
              .select_related("box__cargo", "receive_check").order_by("-box__created_at", "-id"))
@@ -871,8 +825,8 @@ def customer_detail(request, pk, order_form=None, payment_form=None):
         "customer": customer,
         "requests": reqs,
         "items": items,
-        "open_count": sum(r.status != CustomerRequest.Status.FULFILLED for r in reqs),
-        "fulfilled_count": sum(r.status == CustomerRequest.Status.FULFILLED for r in reqs),
+        "open_count": sum(r.status in (CustomerRequest.Status.ORDERED, CustomerRequest.Status.ARRIVED) for r in reqs),
+        "delivered_count": sum(r.status == CustomerRequest.Status.DELIVERED for r in reqs),
         "money": money,
         "owing": [o for o in oldest_first if o.balance_ks > 0],
         "pay_orders": oldest_first,
@@ -897,7 +851,7 @@ def customer_new_order(request, pk):
     if form.is_valid():
         order = form.save(commit=False)
         order.customer = customer.name
-        order.status = CustomerRequest.Status.OPEN
+        order.status = CustomerRequest.Status.ORDERED
         order.save()
         messages.success(request, f"New order for {customer.name}: {order.item_name} ×{order.qty}.")
         return redirect(reverse("customer_detail", args=[customer.pk]) + "#orders")

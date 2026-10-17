@@ -1,8 +1,0 @@
-{# The whole item <select> (not just its options), so it can replace itself safely. #}
-<select id="attach-items-{{ req_pk }}" name="japan_item" aria-label="Item" required class="w-full field" {% if items is None %}disabled{% endif %}>
-  {% if items is None %}<option value="">Choose a box first…</option>
-  {% else %}
-    <option value="">{% if items %}Choose item…{% else %}No items in this box{% endif %}</option>
-    {% for item in items %}<option value="{{ item.pk }}">{% if item.is_bag %}Golf bag: {% endif %}{{ item.title }}{% if item.item_name and item.club_label %} · {{ item.club_label }}{% endif %}{% if item.flex %} {{ item.flex }}{% endif %} ×{{ item.qty }}{% if item.customer %} ({{ item.customer }}){% endif %}</option>{% endfor %}
-  {% endif %}
-</select>

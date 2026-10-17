@@ -24,6 +24,7 @@
   --warn: #9A6B22;    --warn-ink: #8A5F1E;   --warn-bg: #F7EEDB;
   --danger: #B4473B;  --danger-ink: #A43F35; --danger-bg: #F6E3E0;
   --info: #2F7A72;    --info-ink: #2A6D66;   --info-bg: #E1F0EE;
+  --grey-ink: #5E6560; --grey-bg: #ECEDEA;   /* cancelled orders */
   /* Viber brand purple – only for the Viber badge */
   --viber: #7360F2;   --viber-ink: #5B47D6;  --viber-bg: #EFEDFD;
   --grad: linear-gradient(180deg, var(--grad-from) 0%, var(--grad-to) 100%);
@@ -120,6 +121,13 @@ textarea.field { resize: vertical; }
 .pill-danger { background: var(--danger-bg); color: var(--danger-ink); }
 .pill-info { background: var(--info-bg); color: var(--info-ink); }
 .pill-neutral { background: var(--sage); color: var(--text-muted); }
+.pill-grey { background: var(--grey-bg); color: var(--grey-ink); }
+/* the order status dropdown wears its pill colour */
+.status-select { font-weight: 700; border-color: transparent; }
+.status-select.pill-neutral { background-color: var(--sage); color: var(--text); }
+.status-select.pill-info { background-color: var(--info-bg); color: var(--info-ink); }
+.status-select.pill-ok { background-color: var(--ok-bg); color: var(--ok-ink); }
+.status-select.pill-grey { background-color: var(--grey-bg); color: var(--grey-ink); }
 .pill-viber { background: var(--viber-bg); color: var(--viber-ink); }
 .pill.pill-viber::before { content: ""; width: .45rem; height: .45rem; margin-right: .35rem; border-radius: 999px; background: var(--viber); }
 
@@ -237,7 +245,7 @@ textarea.field { resize: vertical; }
 .crm-tag { display: inline-flex; align-items: center; gap: .35rem; padding: .2rem .6rem; border-radius: 999px; font-size: .75rem; font-weight: 700; white-space: nowrap; }
 .crm-tag i { width: .45rem; height: .45rem; border-radius: 999px; background: currentColor; }
 .crm-tag-waiting { background: var(--warn-bg); color: var(--warn-ink); }
-.crm-tag-in_box { background: var(--info-bg); color: var(--info-ink); }
+.crm-tag-arrived { background: var(--info-bg); color: var(--info-ink); }
 .crm-tag-delivered { background: var(--ok-bg); color: var(--ok-ink); }
 .crm-tag-none { background: var(--sage); color: var(--text-muted); }
 

@@ -1,23 +1,20 @@
-{% load tracker_tags %}{% comment %} One customer order. Money (Ks price, payment status, balance) only for people who may see payments
-  (never the Japan sender). Owner / admin get a checkbox for "Mark selected orders as Paid (old order)". {% endcomment %}
+{% load tracker_tags %}{% comment %} One customer order: customer, item, qty, note, a status dropdown (Ordered / Arrived / Delivered /
+  Cancelled, set by hand, coloured like its pill) and Edit. Money (Ks price, payment status, balance) only for people who
+  may see payments (never the Japan sender). Owner / admin get a checkbox for "Mark selected orders as Paid (old order)".
+{% endcomment %}
 <div id="request-{{ r.pk }}" class="card p-4 {% if can_use_payments and r.balance_ks %}order-owes{% endif %}">
   <div class="flex items-start justify-between gap-3">
     <div class="min-w-0">
       <div class="flex flex-wrap items-center gap-2">
         {% if can_edit_payments %}<input type="checkbox" name="orders" value="{{ r.pk }}" form="settle-form" class="h-5 w-5 accent-primary" aria-label="Select {{ r.item_name }}" data-settle-pick>{% endif %}
-        <a href="{% url 'customer_by_name' %}?name={{ r.customer|urlencode }}" class="customer-chip font-semibold text-primary-hover underline-offset-2 hover:underline">{{ r.customer }}</a><span class="{{ r.status|badge }}">{{ r.get_status_display }}</span>
-        {% if can_use_payments %}
+        <a href="{% url 'customer_by_name' %}?name={{ r.customer|urlencode }}" class="customer-chip font-semibold text-primary-hover underline-offset-2 hover:underline">{{ r.customer }}</a>
+        {% if can_use_payments and r.pay_status.0 != "cancelled" %}
           <span class="pill {{ r.pay_status.2 }}" data-pay-status="{{ r.pay_status.0 }}">{{ r.pay_status.1 }}</span>
           {% if r.balance_ks %}<span class="owes-badge">Owes {{ r.balance_ks|ks }}</span>{% endif %}
         {% endif %}
       </div>
-      <div class="text-sm">{{ r.type }} {{ r.item_name }}{% if r.flex %} · {{ r.flex }}{% endif %}{% if r.loft %} · {{ r.loft }}°{% endif %} <b>×{{ r.qty }}</b>
-        <span class="text-xs text-ink-muted">· {{ r.created_at|date:"j M Y" }}</span></div>
+      <div class="text-sm" data-order-item>{{ r.type }} {{ r.item_name }}{% if r.flex %} · {{ r.flex }}{% endif %}{% if r.loft %} · {{ r.loft }}°{% endif %} <b>×{{ r.qty }}</b></div>
       {% if r.note %}<div class="text-xs italic text-ink-muted">{{ r.note }}</div>{% endif %}
-      {% if r.japan_item %}
-        <div class="mt-1 text-xs text-info-ink">📦 In <a class="font-semibold underline" href="{% url 'box_detail' r.box_id %}">{{ r.box.title }}</a>: {{ r.japan_item.title }} ×{{ r.japan_item.qty }}
-          <button class="ml-1 text-ink-muted underline" hx-post="{% url 'request_detach' r.pk %}" hx-target="#request-{{ r.pk }}" hx-swap="outerHTML">detach</button></div>
-      {% endif %}
     </div>
     {% if can_use_payments %}
       <div class="shrink-0 text-right">
@@ -28,14 +25,11 @@
   </div>
   <div class="mt-2 flex flex-wrap items-center gap-2">
     <select name="status" hx-post="{% url 'request_status' r.pk %}" hx-target="#request-{{ r.pk }}" hx-swap="outerHTML"
-            class="field !w-auto !py-1.5 text-sm" aria-label="Order status"
-            {% if can_use_payments %}data-balance="{{ r.balance_ks|default:0 }}" data-balance-text="{{ r.balance_ks|ks }}" data-was="{{ r.status }}"{% endif %}>
+            class="field status-select {{ r.status|order_badge }} !w-auto !py-1.5 text-sm" aria-label="Order status"
+            {% if can_use_payments %}data-balance="{{ r.balance_ks|default:0 }}" data-balance-text="{{ r.balance_ks|ks }}"{% endif %} data-was="{{ r.status }}">
       {% for value, label in status_choices %}<option value="{{ value }}" {% if r.status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
     </select>
-    {% if not r.japan_item %}
-      <button class="btn btn-info-soft !py-1.5"
-              hx-get="{% url 'request_attach' r.pk %}" hx-target="#attach-{{ r.pk }}">📦 Attach to box item</button>
-    {% endif %}
+    <button type="button" class="btn btn-ghost !py-1.5" hx-get="{% url 'order_edit' r.pk %}" hx-target="#request-{{ r.pk }}" hx-swap="outerHTML">Edit</button>
     {% if can_use_payments %}
       <form class="price-form" hx-post="{% url 'order_price' r.pk %}" hx-target="#request-{{ r.pk }}" hx-swap="outerHTML">
         <label class="ks-wrap"><span class="sr-only">Price (Ks) of {{ r.item_name }}</span>
@@ -44,9 +38,8 @@
           <span class="ks-unit" aria-hidden="true">Ks</span></label>
         <button class="btn btn-soft !py-1.5">{% if r.price_ks is not None %}Change price{% else %}Set price{% endif %}</button>
       </form>
-      <button type="button" class="btn btn-primary !py-1.5" data-pay-order="{{ r.pk }}" data-pay-name="{{ r.item_name }}">{% icon "plus" "w-4 h-4" %} Add payment</button>
+      {% if r.pay_status.0 != "cancelled" %}<button type="button" class="btn btn-primary !py-1.5" data-pay-order="{{ r.pk }}" data-pay-name="{{ r.item_name }}">{% icon "plus" "w-4 h-4" %} Add payment</button>{% endif %}
     {% endif %}
   </div>
   {% if price_error %}<p class="mt-1 text-xs font-medium text-danger-ink">{{ price_error }}</p>{% endif %}
-  <div id="attach-{{ r.pk }}"></div>
 </div>

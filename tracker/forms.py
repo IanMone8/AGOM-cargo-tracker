@@ -275,7 +275,7 @@ class BoxCreateForm(StyledMixin, forms.ModelForm):
 
 class BagForm(CustomerFieldMixin, ItemTextMixin, StyledMixin, forms.ModelForm):
     """The box's golf bag (required): stored as a JapanItem with is_bag=True, so it is
-    checked in Myanmar, linked to customer orders and attachable like any other item."""
+    checked in Myanmar like any other item."""
 
     price_jpy = YenField(label="Amount (JP¥)")
 
@@ -578,6 +578,22 @@ class CustomerOrderForm(StyledMixin, forms.ModelForm):
         labels = {"item_name": "Item"}
         widgets = {
             "item_name": forms.TextInput(attrs={"list": "catalog-models", "placeholder": "e.g. Ping G430 Max Driver"}),
+            "type": forms.TextInput(attrs={"list": "catalog-types", "placeholder": "Driver, Iron set…"}),
+            "loft": forms.TextInput(attrs={"list": "catalog-lofts"}),
+            "qty": forms.NumberInput(attrs={"min": 1, "inputmode": "numeric"}),
+            "note": forms.TextInput(attrs={"placeholder": "Optional"}),
+        }
+
+
+class OrderEditForm(StyledMixin, forms.ModelForm):
+    """"Edit" on an order card."""
+
+    class Meta:
+        model = CustomerRequest
+        fields = ["item_name", "type", "flex", "loft", "qty", "note"]
+        labels = {"item_name": "Item"}
+        widgets = {
+            "item_name": forms.TextInput(attrs={"list": "catalog-models"}),
             "type": forms.TextInput(attrs={"list": "catalog-types", "placeholder": "Driver, Iron set…"}),
             "loft": forms.TextInput(attrs={"list": "catalog-lofts"}),
             "qty": forms.NumberInput(attrs={"min": 1, "inputmode": "numeric"}),

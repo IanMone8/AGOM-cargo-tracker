@@ -414,10 +414,11 @@ class ExtraItem(models.Model):
 
 class CustomerRequest(models.Model):
     class Status(models.TextChoices):
-        OPEN = "open", "Open"
+        """Set by hand on the order card: Ordered → Arrived → Delivered, or Cancelled."""
         ORDERED = "ordered", "Ordered"
-        IN_BOX = "in_box", "In box"
-        FULFILLED = "fulfilled", "Fulfilled"
+        ARRIVED = "arrived", "Arrived"
+        DELIVERED = "delivered", "Delivered"
+        CANCELLED = "cancelled", "Cancelled"
 
     customer = models.CharField(max_length=100)
     type = models.CharField(max_length=50, blank=True)
@@ -428,7 +429,8 @@ class CustomerRequest(models.Model):
     price_ks = models.PositiveIntegerField("Price (Ks)", null=True, blank=True,
                                            help_text="Whole Kyat the customer pays for this order")
     note = models.CharField(max_length=255, blank=True)
-    status = models.CharField(max_length=10, choices=Status.choices, default=Status.OPEN)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.ORDERED)
+    # Old "Attach to box item" links: kept so no data is lost, no longer used or shown in the app.
     box = models.ForeignKey(
         Box, on_delete=models.SET_NULL, null=True, blank=True, related_name="requests"
     )
@@ -447,20 +449,6 @@ class CustomerRequest(models.Model):
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         Customer.ensure(self.customer)
-
-    def attach(self, item):
-        self.japan_item = item
-        self.box = item.box
-        if self.status in (self.Status.OPEN, self.Status.ORDERED):
-            self.status = self.Status.IN_BOX
-        self.save()
-
-    def detach(self):
-        self.japan_item = None
-        self.box = None
-        if self.status == self.Status.IN_BOX:
-            self.status = self.Status.ORDERED
-        self.save()
 
 
 class Catalog(models.Model):
@@ -808,6 +796,7 @@ ORDER_PAY_STATUS = {
     "paid": ("Fully paid", "pill-ok"),
     "settled": ("Paid (old order)", "pill-ok"),
     "over": ("Overpaid", "pill-info"),
+    "cancelled": ("Cancelled", "pill-grey"),
 }
 
 
@@ -822,13 +811,17 @@ def add_order_money(orders):
         row = sums.get(o.pk, {})
         o.paid_ks = row.get("paid") or 0
         o.settled = bool(row.get("settled"))
-        key, o.balance_ks = order_pay_state(o.price_ks, o.paid_ks, o.settled)
+        key, o.balance_ks = order_pay_state(o.price_ks, o.paid_ks, o.settled,
+                                            o.status == CustomerRequest.Status.CANCELLED)
         o.pay_status = (key, *ORDER_PAY_STATUS[key])
     return orders
 
 
-def order_pay_state(price, paid, settled):
-    """(status key, balance) of one order from its price and what its allocations add up to."""
+def order_pay_state(price, paid, settled, cancelled=False):
+    """(status key, balance) of one order from its price and what its allocations add up to.
+    A cancelled order owes nothing (and isn't counted in the customer's total)."""
+    if cancelled:
+        return "cancelled", 0
     if settled:
         return "settled", 0
     if price is None:
@@ -861,7 +854,7 @@ def money_status(total, paid, balance, credit, unpriced, has_orders):
 
 def customer_money(customer, orders):
     """Summary for one customer: total, paid, balance, credit, unpriced, status. orders: add_order_money() output."""
-    total = sum(o.price_ks or 0 for o in orders if o.price_ks is not None)
+    total = sum(o.price_ks or 0 for o in orders if o.pay_status[0] != "cancelled")
     paid = sum(o.paid_ks for o in orders)
     balance = sum(o.balance_ks for o in orders)
     credit = customer_credit(customer)

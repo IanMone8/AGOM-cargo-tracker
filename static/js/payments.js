@@ -1,4 +1,4 @@
-/* Customer page: "+ Add payment" (split suggestion), "Copy reminder", the Fulfilled-with-balance warning and the
+/* Customer page: "+ Add payment" (split suggestion), "Copy reminder", the Delivered-with-balance warning and the
    "Mark selected orders as Paid (old order)" bar. Loaded only for people who may see payments (not the Japan sender). */
 (function () {
   const num = v => parseInt(String(v || '').replace(/[^0-9]/g, ''), 10) || 0;
@@ -119,13 +119,13 @@
     setTimeout(() => label.textContent = 'Copy reminder', 2000);
   });
 
-  // --- Fulfilled while money is still owed: warn, but it can go ahead -------------------------------------------
+  // --- Delivered while money is still owed: warn, but it can go ahead -------------------------------------------
   document.body.addEventListener('htmx:confirm', e => {
     const sel = e.detail.elt;
     if (!sel.matches || !sel.matches('select[data-balance]')) return;
-    if (sel.value !== 'fulfilled' || num(sel.dataset.balance) <= 0) return;
+    if (sel.value !== 'delivered' || num(sel.dataset.balance) <= 0) return;
     e.preventDefault();
-    if (confirm(`This order still owes ${sel.dataset.balanceText}. Mark it as Fulfilled anyway?`)) e.detail.issueRequest(true);
+    if (confirm(`This order still owes ${sel.dataset.balanceText}. Mark it as Delivered anyway?`)) e.detail.issueRequest(true);
     else sel.value = sel.dataset.was;
   });
 
