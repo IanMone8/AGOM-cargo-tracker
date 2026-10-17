@@ -402,6 +402,10 @@ textarea.field { resize: vertical; }
 .item-link { text-decoration: underline; font-weight: 600; }
 
 /* ---------- Club option picker (two taps, big targets) ---------- */
+.club-warn { margin-top: .4rem; padding: .45rem .65rem; border-radius: .7rem; background: var(--danger-bg); color: var(--danger-ink);
+  font-size: .8rem; font-weight: 700; }
+.club-warn[hidden] { display: none; }
+.item-card.has-problem { box-shadow: 0 0 0 3px var(--danger-ink), 0 10px 26px -14px rgba(23, 50, 34, .35); }
 .club-row { display: flex; flex-wrap: wrap; gap: .5rem; }
 .club-panel { margin-top: .6rem; padding: .6rem; border-radius: 1rem; background: var(--sage); border: 1px dashed var(--line-strong); }
 .club-btn {

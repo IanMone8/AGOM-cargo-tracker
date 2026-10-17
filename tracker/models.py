@@ -228,7 +228,7 @@ class Box(models.Model):
 
 
 def club_label(type_, *, head_only=False, loft="", shaft="", club_number="", length_in=""):
-    """One short label for a club pick, e.g. "Driver head 9.5°", "Iron · Graphite 5", "Wedge 52°",
+    """One short label for a club pick, e.g. "Driver head 9.5°", "Iron · Graphite", "Wedge 52°",
     "Wood 3W", "Hybrid 4H", "Putter 34″"."""
     base = f"{type_} head" if (type_ and head_only) else (type_ or "")
     shaft_txt = {"steel": "Steel", "graphite": "Graphite"}.get(shaft, shaft or "")
@@ -554,7 +554,7 @@ class ClubOption(models.Model):
     """
 
     category = models.ForeignKey(ClubCategory, on_delete=models.CASCADE, related_name="options")
-    label = models.CharField(max_length=30, help_text='Button text, e.g. "10.5", "3W", "Graphite 5", "52°", "34"')
+    label = models.CharField(max_length=30, help_text='Button text, e.g. "10.5", "3W", "Graphite", "52°", "34"')
     sort_order = models.PositiveIntegerField(default=0)
     active = models.BooleanField(default=True)
     # structured values copied onto the item
@@ -581,6 +581,25 @@ class ClubOption(models.Model):
         item.loft, item.shaft_material = self.loft, self.shaft_material
         item.club_number, item.head_only = self.club_number, self.head_only
         item.length_in = self.length_in
+
+
+def choose_option_message(category_name):
+    article = "an" if category_name[:1].lower() in "aeiou" else "a"
+    return f"Choose {article} {category_name} option."
+
+
+def club_value_problem(type_, *, loft="", shaft="", club_number="", length_in="", head_only=False):
+    """ "Choose a Driver option." when an item has a picker category's type (Driver, Iron…) but none of its
+    values – the category was chosen without a value. "" when fine: no club option, a full one, or free text.
+    Used by /admin/ and the CSV import; the item card checks the picker itself (JapanItemForm)."""
+    if not (type_ or "").strip() or loft or shaft or club_number or length_in:
+        return ""
+    options = list(ClubOption.objects.filter(type__iexact=type_.strip(), category__free_text=False)
+                   .select_related("category"))
+    options = [o for o in options if o.head_only == bool(head_only)] or options
+    if not options or any(not (o.loft or o.shaft_material or o.club_number or o.length_in) for o in options):
+        return ""
+    return choose_option_message(options[0].category.name)
 
 
 class Brand(models.Model):

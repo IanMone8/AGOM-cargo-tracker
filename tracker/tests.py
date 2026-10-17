@@ -154,7 +154,7 @@ class CSVImportTests(BaseTest):
     def test_import_creates_boxes_and_items(self):
         r = self.upload(
             "box,type,item_name,flex,loft,qty,condition,price_jpy,customer,note\n"
-            "GN-3,Putter,Newport 2,,,1,used,\"12,000\",,\n"
+            "GN-3,,Newport 2,,,1,used,\"12,000\",,\n"
             "oct26-gn-5,Bag,Ping Hoofer,,,,,,,\n"
             "oct26-gn-5,Driver,Qi10,sr,10.5,2,new,,Ma Hnin,\n"
         )
@@ -205,7 +205,7 @@ class AddBoxModalTests(BaseTest):
 
     def test_create_box_with_items_skips_deleted_card(self):
         from .models import ClubOption
-        graphite5 = ClubOption.objects.get(category__name="Iron", label="Graphite 5")
+        graphite5 = ClubOption.objects.get(category__name="Iron", label="Graphite")
         # Card 1 was deleted in the browser: it is posted half-filled with DELETE=on.
         data = self.post_data(**{
             "items-1-item_name": "half typed", "items-1-DELETE": "on",
@@ -223,8 +223,8 @@ class AddBoxModalTests(BaseTest):
                          (True, "Titleist Stand Bag", "Black", "", "zip pocket", "Golf bag", 1))  # customer: not the Japan sender's
         self.assertEqual(box.title, "OCT26-GN-9 · Titleist Stand Bag")
         self.assertEqual((iron.type, iron.shaft_material, iron.club_number, iron.flex, iron.note),
-                         ("Iron", "graphite", "5", "R", "with covers"))
-        self.assertEqual(iron.club_label, "Iron · Graphite 5")
+                         ("Iron", "graphite", "", "R", "with covers"))
+        self.assertEqual(iron.club_label, "Iron · Graphite")
         self.assertEqual((putter.type, putter.item_name, putter.qty, putter.title), ("Putter", "", 3, "Putter"))
 
     def test_invalid_box_rerenders_modal(self):
@@ -1012,7 +1012,7 @@ class ClubOptionTests(BaseTest):
 
     def test_seeded_options_and_labels(self):
         self.assertEqual(len(self.opt), 36)
-        for label in ("Driver 9°", "Driver 10.5°", "Driver head 8°", "Driver head 9.5°", "Iron · Graphite 5",
+        for label in ("Driver 9°", "Driver 10.5°", "Driver head 8°", "Driver head 9.5°", "Iron · Graphite",
                       "Iron · Steel", "Wedge 48°", "Wedge 60°", "Wood 2W", "Wood 3W", "Wood 9W", "Hybrid 2H",
                       "Hybrid 4H", "Hybrid 7H", "Putter 32″", "Putter 34″", "Putter 38″"):
             self.assertIn(label, self.opt)
@@ -1039,7 +1039,7 @@ class ClubOptionTests(BaseTest):
         self.assertIn(">52°</button>", html)
 
     def test_structured_save(self):
-        cases = [("Iron · Graphite 5", dict(type="Iron", shaft_material="graphite", club_number="5", head_only=False)),
+        cases = [("Iron · Graphite", dict(type="Iron", shaft_material="graphite", club_number="", head_only=False)),
                  ("Wedge 52°", dict(type="Wedge", loft="52", head_only=False)),
                  ("Driver head 9.5°", dict(type="Driver", loft="9.5", head_only=True)),
                  ("Driver 10.5°", dict(type="Driver", loft="10.5", head_only=False)),
@@ -1161,7 +1161,7 @@ class ClubOptionTests(BaseTest):
         r = self.client.post(reverse("csv_import"), {"file": f})
         self.assertContains(r, "Imported 3 item(s)")
         labels = sorted(i.club_label for i in JapanItem.objects.filter(box=self.box).exclude(pk__in=[self.item1.pk, self.item2.pk, bag.pk]))
-        self.assertEqual(labels, ["Driver head 10°", "Iron · Graphite 5", "Wedge 56°"])
+        self.assertEqual(labels, ["Driver head 10°", "Iron · Graphite", "Wedge 56°"])   # old spelling still works
         f = SimpleUploadedFile("l.csv", b"box,item_name,club_option\nGN-3,X,Wedge 99\n", content_type="text/csv")
         self.assertContains(self.client.post(reverse("csv_import"), {"file": f}), "Unknown club_option")
 
@@ -2410,3 +2410,93 @@ class DisplaySpellingTests(BaseTest):
         self.assertEqual((a.item_name, a.model), ("XXIO MP1400", "MP1400"))
         self.assertEqual(b.item_name, "Titleist Golf Bag")
         self.assertEqual((c.item_name, c.model), ("TaylorMade QI10", "QI10"))
+
+
+class ClubCategoryValueTests(BaseTest):
+    """Club option stays optional, but a chosen category needs one of its values (or text, for Other)."""
+
+    def setUp(self):
+        super().setUp()
+        from .models import ClubCategory, ClubOption
+        self.add_bag()
+        self.cat = {c.name: c for c in ClubCategory.objects.all()}
+        self.graphite = ClubOption.objects.get(category__name="Iron", label="Graphite")
+        self.client.force_login(self.japan)
+
+    def add(self, **data):
+        return self.htmx(self.japan, reverse("item_add", args=[self.box.pk]), {"qty": "1", **data})
+
+    def test_iron_graphite_renamed(self):
+        o = self.graphite
+        self.assertEqual((o.label, o.type, o.shaft_material, o.club_number, o.full_label),
+                         ("Graphite", "Iron", "graphite", "", "Iron · Graphite"))
+        html = self.client.get(reverse("item_add", args=[self.box.pk]), HTTP_HX_REQUEST="true").content.decode()
+        self.assertRegex(html, r'data-club-label="Iron · Graphite"\s+aria-pressed="false">Graphite</button>')
+        self.assertNotIn("Graphite 5", html)
+
+    def test_migration_clears_the_old_number(self):
+        import importlib
+        from django.apps import apps
+        old = JapanItem.objects.create(box=self.box, type="Iron", shaft_material="graphite", club_number="5", qty=1)
+        steel = JapanItem.objects.create(box=self.box, type="Iron", shaft_material="steel", club_number="5", qty=1)
+        importlib.import_module("tracker.migrations.0014_iron_graphite").rename(apps, None)
+        old.refresh_from_db(); steel.refresh_from_db()
+        self.assertEqual((old.club_number, old.club_label), ("", "Iron · Graphite"))
+        self.assertEqual(steel.club_number, "5")                                   # other items untouched
+
+    def test_category_without_value_is_rejected(self):
+        r = self.add(item_name="Ping G430", club_category=str(self.cat["Driver"].pk))
+        self.assertContains(r, "Choose a Driver option.")
+        self.assertRegex(r.content.decode(), r'data-club-cat="%d"[^>]*aria-pressed="true"' % self.cat["Driver"].pk)
+        self.assertFalse(JapanItem.objects.filter(item_name="Ping G430").exists())
+        self.assertContains(self.add(item_name="X", club_category=str(self.cat["Iron"].pk)), "Choose an Iron option.")
+        r = self.add(item_name="X", club_option="other", club_other=" ", club_category=str(self.cat["Other"].pk))
+        self.assertFalse(JapanItem.objects.filter(item_name="X").exists())
+        self.assertContains(r, "data-club-warn")
+        # with a value it saves; with the category cleared (nothing tapped) there's no club option at all
+        self.add(item_name="Ping G430", club_category=str(self.cat["Iron"].pk), club_option=str(self.graphite.pk))
+        self.assertEqual(JapanItem.objects.get(item_name="Ping G430").club_label, "Iron · Graphite")
+        self.add(item_name="Head Cover", club_category="", club_option="")
+        self.assertEqual(JapanItem.objects.get(item_name="Head Cover").type, "")
+
+    def test_add_box_modal_formset(self):
+        data = {"cargo": self.cargo.pk, "box_id": "OCT26-GN-12", "notes": "", "bag-item_name": "Ping Hoofer",
+                "items-TOTAL_FORMS": "2", "items-INITIAL_FORMS": "0", "items-MIN_NUM_FORMS": "0",
+                "items-MAX_NUM_FORMS": "1000", "items-0-item_name": "Pro V1", "items-0-qty": "1",
+                "items-1-item_name": "Srixon ZX5", "items-1-qty": "1", "items-1-club_category": str(self.cat["Wedge"].pk)}
+        r = self.htmx(self.japan, reverse("box_create"), data)
+        self.assertContains(r, "Choose a Wedge option.")
+        self.assertFalse(Box.objects.filter(code="OCT26-GN-12").exists())
+
+    def test_card_markup(self):
+        html = self.client.get(reverse("box_create"), HTTP_HX_REQUEST="true").content.decode()
+        self.assertIn('name="items-0-club_category"', html)
+        self.assertIn("data-club-warn", html)
+
+    def csv(self, rows):
+        from .csv_import import import_japan_csv
+        return import_japan_csv(SimpleUploadedFile("l.csv", rows.encode()))
+
+    def test_csv_old_and_new_spelling_and_category_alone(self):
+        result = self.csv("box,item,club_option\nGN-3,A,Iron Graphite\nGN-3,B,Iron · Graphite 5\nGN-3,C,iron graphite\n")
+        self.assertEqual(result.errors, [])
+        self.assertEqual({i.club_label for i in JapanItem.objects.filter(item_name__in=["A", "B", "C"])}, {"Iron · Graphite"})
+        result = self.csv("box,item,club_option\nGN-3,D,Driver\n")
+        self.assertEqual(result.errors, [(2, "club_option 'Driver': Choose a Driver option – give its value too, "
+                                             "e.g. 'Driver 9°'")])
+        result = self.csv("box,item,type\nGN-3,E,Driver\n")                        # older type column alone
+        self.assertIn("Choose a Driver option", result.errors[0][1])
+        self.assertFalse(JapanItem.objects.filter(item_name__in=["D", "E"]).exists())
+
+    def test_admin(self):
+        self.owner.is_staff = True
+        self.owner.save()
+        self.client.force_login(self.owner)
+        data = {"box": self.box.pk, "type": "Driver", "item_name": "New", "qty": 1, "condition": "new",
+                "quantity_unit": "pcs", "piece_prices": "[]",
+                "receive_check-TOTAL_FORMS": "0", "receive_check-INITIAL_FORMS": "0",
+                "receive_check-MIN_NUM_FORMS": "0", "receive_check-MAX_NUM_FORMS": "1"}
+        r = self.client.post("/admin/tracker/japanitem/add/", data)
+        self.assertContains(r, "Choose a Driver option.")
+        self.client.post("/admin/tracker/japanitem/add/", {**data, "loft": "10.5"})
+        self.assertTrue(JapanItem.objects.filter(item_name="New", loft="10.5").exists())

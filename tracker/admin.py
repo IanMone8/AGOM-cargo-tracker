@@ -3,7 +3,8 @@ from django.contrib import admin, messages
 from django.core.exceptions import ValidationError
 from django.forms.models import BaseInlineFormSet
 
-from .models import Box, Brand, BrandModel, Cargo, Catalog, ClubCategory, ClubOption, Customer, CustomerRequest, ExtraItem, JapanItem, ReceiveCheck
+from .models import (Box, Brand, BrandModel, Cargo, Catalog, ClubCategory, ClubOption, Customer, CustomerRequest, ExtraItem,
+                     JapanItem, ReceiveCheck, club_value_problem)
 
 
 @admin.register(Cargo)
@@ -48,8 +49,33 @@ class BoxAdminForm(forms.ModelForm):
         fields = "__all__"
 
 
+class ClubValueAdminMixin:
+    """Same rule as the item card: a club category (Driver, Iron…) needs one of its values (loft, shaft, number…)."""
+
+    def clean(self):
+        data = super().clean()
+        def value(name):
+            return data.get(name, getattr(self.instance, name)) if name in self.fields else getattr(self.instance, name)
+        club_fields = {"type", "loft", "shaft_material", "club_number", "length_in", "head_only"}
+        if not value("is_bag") and club_fields & set(self.changed_data):   # untouched old rows don't block a save
+            problem = club_value_problem(value("type"), loft=value("loft"), shaft=value("shaft_material"),
+                                         club_number=value("club_number"), length_in=value("length_in"),
+                                         head_only=value("head_only"))
+            if problem:
+                self.add_error("type" if "type" in self.fields else None,
+                               f"{problem} Give its loft, shaft, club number or length – or leave the type empty.")
+        return data
+
+
+class JapanItemInlineForm(ClubValueAdminMixin, forms.ModelForm):
+    class Meta:
+        model = JapanItem
+        fields = "__all__"
+
+
 class JapanItemInline(admin.TabularInline):
     model = JapanItem
+    form = JapanItemInlineForm
     formset = BagInlineFormSet
     extra = 0
     fields = ["is_bag", "type", "item_name", "color", "flex", "loft", "qty", "condition", "price_jpy", "piece_prices",
@@ -96,7 +122,7 @@ class ReceiveCheckInline(admin.StackedInline):
     fields = ["result", "received_qty", "note", "checked_by"]
 
 
-class JapanItemAdminForm(forms.ModelForm):
+class JapanItemAdminForm(ClubValueAdminMixin, forms.ModelForm):
     allow_bag_exception = forms.BooleanField(
         required=False, label="Owner override: allow the box to have no bag or a second bag", help_text=OVERRIDE_HELP)
 
@@ -212,7 +238,7 @@ class ClubOptionAdmin(admin.ModelAdmin):
         ("Button", {"fields": ["category", "label", "sort_order", "active"]}),
         ("Saved on the item", {"fields": ["type", "loft", "shaft_material", "club_number", "length_in", "head_only"],
                                "description": 'e.g. Wedge 52°: type "Wedge", loft "52". '
-                                              'Iron Graphite 5: type "Iron", shaft graphite, club number "5". '
+                                              'Iron Graphite: type "Iron", shaft graphite. '
                                               'Wood 3W: type "Wood", club number "3W". '
                                               'Putter 34″: type "Putter", length "34".'}),
     ]

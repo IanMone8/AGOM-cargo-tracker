@@ -18,7 +18,8 @@ from dataclasses import dataclass, field
 from django.db import transaction
 
 from .forms import is_bag_word
-from .models import Box, Cargo, ClubOption, Customer, JapanItem, parse_box_code, parse_item, remember_item
+from .models import (Box, Cargo, ClubOption, Customer, JapanItem, choose_option_message, club_value_problem,
+                     parse_box_code, parse_item, remember_item)
 
 # Template columns (simple). Older files may also use: type, quantity_unit, brand, model,
 # club_type, club_number, loft, shaft_material, specification, color, condition, price_jpy.
@@ -37,14 +38,14 @@ TEMPLATE_ROWS = [
     ["", "GN", "bag", "Titleist Stand Bag", "Black", "", "", "1", "8000", "12,500", "Ko Aung", ""],
     ["", "GN", "", "titleist tsr2", "", "Driver 10.5°", "S", "1", "¥25,000", "", "Ko Aung", "with cover"],
     ["", "GN", "", "", "", "Driver head 9.5", "", "2", "6500;5800", "", "", ""],  # different piece prices
-    ["", "GN", "", "Mizuno JPX 923", "", "Iron · Graphite 5", "R", "1", "", "", "", ""],
+    ["", "GN", "", "Mizuno JPX 923", "", "Iron · Graphite", "R", "1", "", "", "", ""],
     ["", "KL", "bag", "Ping Hoofer", "Navy", "", "", "1", "", "9000", "", ""],
     ["", "KL", "", "Cleveland RTX 6", "", "Wedge 52", "", "1", "4200", "", "", ""],
 ]
 
 
 def _norm_label(text):
-    """'Iron · Graphite 5', 'iron graphite 5', 'Wedge 52°' / 'wedge 52', 'Putter 34″' / 'putter 34' compare equal."""
+    """'Iron · Graphite', 'iron graphite', 'Wedge 52°' / 'wedge 52', 'Putter 34″' / 'putter 34' compare equal."""
     for ch in "°·-″\"":
         text = text.replace(ch, " ")
     return " ".join(text.lower().split())
@@ -63,7 +64,21 @@ def club_option_lookup():
             lookup.setdefault(_norm_label(f"{o.type} {m.group(1)}"), o)
             lookup.setdefault(_norm_label(f"{o.category.name} {m.group(1)}"), o)
             lookup.setdefault(m.group(1) + m.group(2), o)
+    # older spelling: the Iron option was "Graphite 5" (now "Graphite", no club number)
+    graphite = lookup.get(_norm_label("Iron · Graphite"))
+    if graphite:
+        lookup.setdefault(_norm_label("Iron · Graphite 5"), graphite)
     return lookup
+
+
+def category_examples():
+    """Normalised category name → (name, an example label) for categories with value buttons: "Driver" alone
+    is a category without a value, so the row is rejected with an example to use instead."""
+    out = {}
+    for o in (ClubOption.objects.filter(active=True, category__active=True, category__free_text=False)
+              .select_related("category").order_by("category__sort_order", "sort_order", "id")):
+        out.setdefault(_norm_label(o.category.name), (o.category.name, o.full_label))
+    return out
 
 
 @dataclass
@@ -263,6 +278,7 @@ def import_japan_csv(uploaded_file, replace=False, allow_bag_exception=False, cu
 
     cargos = {c.code: c for c in Cargo.objects.all()}
     club_options = club_option_lookup()
+    categories = category_examples()
     flex_ok = set(JapanItem.Flex.values)
     cond_ok = set(JapanItem.Condition.values)
     unit_ok = set(JapanItem.Unit.values)
@@ -303,7 +319,11 @@ def import_japan_csv(uploaded_file, replace=False, allow_bag_exception=False, cu
         option = None
         if row.get("club_option") and not is_bag:
             option = club_options.get(_norm_label(row["club_option"]))
-            if option is None:
+            category = categories.get(_norm_label(row["club_option"]))
+            if option is None and category:
+                errors.append((row_no, f"club_option '{row['club_option']}': {choose_option_message(category[0])[:-1]} "
+                                       f"– give its value too, e.g. '{category[1]}'"))
+            elif option is None:
                 errors.append((row_no, f"Unknown club_option '{row['club_option']}' – use a label like 'Wedge 52°' "
                                        "(see Admin → Club options)"))
         if not (row.get("item_name") or row.get("club_option") or row.get("type")):
@@ -356,6 +376,13 @@ def import_japan_csv(uploaded_file, replace=False, allow_bag_exception=False, cu
         elif option:  # the single label wins over the old separate columns
             option.apply_to(_Fields(parsed[-1][1]))
         kw = parsed[-1][1]               # bulk_create skips save(): store the line total here
+        if not is_bag and not option:    # older columns: a type like "Driver" with no loft / number is not enough
+            problem = club_value_problem(kw["type"], loft=kw["loft"], shaft=kw["shaft_material"],
+                                         club_number=kw["club_number"], length_in=kw.get("length_in", ""),
+                                         head_only=kw["head_only"])
+            if problem and not row.get("club_option"):
+                errors.append((row_no, f"type '{kw['type']}': {problem[:-1]} – use club_option, e.g. "
+                                       f"'{categories.get(_norm_label(kw['type']), ('', kw['type']))[1]}'"))
         kw["line_total_jpy"] = JapanItem.compute_line_total(kw["price_jpy"], kw["qty"], kw["piece_prices"])
 
     if not parsed and not result.errors:

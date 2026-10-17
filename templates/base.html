@@ -126,13 +126,28 @@
       window.addEventListener('blur', () => { if (active) { reset(active); active = null; } });
     })();
     // Two-tap club option picker: category, then value (or free text for categories like "Other").
+    // Club option as a whole is optional; a tapped category needs a value. Tapping the selected category again clears it.
+    function clubWarn(picker, text) {
+      const warn = picker.querySelector('[data-club-warn]');
+      warn.textContent = text || ''; warn.hidden = !text;
+      picker.closest('.item-card').classList.toggle('has-problem', !!text);
+    }
     document.addEventListener('click', e => {
       const cat = e.target.closest('[data-club-cat]'), val = e.target.closest('[data-club-val]');
       if (!cat && !val) return;
       const picker = e.target.closest('[data-picker]');
       const hidden = picker.querySelector('[data-club-value]'), picked = picker.querySelector('[data-club-picked]');
+      const catValue = picker.querySelector('[data-club-category]');
+      clubWarn(picker, '');
+      if (cat && cat.getAttribute('aria-pressed') === 'true') {        // tap again: no club option
+        picker.querySelectorAll('[data-club-cat], [data-club-val]').forEach(b => b.setAttribute('aria-pressed', false));
+        picker.querySelectorAll('[data-club-panel]').forEach(p => p.hidden = true);
+        hidden.value = ''; catValue.value = ''; picked.textContent = '';
+        return;
+      }
       if (cat) {
         const free = cat.hasAttribute('data-club-free'), key = free ? 'free' : cat.dataset.clubCat;
+        catValue.value = cat.dataset.clubCat;
         picker.querySelectorAll('[data-club-cat]').forEach(b => b.setAttribute('aria-pressed', b === cat));
         picker.querySelectorAll('[data-club-panel]').forEach(p => p.hidden = p.dataset.clubPanel !== key);
         const panel = picker.querySelector(`[data-club-panel="${key}"]`);
@@ -143,6 +158,7 @@
           other.focus();
         } else if (!panel.querySelector(`[data-club-val="${hidden.value}"]`)) {
           hidden.value = ''; picked.textContent = '';   // switched category: pick a value next
+          panel.querySelectorAll('[data-club-val]').forEach(b => b.setAttribute('aria-pressed', false));
         }
       } else {
         hidden.value = val.dataset.clubVal;
@@ -152,9 +168,32 @@
     });
     document.addEventListener('input', e => {
       if (!e.target.matches('[data-club-other]')) return;
-      const picked = e.target.closest('[data-picker]').querySelector('[data-club-picked]');
+      const picker = e.target.closest('[data-picker]'), picked = picker.querySelector('[data-club-picked]');
       picked.textContent = e.target.value ? '✓ ' + e.target.value : '';
+      if (e.target.value.trim()) clubWarn(picker, '');
     });
+    // What's missing on a card's picker: "Choose a Driver option" / "Type the Other item" (same rule as the server).
+    function clubProblem(picker) {
+      const cat = picker.querySelector('[data-club-cat][aria-pressed="true"]');
+      if (!cat) return '';
+      const name = cat.textContent.trim();
+      if (cat.hasAttribute('data-club-free')) {
+        return (picker.querySelector('[data-club-other]') || {}).value?.trim() ? '' : `Type the ${name} item.`;
+      }
+      return picker.querySelector('[data-club-value]').value ? '' : `Choose ${/^[aeiou]/i.test(name) ? 'an' : 'a'} ${name} option.`;
+    }
+    // Save is blocked while a card has a category without a value: warn under its picker and go to the first one.
+    document.addEventListener('submit', e => {
+      const pickers = [...e.target.querySelectorAll('[data-picker]')].filter(p => {
+        const card = p.closest('.item-card');
+        return card && card.style.display !== 'none' && (card.querySelector('[data-delete-flag]') || {}).value !== 'on';
+      });
+      let first = null;
+      pickers.forEach(p => { const problem = clubProblem(p); clubWarn(p, problem); if (problem && !first) first = p; });
+      if (!first) return;
+      e.preventDefault(); e.stopPropagation();          // capture phase: htmx never sees this submit
+      first.closest('.item-card').scrollIntoView({behavior: 'smooth', block: 'center'});
+    }, true);
     // "Item (brand + model)" combo box (tracker/_item_text_field.html + partials/item_assist.html).
     // The server renders the list: names typed in this open box (above the line), every saved name A → Z (below),
     // or "+ Add '…' as new item". Here: open / close, ▾ (full list), taps, and ↑ ↓ Enter Esc.

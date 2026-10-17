@@ -107,9 +107,13 @@ Admin also get Customer (optional, suggests existing customers). The Japan sende
 field, no customer names on the box page, item or bag rows, and no customer names in their autocomplete (the server
 leaves them out; a customer posted anyway is ignored, so an item's existing customer link stays as it is).
 Club option is two taps – a category (Driver, Driver head, Wood, Hybrid, Iron, Wedge, Putter, Other), then a value
-(Other = free text) – and is saved as structured data (e.g. "Iron · Graphite 5" → type Iron, shaft graphite, club number 5;
+(Other = free text) – and is saved as structured data (e.g. "Iron · Graphite" → type Iron, shaft graphite;
 "Driver head 9.5" → type Driver, loft 9.5, head only; "Wood 3W" → type Wood, club number 3W; "Hybrid 4H" → type Hybrid,
-club number 4H; "Putter 34″" → type Putter, length 34 in). The owner manages it all in `/admin/`:
+club number 4H; "Putter 34″" → type Putter, length 34 in). Club option as a whole is optional (bags and accessories
+can have none), but a chosen category needs a value: Save is blocked with "Choose a Driver option" under the picker
+(or "Type the Other item" for a free-text category) and the first card with the problem is highlighted. Tap the
+selected category again to clear it. The same rule is checked on the server, in the CSV import ("Driver" alone is a row
+error) and in `/admin/` for new or changed club fields. The owner manages it all in `/admin/`:
 **Club categories** (add one like "Chipper", set the button order, hide it, or tick *free text* to show a text box
 like Other – values can be added on the same page) and **Club options** (the value buttons). A category with no
 active options and no free text isn't shown. Each card has **Copy**, and saved items have **copy** on the box page.
@@ -201,7 +205,7 @@ box,cargo,kind,item,color,club_option,flex,qty,amount_jpy,cargo_fee_jpy,customer
 ,GN,bag,Titleist Stand Bag,Black,,,1,8000,"12,500",Ko Aung,
 ,GN,,Titleist TSR2,,Driver 10.5°,S,1,"¥25,000",,Ko Aung,with cover
 ,GN,,,,Driver head 9.5,,2,6500;5800,,,
-,GN,,Mizuno JPX 923,,Iron · Graphite 5,R,1,,,,
+,GN,,Mizuno JPX 923,,Iron · Graphite,R,1,,,,
 ,KL,bag,Ping Hoofer,Navy,,,1,,9000,,
 ,KL,,Cleveland RTX 6,,Wedge 52,,1,4200,,,
 ```
@@ -217,7 +221,7 @@ box,cargo,kind,item,color,club_option,flex,qty,amount_jpy,cargo_fee_jpy,customer
   *Row 4: Box GN-6 has 2 bag rows (rows 4, 6)*. Older files with a row of `type` *Bag* count as the bag row.
   Owner/Admin can tick *Owner override* to import such boxes anyway; they are listed as warnings.
 * `club_option` is one label from **Admin → Club options**, e.g. `Driver 10.5`, `Driver head 9.5`,
-  `Iron · Graphite 5`, `Iron Steel`, `Wedge 52°`, `Wood 3W`, `Hybrid 4H`, `Putter 34` (the `°`, `·` and `″` are
+  `Iron · Graphite` (the older `Iron Graphite 5` still works), `Iron Steel`, `Wedge 52°`, `Wood 3W`, `Hybrid 4H`, `Putter 34` (the `°`, `·` and `″` are
   optional, case doesn't matter). Woods and hybrids also accept the number alone – `wood 3`, `Hybrid 4` – or just
   `3W` / `4H`. It fills the structured columns (type, loft, shaft, club number, length, head only) for you.
 * Older files still work: `type`, `loft`, `brand`, `model`, `club_type`, `club_number`, `shaft_material`,

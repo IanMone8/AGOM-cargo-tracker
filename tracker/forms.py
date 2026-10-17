@@ -4,7 +4,7 @@ from django.urls import reverse, reverse_lazy
 from django.utils import timezone
 
 from . import roles
-from .models import Box, Cargo, parse_box_code, parse_item, remember_item, ClubCategory, ClubOption, Customer, CustomerRequest, ExtraItem, JapanItem
+from .models import Box, Cargo, choose_option_message, parse_box_code, parse_item, remember_item, ClubCategory, ClubOption, Customer, CustomerRequest, ExtraItem, JapanItem
 
 INPUT = "field"  # styled in static/css/agom.css
 
@@ -295,6 +295,8 @@ class JapanItemForm(CustomerFieldMixin, ItemTextMixin, StyledMixin, forms.ModelF
     MAX_PIECES = 50  # "Different prices" shows one ¥ box per piece, up to this many
 
     club_option = forms.CharField(required=False, widget=forms.HiddenInput)
+    # the category tapped in the picker (its pk): a category needs one of its values (or text, for "Other")
+    club_category = forms.CharField(required=False, widget=forms.HiddenInput)
     price_jpy = YenField(label="Amount (JP¥)")
     different_prices = forms.BooleanField(required=False, label="Different prices",
                                           widget=forms.CheckboxInput(attrs={"data-diff-prices": ""}))
@@ -395,15 +397,28 @@ class JapanItemForm(CustomerFieldMixin, ItemTextMixin, StyledMixin, forms.ModelF
 
     @property
     def selected_category(self):
-        return self._picked()[0]
+        # after "Choose a Driver option", the tapped category stays selected
+        return self._picked()[0] or (self["club_category"].value() or "").strip()
 
     @property
     def selected_label(self):
         return self._picked()[1]
 
+    def _check_category(self, value):
+        """Club option as a whole is optional, but a tapped category needs a value: "Choose a Driver option"."""
+        group = next((g for g in self.club_groups if g["key"] == (self.cleaned_data.get("club_category") or "").strip()),
+                     None)
+        if group is None or value == "other":
+            return
+        if group["free_text"]:
+            self.add_error("club_other", f"Type the {group['name']} item.")
+        elif not value:
+            self.add_error("club_option", choose_option_message(group["name"]))
+
     def clean(self):
         data = super().clean()
         value = (data.get("club_option") or "").strip()
+        self._check_category(value)
         if value == "other":
             self._other = " ".join((data.get("club_other") or "").split())
             if not self._other:
