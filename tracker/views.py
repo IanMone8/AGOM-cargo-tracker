@@ -1,3 +1,5 @@
+import datetime
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import IntegrityError, transaction
@@ -30,7 +32,8 @@ from .forms import (
     JapanItemForm,
 )
 from .models import (Box, Cargo, Catalog, Customer, CustomerRequest, ExtraItem, JapanItem, Payment, ReceiveCheck,
-                     add_order_money, customer_money, mark_old_orders_paid, money_status, order_pay_state, order_totals)
+                     add_order_money, customer_money, mark_old_orders_paid, money_status, order_pay_state, order_totals,
+                     yangon_today)
 
 ITEM_CATEGORIES = ["Club", "Club set", "Bag", "Balls", "Shoes", "Apparel", "Accessory"]
 CLUB_TYPES = ["Driver", "Fairway wood", "Utility", "Iron set", "Iron", "Wedge", "Putter"]
@@ -666,8 +669,10 @@ def _name_key(name):
     return " ".join((name or "").split()).lower()
 
 
-def customer_rows(user, q="", viber="", orders="", money=""):
-    """Customers with their order numbers, status tag and last update.
+def customer_rows(user, q="", viber="", orders="", money="", date_from=None, date_to=None):
+    """Customers with their order numbers, status tag and last update (latest order date).
+
+    date_from / date_to (order date range, either may be None): only customers with an order on those days.
 
     Orders are matched by name (requests + Japan items). Computed in Python:
     a shop has dozens/hundreds of customers, so two queries cover everything.
@@ -682,7 +687,7 @@ def customer_rows(user, q="", viber="", orders="", money=""):
     customers = list(qs)
 
     reqs, items = {}, {}
-    all_reqs = list(CustomerRequest.objects.exclude(customer="").values("pk", "customer", "status", "updated_at",
+    all_reqs = list(CustomerRequest.objects.exclude(customer="").values("pk", "customer", "status", "order_date",
                                                                       "paid_old_order"))
     sums = order_totals([x["pk"] for x in all_reqs])
     for r in all_reqs:
@@ -704,8 +709,11 @@ def customer_rows(user, q="", viber="", orders="", money=""):
             c.tag = ("delivered", "All delivered")
         else:
             c.tag = ("none", "No orders")
-        stamps = [x["updated_at"] for x in r] + [x["box__updated_at"] for x in it]
-        c.last_update = max(stamps) if stamps else None
+        # last update = the latest order date; customers with only box items fall back to the box's last change
+        days = [x["order_date"] for x in r] or [timezone.localtime(x["box__updated_at"]).date() for x in it]
+        c.last_update = max(days) if days else None
+        c.in_range = any((not date_from or x["order_date"] >= date_from) and (not date_to or x["order_date"] <= date_to)
+                         for x in r)
         # money (Ks): the sum of the order balances, old orders included
         c.balance_ks = unpriced = 0
         for x in r:
@@ -723,6 +731,8 @@ def customer_rows(user, q="", viber="", orders="", money=""):
         customers = [c for c in customers if c.balance_ks > 0]
     elif money == "clear":
         customers = [c for c in customers if c.money[0] == "clear"]
+    if date_from or date_to:
+        customers = [c for c in customers if c.in_range]
     return customers
 
 
@@ -747,13 +757,13 @@ def _customer_table_context(request, params):
     sort = params["sort"] if params["sort"] in CUSTOMER_SORTS else "name"
     direction = "desc" if params["dir"] == "desc" else "asc"
     rows = sort_customers(customer_rows(request.user, params["q"], params["viber"], params["orders"],
-                                        params["money"]), sort, direction)
+                                        params["money"], _day(params["from"]), _day(params["to"])), sort, direction)
     try:
         page = max(1, int(params.get("page") or 1))
     except ValueError:
         page = 1
     shown_to = page * CUSTOMER_PAGE_SIZE
-    base = {k: params[k] for k in ("q", "viber", "orders", "money") if params[k]}
+    base = {k: params[k] for k in ("q", "viber", "orders", "money", "from", "to") if params[k]}
 
     def url(**extra):
         query = urlencode({**base, **{k: v for k, v in extra.items() if v}})
@@ -777,7 +787,18 @@ def _customer_table_context(request, params):
         "dir": direction,
         "sort_urls": sort_urls,
         "page": page,
+        "date_from": params["from"],
+        "date_to": params["to"],
+        "today": yangon_today(),
     }
+
+
+def _day(value):
+    """'2026-10-18' → date, anything else → None."""
+    try:
+        return datetime.date.fromisoformat(value or "")
+    except ValueError:
+        return None
 
 
 def _customer_params(source):
@@ -786,6 +807,8 @@ def _customer_params(source):
         "viber": source.get("viber", "") if source.get("viber", "") in ("yes", "no", "1") else "",
         "orders": source.get("orders", "") if source.get("orders", "") in ("open", "none") else "",
         "money": source.get("money", "") if source.get("money", "") in ("owes", "clear") else "",
+        "from": source.get("from", "") if _day(source.get("from", "")) else "",       # order date range
+        "to": source.get("to", "") if _day(source.get("to", "")) else "",
         "sort": source.get("sort", ""),
         "dir": source.get("dir", ""),
         "page": source.get("page", ""),

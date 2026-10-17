@@ -212,6 +212,14 @@ textarea.field { resize: vertical; }
   background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
   background-position: right 4px center, right 0 center; background-size: 4px 4px; background-repeat: no-repeat; }
 .filter-pill select:focus { outline: none; }
+.date-range { margin: 0; min-width: 0; }                       /* <fieldset>: order date range */
+.date-range input { min-width: 0; width: 8.4rem; border: 0; background: transparent; font: inherit; color: var(--text); }
+.date-range input:focus { outline: none; }
+.date-clear { margin-left: .1rem; font-size: 1.1rem; line-height: 1; color: var(--text-muted); }
+@media (max-width: 639px) {
+  .date-range { flex: 1 1 100%; }
+  .date-range input { flex: 1 1 0; width: auto; }
+}
 .filter-pill:focus-within { box-shadow: inset 0 1px 0 #fff, 0 0 0 3px var(--mint); border-color: var(--primary); }
 
 .crm-table { padding: 0; }
@@ -284,17 +292,17 @@ textarea.field { resize: vertical; }
 }
 @media (min-width: 1024px) { .crm-head { top: 0; } }
 @media (min-width: 1280px) {
-  .crm-head, .crm-row { gap: .5rem; grid-template-columns: minmax(120px, 2fr) 118px 52px 120px 132px 100px 30px 30px; }
+  .crm-head, .crm-row { gap: .5rem; grid-template-columns: minmax(120px, 2fr) 118px 66px 112px 142px 100px 30px 30px; }
   .crm-c-orders { display: block; }
   .crm-head .crm-sort[href*="sort=orders"] { display: inline-flex; }
 }
 @media (min-width: 1440px) {
-  .crm-head, .crm-row { grid-template-columns: minmax(120px, 2fr) 118px 106px 48px 116px 128px 96px 92px 30px 30px; }
+  .crm-head, .crm-row { grid-template-columns: minmax(120px, 2fr) 118px 106px 66px 112px 142px 96px 92px 30px 30px; }
   .crm-col-viber, .crm-c-updated { display: block; }
   .crm-head .crm-sort[href*="sort=updated"] { display: inline-flex; }
 }
 @media (min-width: 1600px) {
-  .crm-head, .crm-row { gap: .6rem; grid-template-columns: minmax(140px, 2fr) 128px minmax(100px, 2fr) 112px 60px 124px 136px 104px 96px 34px 34px; }
+  .crm-head, .crm-row { gap: .6rem; grid-template-columns: minmax(140px, 2fr) 128px minmax(100px, 2fr) 112px 68px 120px 144px 104px 96px 34px 34px; }
   .crm-col-address { display: block; }
   .crm-row .crm-col-address { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: .875rem; }
 }
@@ -509,3 +517,8 @@ textarea.field { resize: vertical; }
   .omt-row > :not(:first-child) { text-align: left; }
   .omt-row > :not(:first-child)::before { content: attr(data-label); display: block; font-size: .68rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; }
 }
+
+/* Order date: "Order #12 · 18 Oct 2026" on the card, month headings on the customer page */
+.order-ref { margin-bottom: .25rem; font-size: .75rem; font-weight: 700; letter-spacing: .02em; color: var(--text-muted); }
+.order-month { margin: 1.25rem 0 .5rem; font-size: .9rem; font-weight: 800; }
+.order-month:first-of-type { margin-top: 0; }

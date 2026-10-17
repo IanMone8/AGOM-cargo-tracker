@@ -29,7 +29,14 @@ MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", 
 MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
                "November", "December"]
 JAPAN_TZ = ZoneInfo("Asia/Tokyo")
+MYANMAR_TZ = ZoneInfo("Asia/Yangon")
 BOX_CODE_RE = re.compile(r"^(%s)(\d{2})-([A-Z0-9]+)-0*(\d+)$" % "|".join(MONTHS))
+
+
+def yangon_today():
+    """Today's date in Myanmar (the default order date)."""
+    from django.utils import timezone
+    return timezone.now().astimezone(MYANMAR_TZ).date()
 
 
 def box_period(when=None):
@@ -421,6 +428,8 @@ class CustomerRequest(models.Model):
         CANCELLED = "cancelled", "Cancelled"
 
     customer = models.CharField(max_length=100)
+    order_date = models.DateField("Order date", default=yangon_today,
+                                  help_text="The day the customer ordered (Myanmar time); not in the future")
     type = models.CharField(max_length=50, blank=True)
     item_name = models.CharField(max_length=200)
     flex = models.CharField(max_length=3, choices=JapanItem.Flex.choices, blank=True)
@@ -442,7 +451,7 @@ class CustomerRequest(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["-created_at"]
+        ordering = ["-order_date", "-created_at"]
 
     def __str__(self):
         return f"{self.customer}: {self.item_name} ×{self.qty} ({self.get_status_display()})"
@@ -874,12 +883,13 @@ def order_items_text(order):
 
 
 def reminder_text(order):
-    """The "Copy reminder" message for one order (Burmese + English): its items, total, paid and balance."""
+    """The "Copy reminder" message for one order (Burmese + English): its number, date, items, total, paid and balance."""
     items = order_items_text(order)
+    day = f"{order.order_date.day} {order.order_date:%b %Y}"
     t, p, b = f"{order.total_ks:,}", f"{order.paid_ks:,}", f"{order.balance_ks:,}"
-    return (f"{order.customer} ရှင့် အော်ဒါ – {items}\n"
+    return (f"{order.customer} ရှင့် အော်ဒါ #{order.pk} ({day}) – {items}\n"
             f"စုစုပေါင်း {t} Ks၊ ပေးပြီး {p} Ks၊ ကျန်ငွေ {b} Ks ပါ။\n"
-            f"Order: {items} / Total: {t} Ks, Paid: {p} Ks, Balance due: {b} Ks.")
+            f"Order #{order.pk} ({day}): {items} / Total: {t} Ks, Paid: {p} Ks, Balance due: {b} Ks.")
 
 
 def mark_old_orders_paid(orders):

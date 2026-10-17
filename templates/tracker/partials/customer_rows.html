@@ -19,7 +19,7 @@
     <div role="cell" class="crm-c-balance crm-col-balance {% if c.balance_ks %}is-owed{% endif %}">{{ c.balance_ks|ks|cut:" Ks"|default:"—" }}</div>
     <div role="cell" class="crm-c-money"><span class="pill {{ c.money.2 }}" data-money-status="{{ c.money.0 }}">{{ c.money.1 }}</span></div>
     <div role="cell" class="crm-c-status"><span class="crm-tag crm-tag-{{ c.tag.0 }}"><i></i>{{ c.tag.1 }}</span></div>
-    <div role="cell" class="crm-c-updated" {% if c.last_update %}title="{{ c.last_update|date:'j M Y, H:i' }}"{% endif %}>{{ c.last_update|ago|default:"—" }}</div>
+    <div role="cell" class="crm-c-updated" {% if c.last_update %}title="Latest order {{ c.last_update|date:'j M Y' }}"{% endif %}>{{ c.last_update|day_ago|default:"—" }}</div>
     <div role="cell" class="crm-c-star">
       <button type="button" class="crm-star {% if c.favourite %}is-on{% endif %}" aria-pressed="{% if c.favourite %}true{% else %}false{% endif %}"
               aria-label="{% if c.favourite %}Remove {{ c.name }} from favourites{% else %}Add {{ c.name }} to favourites{% endif %}"

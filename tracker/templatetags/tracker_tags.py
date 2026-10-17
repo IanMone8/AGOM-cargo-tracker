@@ -88,6 +88,7 @@ ICONS = {
     "bag": "M8 8h8l-.6 12.2a1 1 0 0 1-1 .8H9.6a1 1 0 0 1-1-.8L8 8Zm1.5 0V4.5L8 3m3.5 5V3.5h1.5M14.5 8V5l1.5-1M9 13h6M16 9.5c2 .5 2.5 6 .5 8",
     "edit": "M4 20h4L19 9l-4-4L4 16v4Zm9-13 4 4",
     "chevron-down": "m6 9 6 6 6-6",
+    "calendar": "M7 3v3m10-3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z",
 }
 
 
@@ -147,6 +148,23 @@ def ago(value):
     if (timezone.now() - value).total_seconds() < 60:
         return "just now"
     return f"{timesince(value, depth=1)} ago"
+
+
+@register.filter
+def day_ago(day):
+    """An order date: 'Today', 'Yesterday', '3 days ago' (within a week), else '18 Oct 2026'."""
+    if not day:
+        return ""
+    from ..models import yangon_today
+
+    days = (yangon_today() - day).days
+    if days <= 0:
+        return "Today"
+    if days == 1:
+        return "Yesterday"
+    if days < 7:
+        return f"{days} days ago"
+    return f"{day.day} {day:%b %Y}"
 
 
 @register.filter

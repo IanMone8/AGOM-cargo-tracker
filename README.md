@@ -84,7 +84,9 @@ You can still pick a status by hand on the *Edit* page. A manual choice override
 
 Everyone can view the dashboard, shipments and cargo history. **CSV import** is for Owner and Admin only.
 There is no separate Customer requests page: customer orders are added and tracked on each customer's page
-(**+ New order**). An order card shows the customer, item, qty and note, a status dropdown set by hand –
+(**+ New order**). Each order has an **Order date** (default today in Myanmar time, Asia/Yangon; past dates allowed,
+future dates rejected; editable under Edit; existing orders took the day they were created). The customer page lists
+orders newest first, grouped by month; a card starts with "Order #12 · 18 Oct 2026" and shows the customer, items and note, a status dropdown set by hand –
 **Ordered → Arrived → Delivered**, or **Cancelled** (sage / teal / green / grey) – and **Edit** (plus prices, payments and
 money). Setting Delivered while the order still owes money asks first. Orders are not attached to box items any more
 (old links stay in the database but aren't used). Customers are for Owner, Admin and the Myanmar checker; the
@@ -180,7 +182,8 @@ payment list and a status: Not paid / Deposit paid / Fully paid (Price not set w
 order) for settled old orders). **Copy reminder** copies a Burmese + English message with the items, total, paid and
 balance; setting Delivered while the order still owes money asks first. Customers table: Balance (sum of the order
 balances), Money status (All clear / Owes X Ks / Price not set), a Money filter (All / Owes money / All clear) and
-sort by Balance. The customer page lists Total / Paid / Balance per order. Owner / Admin can delete payments, edit
+sort by Balance, plus an **Ordered from – to** date range (customers with an order in that range). "Last update" is
+the customer's latest order date. The Copy reminder names the order number and date. The customer page lists Total / Paid / Balance per order. Owner / Admin can delete payments, edit
 them in /admin/ (order inlines), and tick old orders → **Mark as paid (old order)** (also an /admin/ action). Owner,
 Admin and the Myanmar checker see and add payments; the Japan sender never sees customer prices or payments
 (templates and endpoints). Migration 0018 turns each old single-item order into one line and each order's old

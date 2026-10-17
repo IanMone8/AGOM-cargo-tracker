@@ -50,6 +50,15 @@
       <option value="clear" {% if money == 'clear' %}selected{% endif %}>All clear</option>
     </select>
   </label>
+  <fieldset class="filter-pill date-range" aria-label="Order date range"
+            onchange="this.querySelector('.date-clear').hidden = !(this.elements.from.value || this.elements.to.value)">{% icon "calendar" "w-4 h-4" %}
+    <span class="text-[0.8rem] font-semibold">Ordered</span>
+    <input type="date" name="from" value="{{ date_from }}" max="{{ today|date:'Y-m-d' }}" aria-label="Order date from">
+    <span aria-hidden="true">–</span>
+    <input type="date" name="to" value="{{ date_to }}" max="{{ today|date:'Y-m-d' }}" aria-label="Order date to">
+    <button type="button" class="date-clear" aria-label="Clear the order date range" {% if not date_from and not date_to %}hidden{% endif %}
+       onclick="const f = this.closest('form'); f.from.value = ''; f.to.value = ''; f.to.dispatchEvent(new Event('change', {bubbles: true}))">×</button>
+  </fieldset>
 </form>
 
 <div id="customer-results">{% include "tracker/partials/customer_results.html" %}</div>

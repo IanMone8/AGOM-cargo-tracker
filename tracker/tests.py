@@ -1,3 +1,4 @@
+import datetime
 import io
 
 from django.contrib.auth.models import Group, User
@@ -838,7 +839,7 @@ class CustomerTableTests(BaseTest):
         self.assertIn('crm-tag-arrived"><i></i>Arrived', html)
         self.assertIn('crm-tag-delivered"><i></i>All delivered', html)
         self.assertIn('crm-tag-none"><i></i>No orders', html)
-        self.assertIn("just now", html)                                     # last update
+        self.assertIn('>Today</div>', html)                                 # last update = latest order date
         for label in (">Open<", ">Edit<", ">Call 0977123456<"):
             self.assertIn(label, html)
 
@@ -2819,11 +2820,14 @@ class OrderPaymentTests(BaseTest):
         self.client.force_login(self.myanmar)
         html = self.client.get(reverse("customer_detail", args=[self.customer.pk])).content.decode()
         self.assertIn('data-balance="640000" data-balance-text="640,000 Ks"', html)
+        CustomerRequest.objects.filter(pk=self.order.pk).update(order_date=datetime.date(2026, 10, 3))
         o = add_order_money([CustomerRequest.objects.get(pk=self.order.pk)])[0]
+        n = self.order.pk
         self.assertEqual(reminder_text(o),
-                         "Ko Aung ရှင့် အော်ဒါ – XXIO MP1400 ×2, Titleist Bag ×1\n"
+                         f"Ko Aung ရှင့် အော်ဒါ #{n} (3 Oct 2026) – XXIO MP1400 ×2, Titleist Bag ×1\n"
                          "စုစုပေါင်း 800,000 Ks၊ ပေးပြီး 160,000 Ks၊ ကျန်ငွေ 640,000 Ks ပါ။\n"
-                         "Order: XXIO MP1400 ×2, Titleist Bag ×1 / Total: 800,000 Ks, Paid: 160,000 Ks, Balance due: 640,000 Ks.")
+                         f"Order #{n} (3 Oct 2026): XXIO MP1400 ×2, Titleist Bag ×1 / Total: 800,000 Ks, Paid: 160,000 Ks, "
+                         "Balance due: 640,000 Ks.")
         self.assertIn("data-copy-reminder=", html)
 
     def test_permissions(self):
@@ -2876,3 +2880,99 @@ class OrderPaymentTests(BaseTest):
             html = self.client.get(reverse("customer_detail", args=[self.customer.pk])).content.decode()
             self.assertIn(reverse("payment_proof_size", args=[p.pk, "thumb"]), html)
             self.assertEqual(self.client.get(reverse("payment_proof", args=[p.pk])).status_code, 200)
+
+
+class OrderDateTests(BaseTest):
+    """Order date: default today (Myanmar), editable, no future dates; card, month groups, last update, filter."""
+
+    def setUp(self):
+        super().setUp()
+        from .models import Customer
+        self.customer = Customer.objects.create(name="Ko Aung")
+        self.client.force_login(self.myanmar)
+
+    def new_order(self, day=None):
+        data = order_data(("XXIO MP1400", 1, "100000"))
+        if day is not None:
+            data["order_date"] = day
+        return self.client.post(reverse("customer_new_order", args=[self.customer.pk]), data)
+
+    def test_default_today_in_yangon(self):
+        from unittest import mock
+        from django.utils import timezone
+        from .models import yangon_today
+        # 20:00 UTC on 17 Oct is already 18 Oct (02:30) in Yangon
+        with mock.patch.object(timezone, "now", return_value=datetime.datetime(2026, 10, 17, 20, 0, tzinfo=datetime.timezone.utc)):
+            self.assertEqual(yangon_today(), datetime.date(2026, 10, 18))
+            self.assertEqual(CustomerRequest.objects.create(customer="Ko Aung", item_name="X").order_date,
+                             datetime.date(2026, 10, 18))
+        html = self.client.get(reverse("customer_detail", args=[self.customer.pk])).content.decode()
+        self.assertIn(f'name="order_date" value="{yangon_today().isoformat()}"', html)
+        self.assertIn(f'max="{yangon_today().isoformat()}"', html)
+
+    def test_past_allowed_future_rejected(self):
+        from .models import yangon_today
+        self.assertEqual(self.new_order("2026-01-05").status_code, 302)
+        self.assertEqual(CustomerRequest.objects.get().order_date, datetime.date(2026, 1, 5))
+        future = (yangon_today() + datetime.timedelta(days=1)).isoformat()
+        r = self.new_order(future)
+        self.assertContains(r, "The order date can&#x27;t be in the future.")
+        self.assertEqual(CustomerRequest.objects.count(), 1)
+        self.new_order()                                                   # left empty -> today
+        self.assertEqual(CustomerRequest.objects.order_by("-pk")[0].order_date, yangon_today())
+
+    def test_edit_changes_date_and_rejects_future(self):
+        from .models import yangon_today
+        o = make_order("Ko Aung", ("XXIO MP1400", 1, 100000))
+        url = reverse("order_edit", args=[o.pk])
+        data = order_data(("XXIO MP1400", 1, "100000", "", o.lines.get().pk), existing=1)
+        r = self.client.post(url, {**data, "order_date": (yangon_today() + datetime.timedelta(days=3)).isoformat()})
+        self.assertContains(r, "can&#x27;t be in the future")
+        self.client.post(url, {**data, "order_date": "2025-12-31"})
+        o.refresh_from_db()
+        self.assertEqual(o.order_date, datetime.date(2025, 12, 31))
+        self.assertContains(self.client.get(reverse("customer_detail", args=[self.customer.pk])),
+                            f"Order #{o.pk} · 31 Dec 2025")
+
+    def test_customer_page_newest_first_grouped_by_month(self):
+        for day in ("2026-09-02", "2026-10-05", "2026-09-20"):
+            o = make_order("Ko Aung", ("Bag " + day, 1, 1000))
+            CustomerRequest.objects.filter(pk=o.pk).update(order_date=day)
+        html = self.client.get(reverse("customer_detail", args=[self.customer.pk])).content.decode()
+        self.assertLess(html.index("October 2026"), html.index("September 2026"))
+        self.assertLess(html.index("Bag 2026-10-05"), html.index("Bag 2026-09-20"))
+        self.assertLess(html.index("Bag 2026-09-20"), html.index("Bag 2026-09-02"))
+        self.assertIn("September 2026 <span", html)
+        self.assertIn("· 2 orders", html)
+
+    def test_last_update_is_latest_order_date_and_range_filter(self):
+        import re
+        from .models import Customer
+        Customer.objects.create(name="Ma Hnin")
+        for name, day in (("Ko Aung", "2026-03-01"), ("Ko Aung", "2026-05-10"), ("Ma Hnin", "2026-08-15")):
+            o = CustomerRequest.objects.create(customer=name, item_name="Bag")
+            CustomerRequest.objects.filter(pk=o.pk).update(order_date=day)
+
+        def names(**params):
+            html = self.client.get(reverse("customer_list"), params).content.decode()
+            return re.findall(r'class="crm-link" title="([^"]+)"', html), html
+        found, html = names(sort="updated", dir="desc")
+        self.assertEqual(found, ["Ma Hnin", "Ko Aung"])
+        self.assertIn('title="Latest order 10 May 2026">10 May 2026<', html)
+        self.assertEqual(names(**{"from": "2026-04-01", "to": "2026-06-30"})[0], ["Ko Aung"])
+        self.assertEqual(names(**{"from": "2026-08-01"})[0], ["Ma Hnin"])
+        self.assertEqual(names(to="2026-03-01")[0], ["Ko Aung"])
+        self.assertEqual(names(**{"from": "2027-01-01"})[0], [])
+        found, html = names(**{"from": "bad"})                             # ignored
+        self.assertEqual(found, ["Ko Aung", "Ma Hnin"])
+
+    def test_migration_uses_created_date_in_yangon(self):
+        import importlib
+        from django.apps import apps
+        mig = importlib.import_module("tracker.migrations.0020_customerrequest_order_date")
+        o = CustomerRequest.objects.create(customer="Ko Aung", item_name="Old")
+        CustomerRequest.objects.filter(pk=o.pk).update(
+            created_at=datetime.datetime(2025, 6, 30, 18, 0, tzinfo=datetime.timezone.utc), order_date="2026-01-01")
+        mig.from_created(apps, None)
+        o.refresh_from_db()
+        self.assertEqual(o.order_date, datetime.date(2025, 7, 1))           # 00:30 on 1 Jul in Yangon

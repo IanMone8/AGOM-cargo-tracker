@@ -1,8 +1,9 @@
-{% load tracker_tags %}{% comment %} One customer order: customer, its item lines, note, a status dropdown (Ordered / Arrived / Delivered /
+{% load tracker_tags %}{% comment %} One customer order: "Order #12 · 18 Oct 2026", customer, its item lines, note, a status dropdown (Ordered / Arrived / Delivered /
   Cancelled, set by hand, coloured like its pill) and Edit. People who may see payments (never the Japan sender) also
   get the prices, Total / Paid / Balance, the payment list, "+ Add payment" and "Copy reminder". Owner / admin get a
   checkbox for "Mark as paid (old order)" and can delete a payment. {% endcomment %}
 <div id="request-{{ r.pk }}" class="card p-4 {% if can_use_payments and r.balance_ks %}order-owes{% endif %}">
+  <p class="order-ref" data-order-ref>Order #{{ r.pk }} · {{ r.order_date|date:"j M Y" }}</p>
   <div class="flex flex-wrap items-center gap-2">
     {% if can_edit_payments %}<input type="checkbox" name="orders" value="{{ r.pk }}" form="settle-form" class="h-5 w-5 accent-primary" aria-label="Select this order" data-settle-pick>{% endif %}
     <a href="{% url 'customer_by_name' %}?name={{ r.customer|urlencode }}" class="customer-chip font-semibold text-primary-hover underline-offset-2 hover:underline">{{ r.customer }}</a>

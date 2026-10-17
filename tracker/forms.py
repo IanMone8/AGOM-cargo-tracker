@@ -568,12 +568,31 @@ class CustomerForm(StyledMixin, forms.ModelForm):
 
 
 class CustomerOrderForm(StyledMixin, forms.ModelForm):
-    """An order (customer request): its note here, its items in OrderLineFormSet."""
+    """An order (customer request): its date and note here, its items in OrderLineFormSet."""
 
     class Meta:
         model = CustomerRequest
-        fields = ["note"]
-        widgets = {"note": forms.TextInput(attrs={"placeholder": "Optional"})}
+        fields = ["order_date", "note"]
+        widgets = {
+            "order_date": forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+            "note": forms.TextInput(attrs={"placeholder": "Optional"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        from .models import yangon_today
+        super().__init__(*args, **kwargs)
+        day = self.fields["order_date"]
+        day.help_text, day.show_hidden_initial, day.required = "", False, False       # left empty → today / unchanged
+        if not self.instance.pk:
+            day.initial = yangon_today()
+        day.widget.attrs.update(max=yangon_today().isoformat(), required=True)      # no future dates
+
+    def clean_order_date(self):
+        from .models import yangon_today
+        day = self.cleaned_data["order_date"] or (self.instance.order_date if self.instance.pk else yangon_today())
+        if day > yangon_today():
+            raise forms.ValidationError("The order date can't be in the future.")
+        return day
 
 
 OrderEditForm = CustomerOrderForm
