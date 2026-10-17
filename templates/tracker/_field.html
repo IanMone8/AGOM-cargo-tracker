@@ -1,4 +1,4 @@
-<label class="block text-[0.8rem] font-semibold text-ink-muted">{{ field.label }}{% if field.field.required %} <span class="text-primary">*</span>{% endif %}
+<label class="block text-[0.8rem] font-semibold text-ink-muted">{% if customer_icon %}<span class="customer-chip align-middle">{% include "tracker/_customer_icon.html" %}{{ field.label }}</span>{% else %}{{ field.label }}{% endif %}{% if field.field.required %} <span class="text-primary">*</span>{% endif %}
   {% if field.name == "price_jpy" or field.name == "cargo_fee_jpy" %}
     <div class="yen-wrap mt-1"><span class="yen-sign" aria-hidden="true">¥</span>{{ field }}</div>
   {% else %}<div class="mt-1">{{ field }}</div>{% endif %}

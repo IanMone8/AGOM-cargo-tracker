@@ -13,7 +13,7 @@
       </div>
       {% if item.specification %}<div class="mt-1 text-xs text-ink-muted">{{ item.specification }}</div>{% endif %}
       {% if item.note %}<div class="mt-0.5 text-xs italic text-ink-muted">{{ item.note }}</div>{% endif %}
-      {% if can_use_requests %}{% for r in item.requests.all %}<div class="mt-0.5 text-xs text-info-ink">🙋 Request: {{ r.customer }} ×{{ r.qty }}</div>{% endfor %}{% endif %}
+      {% if can_use_requests %}{% for r in item.requests.all %}<div class="mt-0.5 text-xs text-info-ink">Request: <span class="customer-chip align-middle">{% include "tracker/_customer_icon.html" %}{{ r.customer }}</span> ×{{ r.qty }}</div>{% endfor %}{% endif %}
     </div>
     <div class="shrink-0 text-right">
       <div class="text-xl font-extrabold">×{{ item.qty }}</div><div class="text-[0.7rem] text-ink-muted">{% if item.is_bag %}bag{% else %}{{ item.get_quantity_unit_display }}{% endif %}</div>

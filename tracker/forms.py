@@ -1,3 +1,5 @@
+import re
+
 from django import forms
 from django.forms import inlineformset_factory
 from django.urls import reverse, reverse_lazy
@@ -22,21 +24,40 @@ class StyledMixin:
                 w.attrs.setdefault("class", INPUT)
 
 
+WHOLE_YEN = "Whole yen only, e.g. 12500"
+_YEN_TEXT = re.compile(r"[0-9]+")
+
+
+def parse_whole_yen(value):
+    """ "12500", "12,500", "¥12,500" -> 12500; "" -> None. Decimals, negatives and other text raise ValueError."""
+    text = str(value or "").replace("¥", "").replace("￥", "").replace(",", "").replace(" ", "").strip()
+    if not text:
+        return None
+    if not _YEN_TEXT.fullmatch(text):
+        raise ValueError(value)
+    return int(text)
+
+
 class YenField(forms.IntegerField):
-    """Whole yen, optional, >= 0. Accepts "12500", "12,500" and "¥12,500"; stored as an integer."""
+    """Whole yen, optional, >= 0. Accepts "12500", "12,500" and "¥12,500"; stored as an integer.
+    Decimals ("12500.5"), negatives and other text get "Whole yen only, e.g. 12500". In the browser the box
+    only takes digits and shows 12,500 once you leave it (static/js/money.js)."""
 
     def __init__(self, *, label, **kwargs):
         kwargs.setdefault("required", False)
         kwargs.setdefault("min_value", 0)
         kwargs.setdefault("widget", forms.TextInput(attrs={
-            "inputmode": "numeric", "autocomplete": "off", "placeholder": "0", "data-yen": "",
+            "inputmode": "numeric", "pattern": "[0-9]*", "autocomplete": "off", "placeholder": "0", "data-yen": "",
         }))
         super().__init__(label=label, **kwargs)
 
     def to_python(self, value):
-        if isinstance(value, str):
-            value = value.replace("¥", "").replace("￥", "").replace(",", "").replace(" ", "").strip()
-        return super().to_python(value)
+        if isinstance(value, int):
+            return value
+        try:
+            return parse_whole_yen(value)
+        except ValueError:
+            raise forms.ValidationError(WHOLE_YEN + ".", code="invalid")
 
 
 class BoxForm(StyledMixin, forms.ModelForm):
@@ -380,11 +401,11 @@ class JapanItemForm(CustomerFieldMixin, ItemTextMixin, StyledMixin, forms.ModelF
         if len(raw) != qty or not all(raw):
             self.add_error("different_prices", f"Enter a price for every piece ({qty}).")
             return []
-        yen = YenField(label="")
         try:
-            return [yen.clean(v) for v in raw]
-        except forms.ValidationError:
-            self.add_error("different_prices", "Piece prices must be whole yen like 45000 or 45,000.")
+            return [parse_whole_yen(v) for v in raw]
+        except ValueError as bad:
+            n = raw.index(bad.args[0]) + 1
+            self.add_error("different_prices", f"Piece {n}: {WHOLE_YEN[0].lower()}{WHOLE_YEN[1:]}.")
             return []
 
     @property

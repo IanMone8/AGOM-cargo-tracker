@@ -17,7 +17,7 @@
   {% for e in item_form.non_field_errors %}<p class="mb-2 text-xs font-medium text-danger-ink">{{ e }}</p>{% endfor %}
   <div class="grid grid-cols-2 gap-3">
     <div class="col-span-2">{% include "tracker/_item_text_field.html" with field=item_form.item_name add_field=item_form.add_brand %}</div>
-    {% if item_form.has_customer %}<div class="col-span-2">{% include "tracker/_field.html" with field=item_form.customer %}</div>{% endif %}
+    {% if item_form.has_customer %}<div class="col-span-2">{% include "tracker/_field.html" with field=item_form.customer customer_icon=True %}</div>{% endif %}
 
     <div class="col-span-2 club-picker" data-picker>
       <span class="block text-[0.8rem] font-semibold text-ink-muted">Club option</span>

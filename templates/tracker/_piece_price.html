@@ -1,2 +1,2 @@
 {# One "Piece N" ¥ box under "Different prices" (money.js builds the same markup when qty changes) #}
-<label class="piece-price">Piece {{ n }}<span class="yen-wrap mt-1"><span class="yen-sign" aria-hidden="true">¥</span><input type="text" name="{{ name }}" value="{{ value }}" class="field" inputmode="numeric" autocomplete="off" placeholder="0" data-yen data-piece aria-label="Piece {{ n }} amount (JP¥)"></span></label>
+<label class="piece-price">Piece {{ n }}<span class="yen-wrap mt-1"><span class="yen-sign" aria-hidden="true">¥</span><input type="text" name="{{ name }}" value="{{ value }}" class="field" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="0" data-yen data-piece aria-label="Piece {{ n }} amount (JP¥)"></span></label>

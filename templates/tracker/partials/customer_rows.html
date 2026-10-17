@@ -3,7 +3,7 @@
   <div class="crm-row" role="row">
     <div role="cell" class="crm-c-name">
       <span class="crm-avatar" style="{{ c.name|avatar_style }}" aria-hidden="true">{{ c.name|initials }}</span>
-      <a href="{% url 'customer_detail' c.pk %}" class="crm-link" title="{{ c.name }}">{{ c.name }}</a>
+      {% include "tracker/_customer_icon.html" %}<a href="{% url 'customer_detail' c.pk %}" class="crm-link" title="{{ c.name }}">{{ c.name }}</a>
     </div>
     <div role="cell" class="crm-c-phone">
       {% if c.phone %}<a href="tel:{{ c.phone|cut:' ' }}" class="crm-pill crm-pill-phone">{% icon "phone" "w-3.5 h-3.5" %}{{ c.phone }}</a>

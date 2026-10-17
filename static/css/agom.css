@@ -341,6 +341,7 @@ textarea.field { resize: vertical; }
 
 /* ---------- Yen amounts (Owner / Admin / Japan sender only) ---------- */
 .yen-wrap { position: relative; }
+.yen-note { margin-top: .25rem; font-size: .72rem; font-weight: 700; color: var(--warn-ink); }
 .yen-wrap .yen-sign { position: absolute; left: .8rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-weight: 600; pointer-events: none; }
 .yen-wrap .field { padding-left: 1.75rem; font-variant-numeric: tabular-nums; }
 /* "Different prices": one ¥ box per piece (item cards, qty >= 2) */

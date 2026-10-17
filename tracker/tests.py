@@ -1838,7 +1838,7 @@ class YenAmountTests(BaseTest):
             "OCT26-GN-9,bag,Bag,,\n"
             "OCT26-GN-9,,TSR2,12.5,500\n").encode(), content_type="text/csv")
         r = self.client.post(reverse("csv_import"), {"file": f})
-        self.assertContains(r, "amount_jpy must be whole yen")
+        self.assertContains(r, "amount_jpy: whole yen only, e.g. 12500")
         self.assertContains(r, "cargo_fee_jpy goes on the box&#x27;s bag row")
 
     def test_customer_icon_instead_of_emoji(self):
@@ -2250,7 +2250,7 @@ class PiecePriceTests(BaseTest):
         self.assertContains(r, 'value="41500"')                     # typed prices are kept
         self.assertFalse(JapanItem.objects.filter(item_name="Mizuno JPX").exists())
         r = self.add(qty="2", different_prices="on", piece_price=["45000", "abc"])
-        self.assertContains(r, "Piece prices must be whole yen")
+        self.assertContains(r, "Piece 2: whole yen only, e.g. 12500.")
         # qty changed later (e.g. in /admin/): the pieces no longer fit, so back to one price
         self.add(different_prices="on", piece_price=["45000", "41500"])
         item = JapanItem.objects.latest("id")
@@ -2295,7 +2295,7 @@ class PiecePriceTests(BaseTest):
         result = self.csv("box,item,qty,amount_jpy\nGN-3,Titleist TSR2,2,45000;\n")
         self.assertIn("every piece needs a price", result.errors[0][1])
         result = self.csv("box,item,qty,amount_jpy\nGN-3,Titleist TSR2,2,45000;x\n")
-        self.assertIn("amount_jpy must be whole yen", result.errors[0][1])
+        self.assertIn("amount_jpy: whole yen only, e.g. 12500", result.errors[0][1])
 
     def test_migration_fills_line_totals(self):
         import importlib
@@ -2500,3 +2500,125 @@ class ClubCategoryValueTests(BaseTest):
         self.assertContains(r, "Choose a Driver option.")
         self.client.post("/admin/tracker/japanitem/add/", {**data, "loft": "10.5"})
         self.assertTrue(JapanItem.objects.filter(item_name="New", loft="10.5").exists())
+
+
+class CustomerIconEverywhereTests(BaseTest):
+    """Customer names show the customer icon (display WebP, 18px, alt="Customer") – never a 👤 emoji."""
+    ICON = '<img src="/static/img/display/icons/customer.webp'
+
+    def setUp(self):
+        super().setUp()
+        from .models import Customer
+        self.customer = Customer.objects.create(name="Ko Aung")
+        self.item1.customer = "Ko Aung"
+        self.item1.save()
+        self.bag = JapanItem.objects.create(box=self.box, is_bag=True, type="Golf bag", item_name="Ping Hoofer",
+                                            qty=1, customer="Ko Aung")
+        self.req = CustomerRequest.objects.create(customer="Ko Aung", item_name="TSR2", qty=1)
+        self.req.attach(self.item1)
+        self.open_req = CustomerRequest.objects.create(customer="Ma Hnin", item_name="Ping Hoofer", qty=1)  # Attach: the bag
+        self.client.force_login(self.owner)
+
+    def get(self, url):
+        return self.client.get(url, HTTP_HX_REQUEST="true").content.decode()
+
+    def test_icon_next_to_customer_names(self):
+        import re
+        box = self.get(reverse("box_detail", args=[self.box.pk]))
+        # item row chip, bag row chip and the item's request line
+        self.assertGreaterEqual(len(re.findall(re.escape(self.ICON) + r'[^>]*alt="Customer"[^>]*>(?:</span>)?\s*Ko Aung', box)), 1)
+        self.assertEqual(box.count('alt="Customer" width="18" height="18"'), 3)
+        for url in (reverse("customer_list"), reverse("customer_detail", args=[self.customer.pk]),
+                    reverse("request_attach", args=[self.open_req.pk])):
+            html = self.get(url)
+            self.assertIn(self.ICON, html, url)
+            self.assertIn('alt="Customer"', html, url)
+            self.assertIn('onerror="this.remove()"', html, url)      # hidden if the file is missing
+        # item and bag cards for owner / admin: next to the Customer field
+        modal = self.get(reverse("box_create"))
+        self.assertRegex(modal, re.escape(self.ICON) + r'[^>]*>Customer</span>')
+        self.assertEqual(len(re.findall(r'alt="Customer"[^>]*>Customer</span>', modal)), 2)    # bag + item card
+
+    def test_no_person_emoji_left_in_templates(self):
+        from pathlib import Path
+        from django.conf import settings
+        for path in Path(settings.BASE_DIR, "templates").rglob("*.html"):
+            text = path.read_text()
+            self.assertNotIn("👤", text, path)
+            self.assertNotIn("🙋", text, path)
+
+    def test_display_webp_exists(self):
+        from django.contrib.staticfiles import finders
+        self.assertTrue(finders.find("img/display/icons/customer.webp"))
+        self.assertIn('customer.webp', Path_text("scripts/make_display_images.py"))
+
+
+def Path_text(rel):
+    from pathlib import Path
+    from django.conf import settings
+    return Path(settings.BASE_DIR, rel).read_text()
+
+
+class WholeYenTests(BaseTest):
+    """Amounts are whole yen only: digits (with optional 12,500 / ¥12,500), never decimals or negatives."""
+
+    def test_yen_field(self):
+        from django import forms as djforms
+        from .forms import YenField
+        f = YenField(label="x")
+        for ok in ("12500", "12,500", "¥12,500", " ¥ 12,500 ", "0"):
+            self.assertIn(f.clean(ok), (12500, 0), ok)
+        self.assertIsNone(f.clean(""))
+        for bad in ("12500.5", "12500.0", "-500", "abc", "1e3", "12.500"):
+            with self.assertRaisesMessage(djforms.ValidationError, "Whole yen only, e.g. 12500."):
+                f.clean(bad)
+
+    def test_forms_reject_decimals_and_negatives(self):
+        self.add_bag()
+        r = self.htmx(self.japan, reverse("item_add", args=[self.box.pk]),
+                      {"item_name": "Ping G430", "qty": "1", "price_jpy": "12500.5"})
+        self.assertContains(r, "Whole yen only, e.g. 12500.")
+        self.assertFalse(JapanItem.objects.filter(item_name="Ping G430").exists())
+        r = self.htmx(self.japan, reverse("item_add", args=[self.box.pk]),
+                      {"item_name": "Ping G430", "qty": "2", "different_prices": "on", "piece_price": ["45,000", "-41500"]})
+        self.assertContains(r, "Piece 2: whole yen only, e.g. 12500.")
+        data = {"cargo": self.cargo.pk, "box_id": "OCT26-GN-12", "notes": "", "cargo_fee_jpy": "-500",
+                "bag-item_name": "Ping Hoofer", "bag-price_jpy": "1.5",
+                "items-TOTAL_FORMS": "0", "items-INITIAL_FORMS": "0", "items-MIN_NUM_FORMS": "0", "items-MAX_NUM_FORMS": "1000"}
+        r = self.htmx(self.japan, reverse("box_create"), data)
+        self.assertEqual(r.content.decode().count("Whole yen only, e.g. 12500."), 2)    # cargo fee + bag amount
+        self.assertFalse(Box.objects.filter(code="OCT26-GN-12").exists())
+        r = self.htmx(self.japan, reverse("box_create"), {**data, "cargo_fee_jpy": "¥12,500", "bag-price_jpy": "8,000"})
+        box = Box.objects.get(code="OCT26-GN-12")
+        self.assertEqual((box.cargo_fee_jpy, box.items.get(is_bag=True).price_jpy), (12500, 8000))
+
+    def test_inputs_are_numeric(self):
+        self.client.force_login(self.japan)
+        html = self.client.get(reverse("box_create"), HTTP_HX_REQUEST="true").content.decode()
+        for name in ("cargo_fee_jpy", "bag-price_jpy", "items-0-price_jpy"):
+            self.assertRegex(html, rf'name="{name}"[^>]*inputmode="numeric"[^>]*pattern="\[0-9\]\*"')
+        from django.template.loader import render_to_string
+        piece = render_to_string("tracker/_piece_price.html", {"n": 1, "value": "", "name": "piece_price"})
+        self.assertIn('inputmode="numeric" pattern="[0-9]*"', piece)
+
+    def test_model_piece_prices_must_be_whole_yen(self):
+        from django.core.exceptions import ValidationError
+        item = JapanItem(box=self.box, item_name="X", qty=2, piece_prices=[45000.5, 100])
+        with self.assertRaisesMessage(ValidationError, "Whole yen only"):
+            item.full_clean()
+        item.piece_prices = [45000, -1]
+        with self.assertRaises(ValidationError):
+            item.full_clean()
+
+    def test_csv(self):
+        from .csv_import import import_japan_csv
+        self.add_bag()
+        def csv(text):
+            return import_japan_csv(SimpleUploadedFile("l.csv", text.encode()))
+        r = csv('box,item,amount_jpy\nGN-3,A,12500\nGN-3,B,"12,500"\nGN-3,C,"¥12,500"\n')
+        self.assertEqual(r.errors, [])
+        self.assertEqual(set(JapanItem.objects.filter(item_name__in="ABC").values_list("price_jpy", flat=True)), {12500})
+        for bad in ("12500.5", "-500"):
+            r = csv(f"box,item,amount_jpy\nGN-3,D,{bad}\n")
+            self.assertEqual(r.errors, [(2, f"amount_jpy: whole yen only, e.g. 12500 (12,500 and ¥12,500 work too) – got '{bad}'")])
+        self.assertFalse(JapanItem.objects.filter(item_name="D").exists())

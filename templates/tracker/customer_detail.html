@@ -10,7 +10,7 @@
     <div class="flex min-w-0 items-center gap-3">
       <div class="grid h-12 w-12 shrink-0 place-items-center head-chip rounded-2xl text-lg font-extrabold uppercase">{{ customer.name|slice:":1" }}</div>
       <div class="min-w-0">
-        <h1 class="truncate text-2xl font-extrabold">{{ customer.name }}</h1>
+        <h1 class="customer-chip max-w-full text-2xl font-extrabold">{% include "tracker/_customer_icon.html" %}<span class="truncate">{{ customer.name }}</span></h1>
         {% if customer.viber_member %}<span class="pill pill-viber mt-0.5">Viber channel member</span>
         {% else %}<span class="text-xs text-ink">Not in Viber channel</span>{% endif %}
       </div>
@@ -38,7 +38,7 @@
   </div>
   <form id="new-order" method="post" action="{% url 'customer_new_order' customer.pk %}" class="{% if not show_order_form %}hidden{% endif %} card mb-3 space-y-3 p-4">
     {% csrf_token %}
-    <p class="text-sm font-semibold text-ink-muted">New order for <b class="text-ink">{{ customer.name }}</b></p>
+    <p class="text-sm font-semibold text-ink-muted">New order for <b class="customer-chip align-middle text-ink">{% include "tracker/_customer_icon.html" %}{{ customer.name }}</b></p>
     {% for e in order_form.non_field_errors %}<p class="text-sm text-danger-ink">{{ e }}</p>{% endfor %}
     <div class="grid grid-cols-2 gap-3 sm:grid-cols-6">
       <div class="col-span-2 sm:col-span-3">{% include "tracker/_field.html" with field=order_form.item_name %}</div>

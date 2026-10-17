@@ -155,8 +155,11 @@ chosen ("Auto: 3rd KB box in October 2026") and stays editable; on save it is ch
 in the meantime, moved to the next free one with a notice. Boxes made before this keep their old `GN-3` style IDs.
 
 **Money (JP¥):** the box has an optional **Cargo fee** (next to Box ID) and the bag and every item have an
-optional **Amount** – the price per piece, whole yen (`12500`, `12,500` and `¥12,500` all work; phones get the number
-keypad). Item cards show the line total (amount × qty) when qty > 1. With qty ≥ 2 a **Different prices** box gives one
+optional **Amount** – the price per piece, **whole yen only** (`12500`, `12,500` and `¥12,500` all work; phones get the
+number keypad). Every yen box (cargo fee, item and bag amount, each Different prices piece) takes digits only while you
+type – a decimal point or minus is dropped with a short "Whole yen only, e.g. 12500" note, and a pasted `12,500.50`
+keeps just the 12500 – and shows 12,500 once you leave it. The server rejects decimals, negatives and other text with
+"Whole yen only, e.g. 12500"; the CSV import does the same per row. Item cards show the line total (amount × qty) when qty > 1. With qty ≥ 2 a **Different prices** box gives one
 ¥ box per piece (Piece 1, Piece 2, …, following qty); the line total is their sum and the box page shows
 `¥45,000 + ¥41,500 = ¥86,500`. Unticking goes back to one price (the first piece's). Piece prices are stored on the item
 (`piece_prices`) with the computed `line_total_jpy`, which box totals add up. Copy keeps the amount(s), and the Add box modal has a
@@ -164,8 +167,10 @@ live **Bag + Items + Cargo fee = Total** line above Save. The box page shows the
 total. Amounts, cargo fees and totals are for Owner, Admin and the Japan sender only – the Myanmar checker never sees
 them (pages, HTMX updates and the money script are all left out for them).
 
-**Customer icon:** names of customers show `static/img/icons/customer.png` (small copy made by
-`scripts/make_display_images.py`, background cut out) at 18px; it's hidden if the file is missing.
+**Customer icon:** every customer name – box page item and bag rows and their request lines, customer orders, the
+Customers list, the customer page, the Attach panel, and the Customer field on item / bag cards (Owner / Admin) – shows
+`static/img/icons/customer.png` (display WebP copy made by `scripts/make_display_images.py`, background cut out) at
+18px, alt "Customer"; it's hidden if the file is missing. No 👤 emoji is used anywhere.
 
 **Locking:** once the Myanmar check has started on a box (it has a received date, or any item is checked),
 the Japan sender can no longer edit that box or add or delete its items.

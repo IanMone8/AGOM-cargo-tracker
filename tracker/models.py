@@ -227,6 +227,12 @@ class Box(models.Model):
         ).distinct()
 
 
+def validate_piece_prices(value):
+    """Piece prices are whole yen: a list like [45000, 41500] (no decimals, no negatives)."""
+    if not isinstance(value, list) or any(isinstance(p, bool) or not isinstance(p, int) or p < 0 for p in value):
+        raise ValidationError("Whole yen only, e.g. [45000, 41500].")
+
+
 def club_label(type_, *, head_only=False, loft="", shaft="", club_number="", length_in=""):
     """One short label for a club pick, e.g. "Driver head 9.5°", "Iron · Graphite", "Wedge 52°",
     "Wood 3W", "Hybrid 4H", "Putter 34″"."""
@@ -293,7 +299,7 @@ class JapanItem(models.Model):
     )
     price_jpy = models.PositiveIntegerField("Amount (JP¥)", null=True, blank=True, help_text="Whole yen, per piece")
     piece_prices = models.JSONField(
-        "Piece prices (JP¥)", default=list, blank=True,
+        "Piece prices (JP¥)", default=list, blank=True, validators=[validate_piece_prices],
         help_text="Different prices per piece, e.g. [45000, 41500] – one per piece (count = qty). "
                   "Empty: every piece costs the amount above.")
     line_total_jpy = models.PositiveIntegerField(

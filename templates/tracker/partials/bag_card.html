@@ -9,7 +9,7 @@
   <div class="grid grid-cols-2 gap-3">
     <div class="col-span-2">{% include "tracker/_item_text_field.html" with field=bag_form.item_name add_field=bag_form.add_brand %}</div>
     <div class="col-span-2 {% if bag_form.has_customer %}sm:col-span-1{% endif %}">{% include "tracker/_field.html" with field=bag_form.color %}</div>
-    {% if bag_form.has_customer %}<div class="col-span-2 sm:col-span-1">{% include "tracker/_field.html" with field=bag_form.customer %}</div>{% endif %}
+    {% if bag_form.has_customer %}<div class="col-span-2 sm:col-span-1">{% include "tracker/_field.html" with field=bag_form.customer customer_icon=True %}</div>{% endif %}
     {% if can_see_money %}<div class="col-span-2 sm:col-span-1" data-money-line>{% include "tracker/_field.html" with field=bag_form.price_jpy %}</div>{% endif %}
     <div class="col-span-2 {% if can_see_money %}sm:col-span-1{% endif %}">{% include "tracker/_field.html" with field=bag_form.note %}</div>
   </div>

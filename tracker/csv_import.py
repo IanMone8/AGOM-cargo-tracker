@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 
 from django.db import transaction
 
-from .forms import is_bag_word
+from .forms import is_bag_word, parse_whole_yen
 from .models import (Box, Cargo, ClubOption, Customer, JapanItem, choose_option_message, club_value_problem,
                      parse_box_code, parse_item, remember_item)
 
@@ -162,13 +162,11 @@ def _box_key(row, row_no, is_bag, cargos, auto_open, errors):
 
 def _parse_yen(value, name, errors, row):
     """Whole yen: "12500", "12,500" or "¥12,500" -> 12500; empty -> None."""
-    text = (value or "").replace("¥", "").replace("￥", "").replace(",", "").replace(" ", "").strip()
-    if text == "":
+    try:
+        return parse_whole_yen(value)
+    except ValueError:                     # "12500.5", "-500", "abc"
+        errors.append((row, f"{name}: whole yen only, e.g. 12500 (12,500 and ¥12,500 work too) – got '{value}'"))
         return None
-    if not text.isdigit():
-        errors.append((row, f"{name} must be whole yen like 12500, 12,500 or ¥12,500 – got '{value}'"))
-        return None
-    return int(text)
 
 
 def _parse_amount(value, qty, errors, row):
