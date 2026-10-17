@@ -1,109 +1,63 @@
-/* Customer page: "+ Add payment" (split suggestion), "Copy reminder", the Delivered-with-balance warning and the
-   "Mark selected orders as Paid (old order)" bar. Loaded only for people who may see payments (not the Japan sender). */
+/* Customer orders: "+ Add item" lines (live line totals and order total), "Deposit 20%", "Copy reminder",
+   the Delivered-with-balance warning and the "Mark as paid (old order)" bar. */
 (function () {
   const num = v => parseInt(String(v || '').replace(/[^0-9]/g, ''), 10) || 0;
-  const fmt = n => n.toLocaleString('en-US');
-  const form = document.querySelector('[data-payment-form]');
+  const fmt = n => n.toLocaleString('en-US') + ' Ks';
 
-  // --- the payment form -------------------------------------------------------------------------------------
-  if (form) {
-    const amount = form.querySelector('[name=amount_ks]');
-    const forOrder = form.querySelector('[name=for_order]');
-    const useCredit = form.querySelector('[name=use_credit]');
-    const creditBox = form.querySelector('[name=alloc_credit]');
-    const rows = [...form.querySelectorAll('[data-split-row]')];
-    const credit = num(form.dataset.credit);
-    const kind = () => (form.querySelector('[name=kind]:checked') || {}).value || 'payment';
-    let creditTouched = false;
-
-    function open(orderPk, name) {
-      form.classList.remove('hidden');
-      forOrder.value = orderPk || '';
-      const label = form.querySelector('[data-pay-for]');
-      label.hidden = !orderPk;
-      form.querySelector('[data-pay-for-name]').textContent = name || '';
-      rows.forEach(r => r.classList.toggle('is-other', !!orderPk && r.dataset.pk !== String(orderPk)));
-      suggest();
-      form.scrollIntoView({behavior: 'smooth', block: 'start'});
-      amount.focus({preventScroll: true});
-    }
-    document.addEventListener('click', e => {
-      const btn = e.target.closest('[data-open-payment], [data-pay-order]');
-      if (btn) { open(btn.dataset.payOrder, btn.dataset.payName); return; }
-      if (e.target.closest('[data-close-payment]')) form.classList.add('hidden');
-      if (e.target.closest('[data-pay-for-clear]')) open('', '');
+  // --- order item lines ---------------------------------------------------------------------------------------
+  function totals(form) {
+    let total = 0, priced = true, any = false;
+    form.querySelectorAll('[data-line]').forEach(line => {
+      if (line.closest('template')) return;
+      const del = line.querySelector('[name$="-DELETE"]');
+      if (del && del.checked) return;
+      const qty = Math.max(1, num((line.querySelector('[data-line-qty]') || {}).value));
+      const priceBox = line.querySelector('[data-line-price]');
+      const out = line.querySelector('[data-line-sum]');
+      if (!priceBox) return;
+      const item = line.querySelector('[data-item-text]');
+      if (item && !item.value.trim() && !priceBox.value.trim()) { const o = line.querySelector('[data-line-sum]'); if (o) o.textContent = ''; return; }
+      any = true;
+      if (priceBox.value.trim() === '') { priced = false; if (out) out.textContent = ''; return; }
+      const sum = num(priceBox.value) * qty;
+      total += sum;
+      if (out) out.textContent = qty > 1 ? `${fmt(num(priceBox.value))} × ${qty} = ${fmt(sum)}` : '';
     });
-
-    // oldest unpaid first (rows are listed oldest first); with an order picked, all of it goes to that order
-    function suggest() {
-      const total = num(amount.value), only = forOrder.value;
-      const owed = new Map(rows.map(r => [r.dataset.pk, num(r.dataset.balance)]));
-      const split = new Map(rows.map(r => [r.dataset.pk, 0]));
-      let left = total, toCredit = 0;
-      if (kind() === 'payment') {
-        if (useCredit && useCredit.checked && credit > 0) {      // credit is used first, so less is still owed
-          let c = credit;
-          for (const r of rows) {
-            if (only && r.dataset.pk !== only) continue;
-            const take = Math.min(owed.get(r.dataset.pk), c);
-            owed.set(r.dataset.pk, owed.get(r.dataset.pk) - take); c -= take;
-          }
-        }
-        if (only) { split.set(only, left); left = 0; }
-        for (const r of rows) {
-          if (left <= 0) break;
-          const take = Math.min(owed.get(r.dataset.pk), left);
-          split.set(r.dataset.pk, take); left -= take;
-        }
-        toCredit = left;
-      } else {                                                    // refund: from credit first, then the latest paid orders
-        toCredit = Math.min(credit, left); left -= toCredit;
-        if (only) { split.set(only, left); left = 0; }
-        for (const r of [...rows].reverse()) {
-          if (left <= 0) break;
-          const take = Math.min(num(r.dataset.paid), left);
-          split.set(r.dataset.pk, take); left -= take;
-        }
-      }
-      rows.forEach(r => { const v = split.get(r.dataset.pk); r.querySelector('input').value = v ? fmt(v) : ''; });
-      creditBox.value = toCredit ? fmt(toCredit) : '';
-      creditTouched = false;
-      showSum();
-    }
-
-    function showSum() {
-      const total = num(amount.value);
-      const orders = rows.reduce((s, r) => s + num(r.querySelector('input').value), 0);
-      const out = form.querySelector('[data-split-sum]');
-      const sum = orders + num(creditBox.value);
-      out.classList.toggle('is-off', sum !== total);
-      out.textContent = total ? (sum === total ? `Split ${fmt(sum)} Ks = ${fmt(total)} Ks ✓`
-        : `Split ${fmt(sum)} Ks ≠ ${fmt(total)} Ks – the split must equal the amount`) : '';
-      form.querySelector('[data-credit-label]').textContent = kind() === 'refund' ? 'From credit' : 'Keep as credit';
-    }
-
-    amount.addEventListener('input', suggest);
-    form.querySelectorAll('[name=kind]').forEach(r => r.addEventListener('change', suggest));
-    if (useCredit) useCredit.addEventListener('change', suggest);
-    form.addEventListener('input', e => {
-      if (!e.target.matches('.split-input')) return;
-      if (e.target === creditBox) creditTouched = true;
-      else if (!creditTouched) {                                  // the rest of the amount stays credit
-        const orders = rows.reduce((s, r) => s + num(r.querySelector('input').value), 0);
-        const rest = num(amount.value) - orders;
-        creditBox.value = rest > 0 ? fmt(rest) : '';
-      }
-      showSum();
-    });
-    if (!form.classList.contains('hidden')) {                     // shown again after an error: keep what was typed
-      const pk = forOrder.value;
-      if (pk) form.querySelector('[data-pay-for-name]').textContent =
-        (document.querySelector(`[data-pay-order="${pk}"]`) || {dataset: {}}).dataset.payName || '';
-      showSum();
-    }
+    const live = form.querySelector('[data-order-total-live]');
+    if (live) live.textContent = any ? (priced ? `Order total ${fmt(total)}` : `Order total ${fmt(total)} + price not set`) : '';
   }
+  document.addEventListener('input', e => { const f = e.target.closest('[data-order-form]'); if (f) totals(f); });
+  document.addEventListener('change', e => { const f = e.target.closest('[data-order-form]'); if (f) totals(f); });
+  document.addEventListener('click', e => {
+    const add = e.target.closest('[data-add-line]');
+    if (add) {
+      const form = add.closest('[data-order-form]');
+      const total = form.querySelector('[name$="-TOTAL_FORMS"]');
+      const html = form.querySelector('[data-line-template]').innerHTML.replace(/__prefix__/g, total.value);
+      const box = form.querySelector('[data-lines]');
+      box.insertAdjacentHTML('beforeend', html);
+      total.value = +total.value + 1;
+      const line = box.lastElementChild;
+      htmx.process(line);                                   // the item combo box talks to the server
+      line.querySelector('[data-item-text]').focus();
+      return;
+    }
+    const rm = e.target.closest('[data-remove-line]');
+    if (rm) { const form = rm.closest('[data-order-form]'); rm.closest('[data-line]').remove(); totals(form); }
+  });
+  document.body.addEventListener('htmx:afterSettle', () => document.querySelectorAll('[data-order-form]').forEach(totals));
+  document.querySelectorAll('[data-order-form]').forEach(totals);
 
-  // --- "Copy reminder" (Burmese + English, every unpaid order and the total) -----------------------------------
+  // --- "Deposit 20%": fills the amount, still editable ---------------------------------------------------------
+  document.addEventListener('click', e => {
+    const btn = e.target.closest('[data-deposit]');
+    if (!btn) return;
+    const box = btn.closest('[data-pay-form]').querySelector('[data-pay-amount]');
+    box.value = num(btn.dataset.deposit).toLocaleString('en-US');
+    box.focus();
+  });
+
+  // --- "Copy reminder" (Burmese + English: items, total, paid, balance) ------------------------------------------
   document.addEventListener('click', async e => {
     const btn = e.target.closest('[data-copy-reminder]');
     if (!btn) return;
@@ -129,11 +83,25 @@
     else sel.value = sel.dataset.was;
   });
 
-  // --- "Mark selected orders as Paid (old order)" ---------------------------------------------------------------
+  // --- a card's money changed (payment added / deleted): refresh the customer page's Money section and owes badge ----
+  document.body.addEventListener('htmx:afterRequest', e => {
+    const money = document.getElementById('money');
+    if (!money || !e.detail.successful || e.detail.requestConfig.verb !== 'post') return;
+    if (!e.detail.elt.closest('[id^="request-"]') && !e.detail.target.matches('[id^="request-"]')) return;
+    fetch(location.pathname, {credentials: 'same-origin'}).then(r => r.text()).then(html => {
+      const fresh = new DOMParser().parseFromString(html, 'text/html');
+      ['money', 'owes-slot'].forEach(id => {
+        const now = document.getElementById(id), next = fresh.getElementById(id);
+        if (now && next) now.replaceWith(next);
+      });
+    });
+  });
+
+  // --- "Mark as paid (old order)" ---------------------------------------------------------------------------------
   document.addEventListener('submit', e => {
     if (!e.target.matches('[data-settle-form]')) return;
     const n = document.querySelectorAll('[data-settle-pick]:checked').length;
     if (!n) { e.preventDefault(); alert('Tick the old orders to mark as paid first.'); return; }
-    if (!confirm(`Mark ${n} order(s) as paid (old order)? They will count as All clear.`)) e.preventDefault();
+    if (!confirm(`Mark ${n} order(s) as paid (old order)? They will count as fully paid.`)) e.preventDefault();
   });
 })();

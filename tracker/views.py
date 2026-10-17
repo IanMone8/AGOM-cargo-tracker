@@ -24,14 +24,13 @@ from .forms import (
     CustomerForm,
     CustomerOrderForm,
     OrderEditForm,
-    OrderPriceForm,
-    PaymentForm,
+    OrderLineFormSet,
+    OrderPaymentForm,
     ExtraItemForm,
     JapanItemForm,
 )
-from .models import (Box, Cargo, Catalog, Customer, CustomerRequest, ExtraItem, JapanItem, Payment, PaymentAllocation,
-                     ReceiveCheck, add_order_money, customer_money, money_status, order_pay_state, reminder_text,
-                     settle_old_orders)
+from .models import (Box, Cargo, Catalog, Customer, CustomerRequest, ExtraItem, JapanItem, Payment, ReceiveCheck,
+                     add_order_money, customer_money, mark_old_orders_paid, money_status, order_pay_state, order_totals)
 
 ITEM_CATEGORIES = ["Club", "Club set", "Bag", "Balls", "Shoes", "Apparel", "Accessory"]
 CLUB_TYPES = ["Driver", "Fairway wood", "Utility", "Iron set", "Iron", "Wedge", "Putter"]
@@ -256,7 +255,7 @@ def box_id_hint(cargo):
 
 
 @login_required
-@roles.require(roles.can_edit_japan)
+@roles.require(lambda u: roles.can_edit_japan(u) or roles.can_use_requests(u))   # item cards and order lines
 def item_suggest(request):
     """HTMX, for the "Item (brand + model)" combo box: the dropdown list plus how the text will be saved.
 
@@ -588,27 +587,34 @@ def extra_delete(request, pk):
 
 # --- Customer orders (requests, managed from the customer page) --------------
 def render_order_card(request, req, **extra):
-    """One order card (partials/request_card.html) with its payment status / balance."""
+    """One order card (partials/request_card.html): items, status, and – for people who may see payments – its
+    Total / Paid / Balance, payments and "+ Add payment"."""
     add_order_money([req])
     return render(request, "tracker/partials/request_card.html", {
-        "r": req, "status_choices": CustomerRequest.Status.choices,
-        "customer_pk": Customer.objects.filter(name__iexact=req.customer).values_list("pk", flat=True).first(),
-        **extra,
+        "r": req, "status_choices": CustomerRequest.Status.choices, **extra,
     })
+
+
+def _order(pk):
+    return get_object_or_404(CustomerRequest.objects.prefetch_related("lines", "payments__method"), pk=pk)
 
 
 @login_required
 @roles.require(roles.can_use_payments)
-@require_POST
-def order_price(request, pk):
-    """Set an order's price (Ks) on its card."""
-    req = get_object_or_404(CustomerRequest, pk=pk)
-    form = OrderPriceForm(request.POST)
-    if form.is_valid():
-        req.price_ks = form.cleaned_data["price_ks"]
-        req.save(update_fields=["price_ks", "updated_at"])
-        return render_order_card(request, req)
-    return render_order_card(request, req, price_error=form.errors["price_ks"][0])
+def order_payment_add(request, pk):
+    """"+ Add payment" on an order card: GET shows the form inside the card, POST saves and redraws the card."""
+    req = _order(pk)
+    add_order_money([req])
+    form = OrderPaymentForm(request.POST or None, request.FILES or None, order=req)
+    if request.method == "POST" and form.is_valid():
+        payment = form.save(commit=False)
+        payment.order, payment.recorded_by = req, request.user
+        payment.save()
+        return render_order_card(request, _order(pk))
+    response = render(request, "tracker/partials/order_payment_form.html", {"r": req, "form": form})
+    if request.method == "POST":                      # errors: show them in the open form, not over the card
+        response["HX-Retarget"], response["HX-Reswap"] = f"#pay-slot-{pk}", "innerHTML"
+    return response
 
 
 @login_required
@@ -627,13 +633,28 @@ def request_status(request, pk):
 @login_required
 @roles.require(roles.can_use_requests)
 def order_edit(request, pk):
-    """"Edit" on an order card: item, type, flex, loft, qty, note (price is set on the card)."""
-    req = get_object_or_404(CustomerRequest, pk=pk)
+    """"Edit" on an order card: its items (+ Add item, remove) and note. Prices only for people who see payments."""
+    req = _order(pk)
     form = OrderEditForm(request.POST or None, instance=req)
-    if request.method == "POST" and form.is_valid():
-        form.save()
-        return render_order_card(request, req)
-    return render(request, "tracker/partials/order_edit.html", {"r": req, "form": form})
+    lines = OrderLineFormSet(request.POST or None, instance=req, prefix="lines")
+    if req.lines.all():
+        lines.extra = 0                                     # no empty row under existing items; "+ Add item" adds one
+    if request.method == "POST" and form.is_valid() and lines.is_valid():
+        with transaction.atomic():
+            form.save()
+            _save_lines(lines, request.user)
+            req.sync_from_lines()
+        return render_order_card(request, _order(pk))
+    return render(request, "tracker/partials/order_edit.html", {"r": req, "form": form, "lines": lines})
+
+
+def _save_lines(lines, user):
+    """Save an order's item lines; people who can't see prices never change them."""
+    keep_prices = not roles.can_use_payments(user)
+    for f in lines.forms:
+        if keep_prices and f.instance.pk and "price_ks" in f.changed_data:
+            f.instance.price_ks = f.initial.get("price_ks")
+    lines.save()
 
 
 # --- Customers ------------------------------------------------------------------
@@ -661,11 +682,10 @@ def customer_rows(user, q="", viber="", orders="", money=""):
     customers = list(qs)
 
     reqs, items = {}, {}
-    paid = {row["order"]: row for row in PaymentAllocation.objects.exclude(order=None).values("order").annotate(
-        ks=Sum("amount_ks"), settled=Count("id", filter=Q(payment__kind=Payment.Kind.SETTLED)))}
-    credit = dict(PaymentAllocation.objects.filter(order=None).values("payment__customer")
-                  .annotate(ks=Sum("amount_ks")).values_list("payment__customer", "ks"))
-    for r in CustomerRequest.objects.exclude(customer="").values("pk", "customer", "status", "updated_at", "price_ks"):
+    all_reqs = list(CustomerRequest.objects.exclude(customer="").values("pk", "customer", "status", "updated_at",
+                                                                      "paid_old_order"))
+    sums = order_totals([x["pk"] for x in all_reqs])
+    for r in all_reqs:
         reqs.setdefault(_name_key(r["customer"]), []).append(r)
     for i in visible_items(user).exclude(customer="").values("customer", "box__status", "box__updated_at"):
         items.setdefault(_name_key(i["customer"]), []).append(i)
@@ -686,18 +706,14 @@ def customer_rows(user, q="", viber="", orders="", money=""):
             c.tag = ("none", "No orders")
         stamps = [x["updated_at"] for x in r] + [x["box__updated_at"] for x in it]
         c.last_update = max(stamps) if stamps else None
-        # money (Ks): every order, old ones included
-        c.total_ks = c.paid_ks = c.balance_ks = unpriced = 0
+        # money (Ks): the sum of the order balances, old orders included
+        c.balance_ks = unpriced = 0
         for x in r:
-            p = paid.get(x["pk"], {})
-            key, balance = order_pay_state(x["price_ks"], p.get("ks") or 0, bool(p.get("settled")),
-                                           x["status"] == CustomerRequest.Status.CANCELLED)
-            c.paid_ks += p.get("ks") or 0
+            total, priced, paid = sums[x["pk"]]
+            key, balance = order_pay_state(total, priced, paid, x["paid_old_order"], x["status"] == S.CANCELLED)
             c.balance_ks += balance
-            c.total_ks += 0 if key == "cancelled" else (x["price_ks"] or 0)
             unpriced += key == "no_price"
-        c.credit_ks = credit.get(c.pk) or 0
-        c.money = money_status(c.total_ks, c.paid_ks, c.balance_ks, c.credit_ks, unpriced, bool(r))
+        c.money = money_status(c.balance_ks, unpriced, bool(r))
 
     if orders == "open":
         customers = [c for c in customers if c.open_count]
@@ -707,8 +723,6 @@ def customer_rows(user, q="", viber="", orders="", money=""):
         customers = [c for c in customers if c.balance_ks > 0]
     elif money == "clear":
         customers = [c for c in customers if c.money[0] == "clear"]
-    elif money == "credit":
-        customers = [c for c in customers if c.credit_ks > 0]
     return customers
 
 
@@ -771,7 +785,7 @@ def _customer_params(source):
         "q": source.get("q", "").strip(),
         "viber": source.get("viber", "") if source.get("viber", "") in ("yes", "no", "1") else "",
         "orders": source.get("orders", "") if source.get("orders", "") in ("open", "none") else "",
-        "money": source.get("money", "") if source.get("money", "") in ("owes", "clear", "credit") else "",
+        "money": source.get("money", "") if source.get("money", "") in ("owes", "clear") else "",
         "sort": source.get("sort", ""),
         "dir": source.get("dir", ""),
         "page": source.get("page", ""),
@@ -810,32 +824,20 @@ def customer_favourite(request, pk):
 
 @login_required
 @roles.require(roles.can_use_customers)
-def customer_detail(request, pk, order_form=None, payment_form=None):
+def customer_detail(request, pk, order_form=None, line_forms=None):
     customer = get_object_or_404(Customer, pk=pk)
-    reqs = add_order_money(customer.requests())
-    money = customer_money(customer, reqs)
+    reqs = add_order_money(customer.requests().prefetch_related("lines", "payments__method", "payments__recorded_by"))
     items = (visible_items(request.user).filter(customer__iexact=customer.name)
              .select_related("box__cargo", "receive_check").order_by("-box__created_at", "-id"))
-    oldest_first = sorted(reqs, key=lambda o: (o.created_at, o.pk))
-    posted = payment_form.data if payment_form is not None else {}
-    for o in oldest_first:                                   # keep a typed split after an error
-        o.alloc_posted = posted.get(f"alloc_{o.pk}", "")
     return render(request, "tracker/customer_detail.html", {
-        "credit_posted": posted.get("alloc_credit", ""),
         "customer": customer,
         "requests": reqs,
         "items": items,
         "open_count": sum(r.status in (CustomerRequest.Status.ORDERED, CustomerRequest.Status.ARRIVED) for r in reqs),
-        "delivered_count": sum(r.status == CustomerRequest.Status.DELIVERED for r in reqs),
-        "money": money,
-        "owing": [o for o in oldest_first if o.balance_ks > 0],
-        "pay_orders": oldest_first,
-        "payments": customer.payments.select_related("method", "recorded_by").prefetch_related("allocations__order"),
-        "payment_form": payment_form or PaymentForm(customer=customer, orders=reqs, credit=money["credit"]),
-        "show_payment_form": payment_form is not None,
-        "reminder": reminder_text(customer, oldest_first) if money["balance"] > 0 else "",
+        "money": customer_money(reqs),
         "status_choices": CustomerRequest.Status.choices,
         "order_form": order_form or CustomerOrderForm(),
+        "line_forms": line_forms or OrderLineFormSet(prefix="lines"),
         "show_order_form": order_form is not None or request.GET.get("new_order") == "1",
         **catalog_context(request.user),
     })
@@ -845,37 +847,25 @@ def customer_detail(request, pk, order_form=None, payment_form=None):
 @roles.require(roles.can_use_customers)
 @require_POST
 def customer_new_order(request, pk):
-    """"+ New order" on the customer page: a customer request already linked to them."""
+    """"+ New order" on the customer page: one or more item lines (+ Add item)."""
     customer = get_object_or_404(Customer, pk=pk)
     form = CustomerOrderForm(request.POST)
-    if form.is_valid():
-        order = form.save(commit=False)
-        order.customer = customer.name
-        order.status = CustomerRequest.Status.ORDERED
-        order.save()
-        messages.success(request, f"New order for {customer.name}: {order.item_name} ×{order.qty}.")
+    lines = OrderLineFormSet(request.POST, prefix="lines")
+    if form.is_valid() and lines.is_valid():
+        with transaction.atomic():
+            order = form.save(commit=False)
+            order.customer, order.status = customer.name, CustomerRequest.Status.ORDERED
+            order.item_name = "…"
+            order.save()
+            lines.instance = order
+            if not roles.can_use_payments(request.user):
+                for f in lines.forms:
+                    f.instance.price_ks = None
+            lines.save()
+            order.sync_from_lines()
+        messages.success(request, f"New order for {customer.name}: {order.item_name}.")
         return redirect(reverse("customer_detail", args=[customer.pk]) + "#orders")
-    return customer_detail(request, pk, order_form=form)
-
-
-@login_required
-@roles.require(roles.can_use_payments)
-@require_POST
-def payment_add(request, pk):
-    """"+ Add payment" (customer page or an order card): split over the orders, the rest kept as credit."""
-    from .models import customer_credit
-    customer = get_object_or_404(Customer, pk=pk)
-    reqs = add_order_money(customer.requests())
-    form = PaymentForm(request.POST, request.FILES, customer=customer, orders=reqs, credit=customer_credit(customer))
-    if not form.is_valid():
-        return customer_detail(request, pk, payment_form=form)
-    made = form.save(request.user)
-    cash = [p for p in made if p.kind in (Payment.Kind.PAYMENT, Payment.Kind.REFUND)]
-    used = sum(p.amount_ks for p in made if p.kind == Payment.Kind.CREDIT)
-    text = ", ".join(f"{p.get_kind_display().lower()} of {p.amount_ks:,} Ks" for p in cash)
-    messages.success(request, f"Recorded {text or 'no new money'}" + (f" (and used {used:,} Ks credit)" if used else "")
-                     + f" for {customer.name}.")
-    return redirect(reverse("customer_detail", args=[customer.pk]) + "#payments")
+    return customer_detail(request, pk, order_form=form, line_forms=lines)
 
 
 @login_required
@@ -883,10 +873,13 @@ def payment_add(request, pk):
 @require_POST
 def payment_delete(request, pk):
     payment = get_object_or_404(Payment, pk=pk)
-    customer = payment.customer
+    order = payment.order
     payment.delete()
-    messages.success(request, f"Deleted {payment.get_kind_display().lower()} of {payment.amount_ks:,} Ks.")
-    return redirect(reverse("customer_detail", args=[customer.pk]) + "#payments")
+    if is_htmx(request):
+        return render_order_card(request, _order(order.pk))
+    messages.success(request, f"Deleted the payment of {payment.amount_ks:,} Ks.")
+    customer = Customer.ensure(order.customer)
+    return redirect(reverse("customer_detail", args=[customer.pk]) + "#orders")
 
 
 @login_required
@@ -908,14 +901,14 @@ def payment_proof(request, pk, size="full"):
 @roles.require(roles.can_edit_payments)
 @require_POST
 def customer_settle(request, pk):
-    """Owner / admin: "Mark selected orders as Paid (old order)"."""
+    """Owner / admin: "Mark as paid (old order)" for the ticked orders."""
     customer = get_object_or_404(Customer, pk=pk)
     ids = [int(x) for x in request.POST.getlist("orders") if x.isdigit()]
-    payment = settle_old_orders(customer, list(customer.requests().filter(pk__in=ids)), request.user)
-    if payment:
-        messages.success(request, f"Marked {payment.allocations.count()} order(s) as paid (old order).")
+    done = mark_old_orders_paid(customer.requests().filter(pk__in=ids))
+    if done:
+        messages.success(request, f"Marked {done} order(s) as paid (old order).")
     else:
-        messages.info(request, "Select the old orders to mark as paid.")
+        messages.info(request, "Tick the old orders to mark as paid.")
     return redirect(reverse("customer_detail", args=[customer.pk]) + "#orders")
 
 

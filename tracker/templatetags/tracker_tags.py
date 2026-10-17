@@ -29,6 +29,13 @@ def order_badge(status):
 
 
 @register.filter
+def order_reminder(order):
+    """ "Copy reminder" text for one order (needs add_order_money() applied)."""
+    from ..models import reminder_text
+    return reminder_text(order)
+
+
+@register.filter
 def ks(value):
     """450000 -> "450,000 Ks" (whole Myanmar Kyat); empty for no amount. Negative: "−50,000 Ks"."""
     if value in (None, ""):

@@ -16,7 +16,6 @@
       {% else %}<span class="crm-pill bg-sage text-ink-muted"><span class="xl:hidden">No</span><span class="hidden xl:inline">Not member</span></span>{% endif %}
     </div>
     <div role="cell" class="crm-c-orders" title="{{ c.request_count }} request{{ c.request_count|pluralize }} + {{ c.item_count }} item{{ c.item_count|pluralize }} packed">{{ c.order_count }}</div>
-    <div role="cell" class="crm-c-paid crm-col-paid">{{ c.paid_ks|ks|cut:" Ks"|default:"—" }}</div>
     <div role="cell" class="crm-c-balance crm-col-balance {% if c.balance_ks %}is-owed{% endif %}">{{ c.balance_ks|ks|cut:" Ks"|default:"—" }}</div>
     <div role="cell" class="crm-c-money"><span class="pill {{ c.money.2 }}" data-money-status="{{ c.money.0 }}">{{ c.money.1 }}</span></div>
     <div role="cell" class="crm-c-status"><span class="crm-tag crm-tag-{{ c.tag.0 }}"><i></i>{{ c.tag.1 }}</span></div>

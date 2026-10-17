@@ -426,10 +426,11 @@ class CustomerRequest(models.Model):
     flex = models.CharField(max_length=3, choices=JapanItem.Flex.choices, blank=True)
     loft = models.CharField(max_length=20, blank=True)
     qty = models.PositiveIntegerField(default=1)
-    price_ks = models.PositiveIntegerField("Price (Ks)", null=True, blank=True,
-                                           help_text="Whole Kyat the customer pays for this order")
     note = models.CharField(max_length=255, blank=True)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.ORDERED)
+    paid_old_order = models.BooleanField(
+        "Paid (old order)", default=False,
+        help_text="An old order paid before payments were recorded here: counts as fully paid")
     # Old "Attach to box item" links: kept so no data is lost, no longer used or shown in the app.
     box = models.ForeignKey(
         Box, on_delete=models.SET_NULL, null=True, blank=True, related_name="requests"
@@ -449,6 +450,16 @@ class CustomerRequest(models.Model):
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         Customer.ensure(self.customer)
+
+    def sync_from_lines(self):
+        """item_name / qty summarise the order's item lines (used in lists, search and /admin/)."""
+        lines = list(OrderLine.objects.filter(order=self))         # fresh: not a prefetched (stale) list
+        if hasattr(self, "_prefetched_objects_cache"):
+            self._prefetched_objects_cache.pop("lines", None)
+        if lines:
+            self.item_name = ", ".join(l.item_name + (f" ×{l.qty}" if l.qty > 1 else "") for l in lines)[:200]
+            self.qty = sum(l.qty for l in lines)
+            self.save(update_fields=["item_name", "qty", "updated_at"])
 
 
 class Catalog(models.Model):
@@ -714,24 +725,38 @@ class PaymentMethod(models.Model):
         return self.name
 
 
+class OrderLine(models.Model):
+    """One item of a customer order: item (brand + model), club option, qty and price per piece (Ks)."""
+
+    order = models.ForeignKey(CustomerRequest, on_delete=models.CASCADE, related_name="lines")
+    item_name = models.CharField("Item (brand + model)", max_length=200)
+    brand = models.CharField(max_length=60, blank=True)
+    model = models.CharField(max_length=120, blank=True)
+    club_option = models.ForeignKey(ClubOption, on_delete=models.SET_NULL, null=True, blank=True)
+    club_label = models.CharField("Club option", max_length=80, blank=True,
+                                  help_text='e.g. "Driver 10.5°" (kept as text, so renaming an option is safe)')
+    qty = models.PositiveIntegerField(default=1)
+    price_ks = models.PositiveIntegerField("Price (Ks)", null=True, blank=True, help_text="Whole Kyat per piece")
+
+    class Meta:
+        ordering = ["id"]
+
+    def __str__(self):
+        return f"{self.title} ×{self.qty}"
+
+    @property
+    def title(self):
+        return " · ".join(x for x in (self.item_name, self.club_label) if x)
+
+    @property
+    def line_total(self):
+        return None if self.price_ks is None else self.price_ks * self.qty
+
+
 class Payment(models.Model):
-    """Money from (or back to) a customer, split over their orders by PaymentAllocation rows.
+    """Money a customer paid towards ONE order (no credit, no splitting). It can't be more than the order still owes."""
 
-    Allocations are signed Kyat amounts; an allocation without an order is the customer's credit.
-    - payment:  + to orders and/or credit; the split equals the amount
-    - refund:   − from orders and/or credit; the split equals the amount
-    - credit:   "Use credit": + to orders, − the same from credit (no money changes hands)
-    - settled:  an old order marked as paid (owner / admin), so it counts as All clear
-    """
-
-    class Kind(models.TextChoices):
-        PAYMENT = "payment", "Payment"
-        REFUND = "refund", "Refund"
-        CREDIT = "credit", "Credit used"
-        SETTLED = "settled", "Old order marked paid"
-
-    customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name="payments")
-    kind = models.CharField(max_length=10, choices=Kind.choices, default=Kind.PAYMENT)
+    order = models.ForeignKey(CustomerRequest, on_delete=models.CASCADE, related_name="payments")
     date = models.DateField()
     amount_ks = models.PositiveIntegerField("Amount (Ks)")
     method = models.ForeignKey(PaymentMethod, on_delete=models.PROTECT, null=True, blank=True)
@@ -742,14 +767,10 @@ class Payment(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ["-date", "-created_at"]
+        ordering = ["date", "created_at"]
 
     def __str__(self):
-        return f"{self.customer}: {self.get_kind_display()} {self.amount_ks:,} Ks ({self.date})"
-
-    @property
-    def sign(self):
-        return -1 if self.kind == self.Kind.REFUND else 1
+        return f"{self.order.customer}: {self.amount_ks:,} Ks for {self.order.item_name} ({self.date})"
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
@@ -757,7 +778,7 @@ class Payment(models.Model):
             self.make_thumbnail()
 
     def make_thumbnail(self, size=240):
-        """A small JPEG for the payment history (phones upload big photos)."""
+        """A small JPEG for the payment list (phones upload big photos)."""
         import io
         from django.core.files.base import ContentFile
         from PIL import Image, ImageOps
@@ -774,133 +795,94 @@ class Payment(models.Model):
         super().save(update_fields=["proof_thumb"])
 
 
-class PaymentAllocation(models.Model):
-    """How much of a payment went to one order (or, without an order, to the customer's credit). Signed Kyat."""
-
-    payment = models.ForeignKey(Payment, on_delete=models.CASCADE, related_name="allocations")
-    order = models.ForeignKey(CustomerRequest, on_delete=models.CASCADE, null=True, blank=True,
-                              related_name="allocations", help_text="Empty = customer credit")
-    amount_ks = models.IntegerField("Amount (Ks)", help_text="+ paid towards it, − refunded / credit used")
-
-    class Meta:
-        ordering = ["id"]
-
-    def __str__(self):
-        return f"{self.amount_ks:+,} Ks → {self.order.item_name if self.order else 'credit'}"
-
-
 ORDER_PAY_STATUS = {
     "no_price": ("Price not set", "pill-neutral"),
-    "unpaid": ("No payment", "pill-danger"),
+    "unpaid": ("Not paid", "pill-danger"),
     "deposit": ("Deposit paid", "pill-warn"),
     "paid": ("Fully paid", "pill-ok"),
-    "settled": ("Paid (old order)", "pill-ok"),
-    "over": ("Overpaid", "pill-info"),
+    "old": ("Paid (old order)", "pill-ok"),
     "cancelled": ("Cancelled", "pill-grey"),
 }
 
 
+def order_pay_state(total, priced, paid, old=False, cancelled=False):
+    """(status key, balance) of one order. Total = Σ qty × price of its lines; priced = every line has a price."""
+    if cancelled:
+        return "cancelled", 0
+    if old:
+        return "old", 0
+    if not priced:
+        return "no_price", 0
+    if paid >= total:
+        return "paid", 0
+    return ("deposit" if paid > 0 else "unpaid"), total - paid
+
+
+def order_totals(order_ids):
+    """{order id: (total, priced, paid)} in two queries."""
+    from django.db.models import Sum
+    out = {pk: [0, True, 0, 0] for pk in order_ids}               # total, priced, paid, line count
+    for line in OrderLine.objects.filter(order__in=order_ids).values("order", "qty", "price_ks"):
+        row = out[line["order"]]
+        row[3] += 1
+        if line["price_ks"] is None:
+            row[1] = False
+        else:
+            row[0] += line["price_ks"] * line["qty"]
+    for p in Payment.objects.filter(order__in=order_ids).values("order").annotate(s=Sum("amount_ks")):
+        out[p["order"]][2] = p["s"] or 0
+    return {pk: (t, priced and n > 0, paid) for pk, (t, priced, paid, n) in out.items()}
+
+
 def add_order_money(orders):
-    """Set paid_ks, balance_ks, settled and pay_status (key, label, pill class) on each order. One query."""
-    from django.db.models import Count, Sum
+    """Set total_ks, paid_ks, balance_ks, priced and pay_status (key, label, pill class) on each order."""
     orders = list(orders)
-    sums = {row["order"]: row for row in (
-        PaymentAllocation.objects.filter(order__in=[o.pk for o in orders]).values("order")
-        .annotate(paid=Sum("amount_ks"), settled=Count("id", filter=Q(payment__kind=Payment.Kind.SETTLED))))}
+    sums = order_totals([o.pk for o in orders])
     for o in orders:
-        row = sums.get(o.pk, {})
-        o.paid_ks = row.get("paid") or 0
-        o.settled = bool(row.get("settled"))
-        key, o.balance_ks = order_pay_state(o.price_ks, o.paid_ks, o.settled,
+        o.total_ks, o.priced, o.paid_ks = sums[o.pk]
+        key, o.balance_ks = order_pay_state(o.total_ks, o.priced, o.paid_ks, o.paid_old_order,
                                             o.status == CustomerRequest.Status.CANCELLED)
         o.pay_status = (key, *ORDER_PAY_STATUS[key])
+        o.deposit_ks = round(o.total_ks * 0.2)                      # "Deposit 20%"
     return orders
 
 
-def order_pay_state(price, paid, settled, cancelled=False):
-    """(status key, balance) of one order from its price and what its allocations add up to.
-    A cancelled order owes nothing (and isn't counted in the customer's total)."""
-    if cancelled:
-        return "cancelled", 0
-    if settled:
-        return "settled", 0
-    if price is None:
-        return "no_price", 0
-    if paid > price:
-        return "over", 0
-    if paid == price:
-        return "paid", 0
-    return ("deposit" if paid > 0 else "unpaid"), price - paid
-
-
-def customer_credit(customer):
-    from django.db.models import Sum
-    return PaymentAllocation.objects.filter(payment__customer=customer, order=None).aggregate(
-        s=Sum("amount_ks"))["s"] or 0
-
-
-def money_status(total, paid, balance, credit, unpriced, has_orders):
+def money_status(balance, unpriced, has_orders):
     """The Customers table's Money status: (key, label, pill class)."""
     if balance > 0:
-        return ("owes", f"Owes {balance:,} Ks", "pill-danger") if paid > 0 else ("not_paid", "Not paid", "pill-danger")
+        return "owes", f"Owes {balance:,} Ks", "pill-danger"
     if unpriced:
-        return ("not_recorded", "Not recorded", "pill-neutral")
-    if credit > 0:
-        return ("credit", f"Credit {credit:,} Ks", "pill-info")
+        return "no_price", "Price not set", "pill-neutral"
     if has_orders:
-        return ("clear", "All clear", "pill-ok")
-    return ("none", "No orders", "pill-neutral")
+        return "clear", "All clear", "pill-ok"
+    return "none", "No orders", "pill-neutral"
 
 
-def customer_money(customer, orders):
-    """Summary for one customer: total, paid, balance, credit, unpriced, status. orders: add_order_money() output."""
-    total = sum(o.price_ks or 0 for o in orders if o.pay_status[0] != "cancelled")
-    paid = sum(o.paid_ks for o in orders)
-    balance = sum(o.balance_ks for o in orders)
-    credit = customer_credit(customer)
-    unpriced = sum(1 for o in orders if o.pay_status[0] == "no_price")
-    return {"total": total, "paid": paid, "balance": balance, "credit": credit, "unpriced": unpriced,
-            "status": money_status(total, paid, balance, credit, unpriced, bool(orders))}
+def customer_money(orders):
+    """A customer's money from their orders (add_order_money() output): total, paid, balance, unpriced, status."""
+    live = [o for o in orders if o.pay_status[0] != "cancelled"]
+    total = sum(o.total_ks for o in live)
+    paid = sum(o.paid_ks for o in live)
+    balance = sum(o.balance_ks for o in live)
+    unpriced = sum(o.pay_status[0] == "no_price" for o in live)
+    return {"total": total, "paid": paid, "balance": balance, "unpriced": unpriced,
+            "status": money_status(balance, unpriced, bool(orders))}
 
 
-def reminder_text(customer, orders):
-    """The "Copy reminder" message (Burmese + English) listing each unpaid order and the total."""
-    owing = [o for o in orders if o.balance_ks > 0]
-    total = sum(o.balance_ks for o in owing)
-    items = ", ".join(f"{o.item_name} {o.balance_ks:,} Ks" for o in owing)
-    return (f"{customer.name} ရှင့် ကျန်ငွေ စုစုပေါင်း {total:,} Ks ပါ။\n"
-            f"({items}) /\n"
-            f"Total balance due: {total:,} Ks.")
+def order_items_text(order):
+    return ", ".join(f"{l.title} ×{l.qty}" for l in order.lines.all())
 
 
-def settle_old_orders(customer, orders, user, date=None):
-    """Owner / admin: "Mark selected orders as Paid (old order)" – one settled payment covering what each
-    order still owes (0 for an order without a price), so they all count as All clear."""
-    from django.db import transaction
-    from django.utils import timezone
-    orders = [o for o in add_order_money(orders) if not o.settled]
-    if not orders:
-        return None
-    with transaction.atomic():
-        p = Payment.objects.create(customer=customer, kind=Payment.Kind.SETTLED, date=date or timezone.localdate(),
-                                   amount_ks=sum(o.balance_ks for o in orders), recorded_by=user,
-                                   note="Old order(s) marked as paid")
-        PaymentAllocation.objects.bulk_create(PaymentAllocation(payment=p, order=o, amount_ks=o.balance_ks)
-                                              for o in orders)
-    return p
+def reminder_text(order):
+    """The "Copy reminder" message for one order (Burmese + English): its items, total, paid and balance."""
+    items = order_items_text(order)
+    t, p, b = f"{order.total_ks:,}", f"{order.paid_ks:,}", f"{order.balance_ks:,}"
+    return (f"{order.customer} ရှင့် အော်ဒါ – {items}\n"
+            f"စုစုပေါင်း {t} Ks၊ ပေးပြီး {p} Ks၊ ကျန်ငွေ {b} Ks ပါ။\n"
+            f"Order: {items} / Total: {t} Ks, Paid: {p} Ks, Balance due: {b} Ks.")
 
 
-def suggest_allocation(orders, amount, only=None):
-    """Oldest unpaid order first (by order date): fill each remaining balance until the amount runs out.
-    Returns ([(order, ks)], left over → credit). only: put it all on that one order instead."""
-    if only is not None:
-        return [(only, amount)], 0
-    split, left = [], amount
-    for o in sorted(orders, key=lambda o: (o.created_at, o.pk)):
-        if left <= 0:
-            break
-        if o.balance_ks > 0:
-            take = min(o.balance_ks, left)
-            split.append((o, take))
-            left -= take
-    return split, left
+def mark_old_orders_paid(orders):
+    """Owner / admin: "Mark as paid (old order)" – old orders without (full) payment count as fully paid."""
+    ids = [o.pk for o in orders if o.status != CustomerRequest.Status.CANCELLED]
+    return CustomerRequest.objects.filter(pk__in=ids, paid_old_order=False).update(paid_old_order=True)

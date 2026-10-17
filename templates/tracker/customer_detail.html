@@ -12,14 +12,13 @@
       <div class="min-w-0">
         <div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <h1 class="truncate text-2xl font-extrabold">{{ customer.name }}</h1>
-          {% if money.balance %}<span class="owes-badge" data-owes>Owes {{ money.balance|ks }}</span>{% endif %}
+          <span id="owes-slot">{% if money.balance %}<span class="owes-badge" data-owes>Owes {{ money.balance|ks }}</span>{% endif %}</span>
         </div>
         {% if customer.viber_member %}<span class="pill pill-viber mt-0.5">Viber channel member</span>
         {% else %}<span class="text-xs text-ink">Not in Viber channel</span>{% endif %}
       </div>
     </div>
     <div class="flex flex-wrap gap-2">
-      {% if reminder %}<button type="button" class="btn btn-soft" data-copy-reminder="{{ reminder }}">{% icon "copy" "w-4 h-4" %} <span data-copy-label>Copy reminder</span></button>{% endif %}
       <a href="{% url 'customer_edit' customer.pk %}" class="btn btn-ghost">Edit</a>
     </div>
   </div>
@@ -32,7 +31,7 @@
 </div>
 
 <div class="mt-4 grid grid-cols-3 gap-3 text-center">
-  <div class="card p-3"><div class="text-2xl font-extrabold">{{ requests|length }}</div><div class="text-xs font-semibold text-ink-muted">Requests</div></div>
+  <div class="card p-3"><div class="text-2xl font-extrabold">{{ requests|length }}</div><div class="text-xs font-semibold text-ink-muted">Orders</div></div>
   <div class="card p-3"><div class="text-2xl font-extrabold text-danger-ink">{{ open_count }}</div><div class="text-xs font-semibold text-ink-muted">Not delivered</div></div>
   <div class="card p-3"><div class="text-2xl font-extrabold text-primary">{{ items|length }}</div><div class="text-xs font-semibold text-ink-muted">Items in boxes</div></div>
 </div>
@@ -43,25 +42,24 @@
     <h2 class="text-lg font-bold">Money <span class="text-sm font-semibold text-ink-muted">(Myanmar Kyat)</span></h2>
     <span class="pill {{ money.status.2 }}" data-money-status="{{ money.status.0 }}">{{ money.status.1 }}</span>
   </div>
-  <dl class="money-grid">
+  <dl class="money-grid money-grid-3">
     <div><dt>Total</dt><dd data-money="total">{{ money.total|ks|default:"0 Ks" }}</dd></div>
     <div><dt>Paid</dt><dd data-money="paid">{{ money.paid|ks|default:"0 Ks" }}</dd></div>
     <div class="{% if money.balance %}is-owed{% endif %}"><dt>Balance</dt><dd data-money="balance">{{ money.balance|ks|default:"0 Ks" }}</dd></div>
-    <div class="{% if money.credit %}is-credit{% endif %}"><dt>Credit</dt><dd data-money="credit">{{ money.credit|ks|default:"0 Ks" }}</dd></div>
   </dl>
-  {% if money.unpriced %}<p class="mt-2 text-xs font-semibold text-ink-muted">{{ money.unpriced }} order{{ money.unpriced|pluralize }} without a price – set it on the order card.</p>{% endif %}
-  {% if owing %}
-    <h3 class="mt-4 text-sm font-bold">Balance per order</h3>
-    <ul class="mt-1 divide-y divide-line text-sm" data-balance-list>
-      {% for o in owing %}
-        <li class="flex items-center justify-between gap-3 py-2">
-          <span class="min-w-0"><b class="block truncate">{{ o.item_name }}</b>
-            <span class="text-xs text-ink-muted">{{ o.created_at|date:"j M Y" }} · price {{ o.price_ks|ks }} · paid {{ o.paid_ks|ks }}</span></span>
-          <span class="shrink-0 text-right"><span class="block font-extrabold text-danger-ink tabular-nums">{{ o.balance_ks|ks }}</span>
+  {% if requests %}
+    <div class="order-money-table mt-4" role="table" aria-label="Orders: total, paid, balance">
+      <div class="omt-head" role="row"><span role="columnheader">Order</span><span role="columnheader">Total</span><span role="columnheader">Paid</span><span role="columnheader">Balance</span></div>
+      {% for o in requests %}
+        <a href="#request-{{ o.pk }}" class="omt-row" role="row" data-order-money="{{ o.pk }}">
+          <span role="cell" class="min-w-0"><b class="block truncate">{{ o.item_name }}</b>
             <span class="pill {{ o.pay_status.2 }}">{{ o.pay_status.1 }}</span></span>
-        </li>
+          <span role="cell" data-label="Total">{% if o.priced %}{{ o.total_ks|ks }}{% else %}—{% endif %}</span>
+          <span role="cell" data-label="Paid">{{ o.paid_ks|ks }}</span>
+          <span role="cell" data-label="Balance" class="{% if o.balance_ks %}text-danger-ink{% endif %}">{{ o.balance_ks|ks }}</span>
+        </a>
       {% endfor %}
-    </ul>
+    </div>
   {% endif %}
 </section>
 {% endif %}
@@ -69,25 +67,14 @@
 <section id="orders" class="mt-6 scroll-mt-20">
   <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
     <h2 class="text-lg font-bold">Orders</h2>
-    <div class="flex flex-wrap gap-2">
-      {% if can_use_payments %}<button type="button" class="btn btn-soft shrink-0" data-open-payment>{% icon "plus" %} Add payment</button>{% endif %}
-      <button type="button" class="btn btn-primary shrink-0" onclick="document.getElementById('new-order').classList.toggle('hidden'); document.getElementById('id_item_name').focus()">{% icon "plus" %} New order</button>
-    </div>
+    <button type="button" class="btn btn-primary shrink-0" onclick="document.getElementById('new-order').classList.toggle('hidden'); document.querySelector('#new-order [data-item-text]').focus()">{% icon "plus" %} New order</button>
   </div>
-  {% if can_use_payments %}{% include "tracker/partials/payment_form.html" %}{% endif %}
-  <form id="new-order" method="post" action="{% url 'customer_new_order' customer.pk %}" class="{% if not show_order_form %}hidden{% endif %} card mb-3 space-y-3 p-4">
+  <form id="new-order" method="post" action="{% url 'customer_new_order' customer.pk %}" class="{% if not show_order_form %}hidden{% endif %} card mb-3 space-y-3 p-4" data-order-form>
     {% csrf_token %}
     <p class="text-sm font-semibold text-ink-muted">New order for <b class="text-ink">{{ customer.name }}</b></p>
     {% for e in order_form.non_field_errors %}<p class="text-sm text-danger-ink">{{ e }}</p>{% endfor %}
-    <div class="grid grid-cols-2 gap-3 sm:grid-cols-6">
-      <div class="col-span-2 sm:col-span-3">{% include "tracker/_field.html" with field=order_form.item_name %}</div>
-      <div class="col-span-2 sm:col-span-3">{% include "tracker/_field.html" with field=order_form.type %}</div>
-      <div>{% include "tracker/_field.html" with field=order_form.flex %}</div>
-      <div>{% include "tracker/_field.html" with field=order_form.loft %}</div>
-      <div>{% include "tracker/_field.html" with field=order_form.qty %}</div>
-      {% if can_use_payments %}<div class="col-span-2 sm:col-span-2">{% include "tracker/_field.html" with field=order_form.price_ks %}</div>{% endif %}
-      <div class="col-span-2 sm:col-span-3">{% include "tracker/_field.html" with field=order_form.note %}</div>
-    </div>
+    {% include "tracker/partials/order_lines.html" with lines=line_forms %}
+    {% include "tracker/_field.html" with field=order_form.note %}
     <div class="flex gap-2">
       <button class="btn btn-primary flex-1 py-3 sm:flex-none sm:px-8">Save order</button>
       <button type="button" class="btn btn-ghost" onclick="document.getElementById('new-order').classList.add('hidden')">Cancel</button>
@@ -97,53 +84,14 @@
     <form id="settle-form" method="post" action="{% url 'customer_settle' customer.pk %}" class="settle-bar mb-3" data-settle-form>
       {% csrf_token %}
       <span class="text-xs font-semibold text-ink-muted">Old orders paid before this app? Tick them, then</span>
-      <button class="btn btn-ghost !py-1.5 text-sm">Mark selected orders as Paid (old order)</button>
+      <button class="btn btn-ghost !py-1.5 text-sm">Mark as paid (old order)</button>
     </form>
   {% endif %}
   <div class="space-y-3">
     {% for r in requests %}{% include "tracker/partials/request_card.html" %}{% empty %}
-      <p class="card p-6 text-center text-sm text-ink-muted">No requests from {{ customer.name }} yet.</p>{% endfor %}
+      <p class="card p-6 text-center text-sm text-ink-muted">No orders from {{ customer.name }} yet.</p>{% endfor %}
   </div>
 </section>
-
-{% if can_use_payments %}
-<section id="payments" class="mt-6 scroll-mt-20">
-  <h2 class="mb-3 text-lg font-bold">Payment history</h2>
-  <div class="space-y-3">
-    {% for p in payments %}
-      <article class="card p-4" data-payment="{{ p.pk }}">
-        <div class="flex items-start justify-between gap-3">
-          <div class="min-w-0">
-            <div class="flex flex-wrap items-center gap-2">
-              <span class="pill {% if p.kind == 'refund' %}pill-warn{% elif p.kind == 'payment' %}pill-ok{% else %}pill-neutral{% endif %}">{{ p.get_kind_display }}</span>
-              <b class="tabular-nums">{% if p.kind == 'refund' %}−{% endif %}{{ p.amount_ks|ks }}</b>
-              {% if p.method %}<span class="text-sm font-semibold text-ink-muted">{{ p.method }}</span>{% endif %}
-            </div>
-            <div class="mt-0.5 text-xs text-ink-muted">{{ p.date|date:"j M Y" }}{% if p.recorded_by %} · recorded by {{ p.recorded_by.username }}{% endif %}{% if p.note %} · {{ p.note }}{% endif %}</div>
-            <ul class="mt-2 space-y-0.5 text-sm" data-split>
-              {% for a in p.allocations.all %}
-                <li class="flex justify-between gap-3"><span class="min-w-0 truncate">→ {% if a.order %}{{ a.order.item_name }}{% else %}Credit{% endif %}</span>
-                  <span class="shrink-0 font-semibold tabular-nums {% if a.amount_ks < 0 %}text-danger-ink{% endif %}">{{ a.amount_ks|ks }}</span></li>
-              {% endfor %}
-            </ul>
-          </div>
-          <div class="flex shrink-0 flex-col items-end gap-2">
-            {% if p.proof %}<a href="{% url 'payment_proof' p.pk %}" target="_blank" rel="noopener" class="proof-thumb" aria-label="Open proof photo">
-              <img src="{% url 'payment_proof_size' p.pk 'thumb' %}" alt="Payment proof" width="64" height="64" loading="lazy" onerror="this.closest('a').remove()"></a>{% endif %}
-            {% if can_edit_payments %}
-              <form method="post" action="{% url 'payment_delete' p.pk %}" onsubmit="return confirm('Delete this {{ p.get_kind_display|lower }} of {{ p.amount_ks|ks }}? Its split is removed too.')">
-                {% csrf_token %}<button class="text-xs font-semibold text-ink-muted underline hover:text-danger-ink">Delete</button>
-              </form>
-            {% endif %}
-          </div>
-        </div>
-      </article>
-    {% empty %}
-      <p class="card p-6 text-center text-sm text-ink-muted">No payments recorded for {{ customer.name }} yet.</p>
-    {% endfor %}
-  </div>
-</section>
-{% endif %}
 
 <section class="mt-6">
   <h2 class="mb-3 text-lg font-bold">Items packed for {{ customer.name }}</h2>
@@ -164,4 +112,4 @@
   </div>
 </section>
 {% endblock %}
-{% block scripts %}{% if can_use_payments %}<script src="{% static_v 'js/payments.js' %}" defer></script>{% endif %}{% endblock %}
+{% block scripts %}<script src="{% static_v 'js/payments.js' %}" defer></script>{% endblock %}
