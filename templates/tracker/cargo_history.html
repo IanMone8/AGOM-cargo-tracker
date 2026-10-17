@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% load tracker_tags %}
+{% block content %}
+{% include "tracker/_page_header.html" with eyebrow="Cargo history" title="Cargo companies" subtitle="Every box each cargo company has carried, newest first" %}
+
+<div class="no-scrollbar -mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 xl:grid-cols-4">
+  {% for c in cargos %}
+    <a href="?cargo={{ c.code }}" hx-get="?cargo={{ c.code }}" hx-target="#history-results" hx-push-url="true"
+       class="card card-hover min-w-[15rem] snap-start p-4 {% if selected == c %}ring-2 ring-primary{% endif %}">
+      <div class="flex items-center gap-3">
+        <div class="grid h-11 w-11 place-items-center rounded-2xl bg-primary text-xs font-extrabold text-white">{{ c.code }}</div>
+        <div class="min-w-0"><div class="truncate font-bold">{{ c.name }}</div><div class="text-xs text-ink-muted">{{ c.box_total }} box{{ c.box_total|pluralize:"es" }}</div></div>
+      </div>
+      <div class="mt-3 grid grid-cols-3 gap-2 text-center text-[0.7rem] font-semibold text-ink-muted">
+        <div class="rounded-xl bg-info-bg py-1.5"><div class="text-base font-extrabold text-info-ink">{{ c.in_transit }}</div>transit</div>
+        <div class="rounded-xl bg-mint py-1.5"><div class="text-base font-extrabold text-primary">{{ c.checked }}</div>checked</div>
+        <div class="rounded-xl bg-danger-bg py-1.5"><div class="text-base font-extrabold text-danger-ink">{{ c.issues }}</div>issues</div>
+      </div>
+      <div class="mt-2 text-xs text-ink-muted">Avg. transit: <b class="text-ink">{% if c.avg_days is not None %}{{ c.avg_days }} day{{ c.avg_days|pluralize }}{% else %}—{% endif %}</b></div>
+    </a>
+  {% empty %}
+    <p class="card p-6 text-sm text-ink-muted">No cargo companies yet – add them in Admin.</p>
+  {% endfor %}
+</div>
+
+<div id="history-results" class="mt-6">{% include "tracker/partials/history_results.html" %}</div>
+{% endblock %}

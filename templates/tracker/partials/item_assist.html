@@ -1,0 +1,29 @@
+{% comment %} "Item (brand + model)" combo box: the dropdown list (shown/hidden and driven by the keyboard in base.html)
+   plus hints on how the text will be saved. Rows carry data-pick: picking fills the field with exactly that spelling. {% endcomment %}
+<div class="combo-list" role="listbox" aria-label="Items" data-combo-list hidden>
+  {% for s in above %}<div class="combo-opt" role="option" aria-selected="false" data-pick="{{ s }}" data-section="box">{{ s }}</div>{% endfor %}
+  {% if above and below %}<div class="combo-divider" role="separator"></div>{% endif %}
+  {% for s in below %}<div class="combo-opt" role="option" aria-selected="false" data-pick="{{ s }}" data-section="saved">{{ s }}</div>{% endfor %}
+  {% if add_new %}<div class="combo-opt combo-add" role="option" aria-selected="false" data-pick="{{ add_new }}" data-section="new">+ Add ‘{{ typed }}’ as new item</div>{% endif %}
+</div>
+{% if parsed.text %}
+  <div class="item-hints">
+  {% if did_you_mean %}
+    <p class="item-ask"><span>Did you mean</span> <button type="button" class="item-btn" data-pick="{{ did_you_mean }}">{{ did_you_mean }}</button>?</p>
+  {% endif %}
+  {% if new_brand %}
+    <div class="item-ask item-ok" data-ask>
+      <span>✓ “{{ new_brand }}” will be added as a brand – saved as <b>{{ parsed.display }}</b></span>
+      <button type="button" class="item-link" data-add-brand-set="">undo</button>
+    </div>
+  {% elif parsed.unknown_brand and add_brand != "no" %}
+    <div class="item-ask" data-ask>
+      <span>Is “{{ parsed.unknown_brand }}” a brand?</span>
+      <button type="button" class="item-btn" data-add-brand-set="yes">Yes, add brand</button>
+      <button type="button" class="item-btn item-btn-ghost" data-add-brand-set="no">No</button>
+    </div>
+  {% else %}
+    <p class="item-preview">Saved as <b>{{ parsed.display }}</b>{% if parsed.brand %} <span class="item-tag">brand {{ parsed.brand }}</span>{% endif %}{% if parsed.model and parsed.model_is_new and parsed.brand %} <span class="item-tag">new model</span>{% endif %}</p>
+  {% endif %}
+  </div>
+{% endif %}

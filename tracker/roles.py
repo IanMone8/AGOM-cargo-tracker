@@ -5,7 +5,7 @@
 - Japan sender     -> group "Japan Sender": boxes, Japan lists, CSV import
 - Myanmar checker  -> group "Myanmar Checker": arrival, receive checks, extra items
 
-Everyone logged in can view every page and manage customer requests.
+CSV import is Owner/Admin only; customer requests are hidden from the Japan sender.
 """
 from functools import wraps
 
@@ -39,6 +39,61 @@ def can_edit_japan(user):
 def can_check(user):
     """Record Myanmar arrival, receive checks and extra items."""
     return is_manager(user) or _in_group(user, MYANMAR)
+
+
+def is_myanmar_checker(user):
+    """The Myanmar checker themself – not Owner / Admin, who can also check."""
+    return _in_group(user, MYANMAR) and not is_manager(user)
+
+
+def can_see_money(user):
+    """Yen amounts, cargo fees and totals: Owner / Admin and the Japan sender – never the Myanmar checker."""
+    return is_manager(user) or (_in_group(user, JAPAN) and not _in_group(user, MYANMAR))
+
+
+def can_import_csv(user):
+    """CSV import of Japan lists – Owner / Admin only."""
+    return is_manager(user)
+
+
+def can_use_requests(user):
+    """Customer requests – Owner / Admin and the Myanmar checker (not the Japan sender)."""
+    return is_manager(user) or can_check(user)
+
+
+def sees_unshipped_boxes(user):
+    """Packed (not yet shipped) boxes are hidden from the Myanmar checker."""
+    return is_manager(user) or can_edit_japan(user)
+
+
+def can_use_customers(user):
+    """Customer list / details – same people as customer requests (not the Japan sender)."""
+    return can_use_requests(user)
+
+
+def can_use_payments(user):
+    """Order prices (Ks), customer payments, balances and credit: Owner / Admin and the Myanmar checker –
+    never the Japan sender."""
+    return can_use_customers(user)
+
+
+def can_edit_payments(user):
+    """Delete / edit a recorded payment, and mark old orders as paid: Owner / Admin only."""
+    return is_manager(user)
+
+
+def can_edit_box_items(user, box):
+    """Edit the Japan side of a box (box header, add/delete items, CSV import).
+
+    The Japan sender loses this once the Myanmar check has started;
+    Owner and Admin can still correct things.
+    """
+    return is_manager(user) or (can_edit_japan(user) and not box.myanmar_started)
+
+
+def can_edit_box(user, box):
+    """Open the box Edit page (Myanmar checker edits the Myanmar side)."""
+    return can_edit_box_items(user, box) or can_check(user)
 
 
 def role_name(user):

@@ -1,0 +1,31 @@
+{% load tracker_tags %}
+{% for e in form.non_field_errors %}<p class="mb-3 rounded-xl bg-danger-bg px-3 py-2 text-sm text-danger-ink">{{ e }}</p>{% endfor %}
+<div class="card grid grid-cols-2 gap-3 p-4">
+  <div class="col-span-2">{% include "tracker/_field.html" with field=form.cargo %}</div>
+  <div class="{% if not can_see_money %}col-span-2{% endif %}">{% include "tracker/partials/box_id_field.html" %}</div>
+  {% if can_see_money %}<div>{% include "tracker/_field.html" with field=form.cargo_fee_jpy %}</div>{% endif %}
+  <div class="col-span-2">{% include "tracker/_field.html" with field=form.notes %}</div>
+</div>
+
+<div class="mb-3 mt-6">
+  <h3 class="text-base font-bold">Golf bag</h3>
+  <p class="text-xs text-ink-muted">Every box holds one golf bag; everything else is packed inside it.</p>
+</div>
+{% include "tracker/partials/bag_card.html" %}
+
+<div class="mb-3 mt-6 flex items-center justify-between">
+  <div>
+    <h3 class="text-base font-bold">Items inside the bag</h3>
+    <p class="text-xs text-ink-muted">Add every item packed in the bag.</p>
+  </div>
+</div>
+{{ formset.management_form }}
+{% for e in formset.non_form_errors %}<p class="mb-2 text-sm text-danger-ink">{{ e }}</p>{% endfor %}
+<div id="item-cards" class="space-y-3">
+  {% for item_form in formset.forms %}{% include "tracker/partials/item_card.html" with removable=True %}{% endfor %}
+</div>
+<button type="button" class="btn btn-soft mt-3 w-full border-2 border-dashed border-line-strong py-3"
+        hx-get="{% url 'box_item_card' %}" hx-include="#id_items-TOTAL_FORMS" hx-target="#item-cards" hx-swap="beforeend">
+  {% icon "plus" %} Add item
+</button>
+{% include "tracker/_datalists.html" %}

@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% load tracker_tags %}
+{% block content %}
+<div class="mb-5 flex items-start justify-between gap-3">
+  <div>
+    <h1 class="text-2xl font-extrabold tracking-tight sm:text-3xl">Customers</h1>
+    <p class="mt-0.5 text-sm font-medium text-ink-muted">{{ total_count }} customer{{ total_count|pluralize }}</p>
+  </div>
+  <button onclick="document.getElementById('new-customer').classList.toggle('hidden')" class="btn btn-primary shrink-0">{% icon "plus" %} Add customer</button>
+</div>
+
+<form id="new-customer" method="post" class="{% if not show_form %}hidden{% endif %} card mb-4 space-y-3 p-5">
+  {% csrf_token %}
+  <div class="grid gap-3 sm:grid-cols-2">
+    {% include "tracker/_field.html" with field=form.name %}
+    {% include "tracker/_field.html" with field=form.phone %}
+    <div class="sm:col-span-2">{% include "tracker/_field.html" with field=form.address %}</div>
+    <label class="flex items-center gap-2 text-sm font-semibold text-ink">{{ form.viber_member }} {{ form.viber_member.label }}</label>
+    <div class="sm:col-span-2">{% include "tracker/_field.html" with field=form.note %}</div>
+  </div>
+  <button class="btn btn-primary w-full py-3 sm:w-auto sm:px-8">Save customer</button>
+</form>
+
+<form id="customer-toolbar" class="mb-3 flex flex-wrap items-center gap-2" onsubmit="return false"
+      hx-get="{% url 'customer_list' %}" hx-target="#customer-results" hx-push-url="true"
+      hx-include="#customer-results [name=sort], #customer-results [name=dir]"
+      hx-trigger="change, input changed delay:300ms from:input[name=q], search from:input[name=q]">
+  <label class="relative min-w-0 flex-1 basis-full sm:basis-64">
+    <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted">{% icon "search" "w-5 h-5" %}</span>
+    <input name="q" value="{{ q }}" type="search" placeholder="Search name, phone, address" aria-label="Search customers" class="field !pl-10">
+  </label>
+  <label class="filter-pill">{% icon "chat" "w-4 h-4" %}
+    <select name="viber" aria-label="Viber filter">
+      <option value="" {% if not viber %}selected{% endif %}>Viber: All</option>
+      <option value="yes" {% if viber == 'yes' or viber == '1' %}selected{% endif %}>Viber members</option>
+      <option value="no" {% if viber == 'no' %}selected{% endif %}>Not members</option>
+    </select>
+  </label>
+  <label class="filter-pill">{% icon "box" "w-4 h-4" %}
+    <select name="orders" aria-label="Orders filter">
+      <option value="" {% if not orders %}selected{% endif %}>Orders: All</option>
+      <option value="open" {% if orders == 'open' %}selected{% endif %}>Has open requests</option>
+      <option value="none" {% if orders == 'none' %}selected{% endif %}>No open requests</option>
+    </select>
+  </label>
+  <label class="filter-pill"><span aria-hidden="true" class="text-[0.8rem] font-extrabold">Ks</span>
+    <select name="money" aria-label="Money filter">
+      <option value="" {% if not money %}selected{% endif %}>Money: All</option>
+      <option value="owes" {% if money == 'owes' %}selected{% endif %}>Owes money</option>
+      <option value="clear" {% if money == 'clear' %}selected{% endif %}>All clear</option>
+    </select>
+  </label>
+  <fieldset class="filter-pill date-range" aria-label="Order date range"
+            onchange="this.querySelector('.date-clear').hidden = !(this.elements.from.value || this.elements.to.value)">{% icon "calendar" "w-4 h-4" %}
+    <span class="text-[0.8rem] font-semibold">Ordered</span>
+    <input type="date" name="from" value="{{ date_from }}" max="{{ today|date:'Y-m-d' }}" aria-label="Order date from">
+    <span aria-hidden="true">–</span>
+    <input type="date" name="to" value="{{ date_to }}" max="{{ today|date:'Y-m-d' }}" aria-label="Order date to">
+    <button type="button" class="date-clear" aria-label="Clear the order date range" {% if not date_from and not date_to %}hidden{% endif %}
+       onclick="const f = this.closest('form'); f.from.value = ''; f.to.value = ''; f.to.dispatchEvent(new Event('change', {bubbles: true}))">×</button>
+  </fieldset>
+</form>
+
+<div id="customer-results">{% include "tracker/partials/customer_results.html" %}</div>
+<script>
+  // close an open "…" menu when tapping elsewhere
+  document.addEventListener('click', e => {
+    document.querySelectorAll('details.crm-menu[open]').forEach(d => { if (!d.contains(e.target)) d.open = false; });
+  });
+</script>
+{% endblock %}

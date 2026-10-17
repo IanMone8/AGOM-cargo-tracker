@@ -1,0 +1,166 @@
+/* Login page: "Fairway at dawn" scene (inline SVG in registration/login.html).
+   Colours come only from the tokens in agom.css. Motion uses transform/opacity only and lives inside
+   prefers-reduced-motion: no-preference, so the default styles ARE the final scene (ball in the cup).
+   The ball keyframes are generated from real parabolas (viewBox units: 1440 × 900). */
+
+.login-page { position: relative; min-height: 100vh; min-height: 100svh; overflow-x: hidden; color: var(--text);
+  background: linear-gradient(180deg, var(--grad-from) 0%, var(--cream) 62%, var(--cream) 100%); }
+
+/* ---- scene ---- */
+.login-scene { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+.login-scene svg { display: block; width: 100%; height: 100%; }
+.sky { fill: url(#sky); }
+.sky-top { stop-color: var(--grad-from); }
+.sky-bottom { stop-color: var(--cream); }
+.cloud { fill: var(--card); opacity: .85; }
+.hill-back { fill: color-mix(in srgb, var(--grad-to) 55%, var(--mint)); }
+.hill-mid { fill: var(--grad-to); }
+.hill-front, .ground { fill: color-mix(in srgb, var(--primary) 40%, var(--grad-to)); }
+.putting-green { fill: color-mix(in srgb, var(--primary) 16%, var(--grad-to)); stroke: color-mix(in srgb, var(--primary) 28%, var(--grad-to)); stroke-width: 6; }
+.cup-cover { fill: color-mix(in srgb, var(--primary) 16%, var(--grad-to)); }
+.cup { fill: var(--text); }
+.stick { stroke: var(--text); stroke-width: 3; stroke-linecap: round; }
+.flag { fill: var(--primary); transform-box: fill-box; transform-origin: 0% 50%; }
+.ripple { fill: none; stroke: var(--card); stroke-width: 2.5; opacity: 0; transform-box: fill-box; transform-origin: 50% 50%; }
+.ball circle.ball-body { fill: var(--card); stroke: var(--line-strong); stroke-width: 1.2; }
+.ball .dimple { fill: var(--line-strong); }
+.trail circle { fill: var(--text-muted); opacity: 0; }
+/* final scene: the ball sits in the cup (also the reduced-motion view) */
+.ball { transform: translate(1120px, 666px) scale(.82); }
+
+/* ---- layout: card left-center over the sky on desktop ---- */
+.login-main { position: relative; z-index: 1; display: flex; min-height: 100vh; min-height: 100svh; flex-direction: column;
+  justify-content: center; padding: 2rem clamp(1.5rem, 8vw, 9rem); }
+.login-card { width: 100%; max-width: 25rem; padding: 1.75rem;
+  background: color-mix(in srgb, var(--card) 86%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.1); backdrop-filter: blur(14px) saturate(1.1); }
+.login-badge { width: 4.5rem; height: 4.5rem; border-radius: 1.25rem; background: var(--card); object-fit: contain; padding: .25rem;
+  box-shadow: inset 0 1px 0 var(--card), 0 3px 0 var(--line-strong), 0 10px 18px -8px rgba(31, 58, 43, .45); }
+.login-tagline { display: inline-block; align-self: flex-start; max-width: 25rem; margin-top: 1rem; padding: .35rem .85rem; border-radius: 999px;
+  background: color-mix(in srgb, var(--card) 80%, transparent); color: var(--text); font-size: .78rem; font-weight: 700;
+  letter-spacing: .02em; text-align: center; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.pw-wrap { position: relative; }
+.pw-wrap .field { padding-right: 3rem; }
+.pw-toggle { position: absolute; right: .3rem; top: 50%; transform: translateY(-50%); display: grid; place-items: center;
+  width: 2.5rem; height: 2.5rem; border-radius: .7rem; color: var(--text-muted); }
+.pw-toggle:hover { color: var(--text); background: var(--sage); }
+.pw-toggle:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.pw-toggle .eye-off, .pw-toggle[aria-pressed="true"] .eye-on { display: none; }
+.pw-toggle[aria-pressed="true"] .eye-off { display: block; }
+
+/* ---- phones: scene on the top ~40 %, card below on the "ground" ---- */
+@media (max-width: 767px) {
+  .login-page { background: color-mix(in srgb, var(--primary) 40%, var(--grad-to)); }
+  /* zoom into the green's half of the scene (viewBox x ≈ 380–1240) so the ball stays visible */
+  .login-scene { position: absolute; bottom: auto; height: 42vh; height: 42svh; overflow: hidden; }
+  .login-scene svg { position: absolute; bottom: -2px; left: -44.2vw; width: 167.4vw; height: 104.6vw; }
+  .login-main { min-height: 0; justify-content: flex-start; align-items: center;
+    padding: calc(42vh - 2.5rem) 1rem 1.25rem; padding-top: calc(42svh - 2.5rem); }
+  .login-card { padding: 1.25rem; }
+  .login-badge { width: 3.5rem; height: 3.5rem; border-radius: 1rem; }
+  .login-card, .login-tagline { align-self: center; }
+  .login-tagline { margin-top: .75rem; font-size: .72rem; }
+}
+
+/* ---- animation (once on load, ~2.5 s), then only idle sway / drift ---- */
+@media (prefers-reduced-motion: no-preference) {
+  .scene-animate .ball { animation: ball-flight 2.5s linear .3s both; will-change: transform; }
+  .scene-animate .trail circle { animation: trail-dot 1.3s ease-out both; }
+  .scene-animate .ripple { animation: ripple 1s ease-out 2.75s both; }
+  .scene-animate .flag { animation: flag-wave .8s ease-in-out 2.7s 1, flag-sway 5s ease-in-out 3.5s infinite alternate; }
+  .login-page:not(.scene-animate) .flag { animation: flag-sway 5s ease-in-out infinite alternate; }
+  .cloud-a { animation: drift 70s ease-in-out infinite alternate; }
+  .cloud-b { animation: drift 90s ease-in-out -20s infinite alternate-reverse; }
+  .cloud-c { animation: drift 80s ease-in-out -40s infinite alternate; }
+  .scene-animate .login-card { animation: card-in .5s cubic-bezier(.2, .9, .3, 1.1) both; }
+}
+@keyframes trail-dot { 0% { opacity: 0; } 10% { opacity: .8; } 45% { opacity: .55; } 100% { opacity: 0; } }
+@keyframes ripple { 0% { opacity: .9; transform: scale(.4); } 100% { opacity: 0; transform: scale(2.4); } }
+@keyframes flag-wave { 0%, 100% { transform: scaleX(1) skewY(0); } 30% { transform: scaleX(.86) skewY(-7deg); } 65% { transform: scaleX(1.04) skewY(4deg); } }
+@keyframes flag-sway { from { transform: skewY(-2deg) scaleX(.97); } to { transform: skewY(2deg) scaleX(1); } }
+@keyframes drift { from { transform: translateX(-40px); } to { transform: translateX(60px); } }
+@keyframes card-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes ball-flight {
+  0% { transform: translate(-30.0px, 560.0px) rotate(0deg); }
+  1.2% { transform: translate(-5.5px, 515.0px) rotate(39deg); }
+  2.5% { transform: translate(19.0px, 472.4px) rotate(78deg); }
+  3.8% { transform: translate(43.5px, 432.3px) rotate(118deg); }
+  5% { transform: translate(68.0px, 394.6px) rotate(157deg); }
+  6.2% { transform: translate(92.5px, 359.3px) rotate(196deg); }
+  7.5% { transform: translate(117.0px, 326.4px) rotate(235deg); }
+  8.8% { transform: translate(141.5px, 296.0px) rotate(274deg); }
+  10% { transform: translate(166.0px, 268.0px) rotate(314deg); }
+  11.2% { transform: translate(190.5px, 242.4px) rotate(353deg); }
+  12.5% { transform: translate(215.0px, 219.2px) rotate(392deg); }
+  13.8% { transform: translate(239.5px, 198.5px) rotate(431deg); }
+  15% { transform: translate(264.0px, 180.2px) rotate(470deg); }
+  16.2% { transform: translate(288.5px, 164.3px) rotate(510deg); }
+  17.5% { transform: translate(313.0px, 150.8px) rotate(549deg); }
+  18.8% { transform: translate(337.5px, 139.8px) rotate(588deg); }
+  20% { transform: translate(362.0px, 131.2px) rotate(627deg); }
+  21.2% { transform: translate(386.5px, 125.1px) rotate(666deg); }
+  22.5% { transform: translate(411.0px, 121.3px) rotate(706deg); }
+  23.8% { transform: translate(435.5px, 120.0px) rotate(745deg); }
+  25% { transform: translate(460.0px, 121.1px) rotate(784deg); }
+  26.2% { transform: translate(484.5px, 124.7px) rotate(823deg); }
+  27.5% { transform: translate(509.0px, 130.6px) rotate(862deg); }
+  28.7% { transform: translate(533.5px, 139.0px) rotate(902deg); }
+  30% { transform: translate(558.0px, 149.8px) rotate(941deg); }
+  31.2% { transform: translate(582.5px, 163.1px) rotate(980deg); }
+  32.5% { transform: translate(607.0px, 178.7px) rotate(1019deg); }
+  33.8% { transform: translate(631.5px, 196.8px) rotate(1058deg); }
+  35% { transform: translate(656.0px, 217.4px) rotate(1098deg); }
+  36.2% { transform: translate(680.5px, 240.3px) rotate(1137deg); }
+  37.5% { transform: translate(705.0px, 265.7px) rotate(1176deg); }
+  38.8% { transform: translate(729.5px, 293.5px) rotate(1215deg); }
+  40% { transform: translate(754.0px, 323.8px) rotate(1254deg); }
+  41.2% { transform: translate(778.5px, 356.4px) rotate(1294deg); }
+  42.5% { transform: translate(803.0px, 391.5px) rotate(1333deg); }
+  43.8% { transform: translate(827.5px, 429.0px) rotate(1372deg); }
+  45% { transform: translate(852.0px, 469.0px) rotate(1411deg); }
+  46.2% { transform: translate(876.5px, 511.3px) rotate(1450deg); }
+  47.5% { transform: translate(901.0px, 556.1px) rotate(1490deg); }
+  48.8% { transform: translate(925.5px, 603.3px) rotate(1529deg); }
+  50% { transform: translate(950.0px, 653.0px) rotate(1568deg); }
+  51.3% { transform: translate(956.2px, 636.4px) rotate(1578deg); }
+  52.6% { transform: translate(962.4px, 623.6px) rotate(1588deg); }
+  53.9% { transform: translate(968.6px, 614.4px) rotate(1598deg); }
+  55.2% { transform: translate(974.8px, 608.8px) rotate(1608deg); }
+  56.5% { transform: translate(981.0px, 607.0px) rotate(1618deg); }
+  57.8% { transform: translate(987.2px, 608.8px) rotate(1628deg); }
+  59.1% { transform: translate(993.4px, 614.4px) rotate(1637deg); }
+  60.4% { transform: translate(999.6px, 623.6px) rotate(1647deg); }
+  61.7% { transform: translate(1005.8px, 636.4px) rotate(1657deg); }
+  63% { transform: translate(1012.0px, 653.0px) rotate(1667deg); }
+  64.3% { transform: translate(1016.9px, 646.1px) rotate(1675deg); }
+  65.6% { transform: translate(1021.7px, 641.6px) rotate(1683deg); }
+  66.9% { transform: translate(1026.6px, 639.3px) rotate(1691deg); }
+  68.1% { transform: translate(1031.4px, 639.3px) rotate(1698deg); }
+  69.4% { transform: translate(1036.3px, 641.6px) rotate(1706deg); }
+  70.7% { transform: translate(1041.1px, 646.1px) rotate(1714deg); }
+  72% { transform: translate(1046.0px, 653.0px) rotate(1722deg); }
+  73.3% { transform: translate(1056.2px, 653.0px) rotate(1738deg); }
+  74.6% { transform: translate(1065.6px, 653.0px) rotate(1753deg); }
+  75.9% { transform: translate(1074.3px, 653.0px) rotate(1767deg); }
+  77.1% { transform: translate(1082.2px, 653.0px) rotate(1780deg); }
+  78.4% { transform: translate(1089.4px, 653.0px) rotate(1791deg); }
+  79.7% { transform: translate(1095.8px, 653.0px) rotate(1801deg); }
+  81% { transform: translate(1101.5px, 653.0px) rotate(1810deg); }
+  82.3% { transform: translate(1106.4px, 653.0px) rotate(1818deg); }
+  83.6% { transform: translate(1110.6px, 653.0px) rotate(1825deg); }
+  84.9% { transform: translate(1114.0px, 653.0px) rotate(1830deg); }
+  86.1% { transform: translate(1116.6px, 653.0px) rotate(1835deg); }
+  87.4% { transform: translate(1118.5px, 653.0px) rotate(1838deg); }
+  88.7% { transform: translate(1119.6px, 653.0px) rotate(1839deg); }
+  90% { transform: translate(1120.0px, 653.0px) rotate(1840deg); }
+  91% { transform: translate(1120.0px, 654.3px) rotate(1840deg) scale(0.98); }
+  92% { transform: translate(1120.0px, 655.6px) rotate(1840deg) scale(0.96); }
+  93% { transform: translate(1120.0px, 656.9px) rotate(1840deg) scale(0.95); }
+  94% { transform: translate(1120.0px, 658.2px) rotate(1840deg) scale(0.93); }
+  95% { transform: translate(1120.0px, 659.5px) rotate(1840deg) scale(0.91); }
+  96% { transform: translate(1120.0px, 660.8px) rotate(1840deg) scale(0.89); }
+  97% { transform: translate(1120.0px, 662.1px) rotate(1840deg) scale(0.87); }
+  98% { transform: translate(1120.0px, 663.4px) rotate(1840deg) scale(0.86); }
+  99% { transform: translate(1120.0px, 664.7px) rotate(1840deg) scale(0.84); }
+  100% { transform: translate(1120.0px, 666.0px) rotate(1840deg) scale(0.82); }
+}

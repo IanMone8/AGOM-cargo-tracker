@@ -1,27 +1,103 @@
 {% extends "base.html" %}
+{% load static tracker_tags %}
 {% block title %}Log in · AGOM Cargo Tracker{% endblock %}
-{% block content %}
-<div class="mx-auto mt-10 max-w-sm">
-  <div class="mb-6 text-center">
-    <div class="text-4xl">⛳</div>
-    <h1 class="mt-2 text-2xl font-bold text-emerald-900">AGOM Cargo Tracker</h1>
-    <p class="text-sm text-slate-500">Japan → Myanmar golf shipments</p>
+{% block head %}<link rel="stylesheet" href="{% static_v 'css/login.css' %}">{% endblock %}
+{% block public %}
+{# "Fairway at dawn": the intro plays once; after a failed login the scene is shown finished so nothing distracts. #}
+<div class="login-page{% if not form.errors %} scene-animate{% endif %}">
+  <div class="login-scene" aria-hidden="true">
+    <svg viewBox="0 0 1440 900" preserveAspectRatio="xMidYMax slice" focusable="false">
+      <defs>
+        <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" class="sky-top"/><stop offset=".7" class="sky-bottom"/>
+        </linearGradient>
+      </defs>
+      <rect class="sky" width="1440" height="900"/>
+      <g class="cloud cloud-a"><ellipse cx="250" cy="150" rx="78" ry="26"/><ellipse cx="300" cy="132" rx="52" ry="30"/><ellipse cx="205" cy="140" rx="40" ry="22"/></g>
+      <g class="cloud cloud-b"><ellipse cx="760" cy="96" rx="96" ry="28"/><ellipse cx="815" cy="78" rx="58" ry="32"/><ellipse cx="710" cy="86" rx="44" ry="22"/></g>
+      <g class="cloud cloud-c"><ellipse cx="1210" cy="190" rx="70" ry="22"/><ellipse cx="1250" cy="174" rx="44" ry="26"/></g>
+      <path class="hill-back" d="M0 560 C 200 500, 380 470, 600 520 S 1000 470, 1200 500 S 1380 520, 1440 505 L1440 900 L0 900 Z"/>
+      <path class="hill-mid" d="M0 640 C 220 580, 420 600, 640 632 S 980 560, 1440 600 L1440 900 L0 900 Z"/>
+      <path class="hill-front" d="M0 770 C 240 705, 500 730, 720 705 S 880 655, 1060 652 S 1340 662, 1440 700 L1440 900 L0 900 Z"/>
+      <!-- putting green, cup and flagstick -->
+      <ellipse class="putting-green" cx="1060" cy="662" rx="170" ry="30"/>
+      <ellipse class="cup" cx="1120" cy="664" rx="12" ry="4.5"/>
+      <line class="stick" x1="1120" y1="664" x2="1120" y2="520"/>
+      <path class="flag" d="M1121 521 L1172 537 L1121 553 Z"/>
+      <g class="trail">
+        <circle cx="35" cy="445" r="4.2" style="animation-delay:0.38s"/>
+        <circle cx="101" cy="348" r="4.2" style="animation-delay:0.47s"/>
+        <circle cx="166" cy="268" r="4.2" style="animation-delay:0.55s"/>
+        <circle cx="231" cy="205" r="4.2" style="animation-delay:0.63s"/>
+        <circle cx="297" cy="160" r="4.2" style="animation-delay:0.72s"/>
+        <circle cx="362" cy="131" r="4.2" style="animation-delay:0.8s"/>
+        <circle cx="427" cy="120" r="4.2" style="animation-delay:0.88s"/>
+        <circle cx="493" cy="126" r="4.2" style="animation-delay:0.97s"/>
+        <circle cx="558" cy="150" r="4.2" style="animation-delay:1.05s"/>
+        <circle cx="623" cy="191" r="4.2" style="animation-delay:1.13s"/>
+        <circle cx="689" cy="249" r="4.2" style="animation-delay:1.22s"/>
+        <circle cx="754" cy="324" r="4.2" style="animation-delay:1.3s"/>
+        <circle cx="819" cy="416" r="4.2" style="animation-delay:1.38s"/>
+        <circle cx="885" cy="526" r="4.2" style="animation-delay:1.47s"/>
+      </g>
+      <g class="ball">
+        <circle class="ball-body" r="10"/>
+        <circle class="dimple" cx="-3" cy="-3" r="1.1"/><circle class="dimple" cx="2.5" cy="-3.5" r="1.1"/>
+        <circle class="dimple" cx="3.5" cy="1.5" r="1.1"/><circle class="dimple" cx="-2" cy="2.8" r="1.1"/><circle class="dimple" cx="0.5" cy="-0.2" r="1"/>
+      </g>
+      <!-- front of the cup: hides the lower half of the ball once it has dropped in -->
+      <path class="cup-cover" d="M1104 664 L1136 664 L1136 680 L1104 680 Z"/>
+      <path class="cup" d="M1108 664 A12 4.5 0 0 0 1132 664 Z"/>
+      <ellipse class="ripple" cx="1120" cy="664" rx="12" ry="4.5"/>
+    </svg>
   </div>
-  <form method="post" class="space-y-4 rounded-2xl bg-white p-6 shadow">
-    {% csrf_token %}
-    {% if form.errors %}
-      <p class="rounded-lg bg-red-100 px-3 py-2 text-sm text-red-800">Wrong username or password.</p>
-    {% endif %}
-    <label class="block text-sm font-medium">Username
-      <input name="username" autocomplete="username" autocapitalize="none" required autofocus
-             class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-base" value="{{ form.username.value|default:'' }}">
-    </label>
-    <label class="block text-sm font-medium">Password
-      <input type="password" name="password" autocomplete="current-password" required
-             class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-base">
-    </label>
-    <input type="hidden" name="next" value="{{ next }}">
-    <button class="w-full rounded-lg bg-emerald-700 py-2.5 font-semibold text-white hover:bg-emerald-600">Log in</button>
-  </form>
+
+  <main class="login-main">
+    <div class="login-card card">
+      <div class="mb-5 flex items-center gap-3">
+        <img src="{% static_v 'img/display/3d-logo.png' %}" alt="AGOM Golf Shop" width="72" height="72" class="login-badge shrink-0" onerror="this.style.display='none'">
+        <div class="min-w-0">
+          <h1 class="text-xl font-extrabold leading-tight text-ink sm:text-2xl">AGOM Cargo Tracker</h1>
+          <p class="mt-0.5 text-sm text-ink-muted">Japan → Myanmar golf shipments</p>
+        </div>
+      </div>
+      <form method="post" class="space-y-3.5">
+        {% csrf_token %}
+        {% if form.errors %}
+          <p class="flex items-start gap-2 rounded-xl bg-danger-bg px-3 py-2.5 text-sm font-semibold text-danger-ink" role="alert">
+            <span class="shrink-0">{% icon "alert" "w-5 h-5" %}</span><span>Wrong username or password.</span>
+          </p>
+        {% endif %}
+        <label class="block text-sm font-semibold text-ink">Username
+          <input name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required
+                 {% if not form.errors %}autofocus{% endif %} class="field mt-1" value="{{ form.username.value|default:'' }}">
+        </label>
+        <div>
+          <label for="id_password" class="block text-sm font-semibold text-ink">Password</label>
+          <div class="pw-wrap mt-1">
+            <input type="password" id="id_password" name="password" autocomplete="current-password" required class="field"
+                   {% if form.errors %}autofocus{% endif %}>
+            <button type="button" class="pw-toggle" aria-label="Show password" aria-pressed="false" aria-controls="id_password"
+                    onclick="togglePassword(this)">
+              <svg class="eye-on h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+              <svg class="eye-off h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18M10.6 5.1A10.4 10.4 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4M6.6 6.6C3.9 8.3 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+            </button>
+          </div>
+        </div>
+        <input type="hidden" name="next" value="{{ next }}">
+        <button class="btn btn-primary w-full py-3 text-base">Log in</button>
+      </form>
+    </div>
+    <p class="login-tagline">Take with Trust · Play with Confidence · Get Achievements</p>
+  </main>
 </div>
+<script>
+  function togglePassword(btn) {
+    const input = document.getElementById(btn.getAttribute('aria-controls'));
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    btn.setAttribute('aria-pressed', show);
+    btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+  }
+</script>
 {% endblock %}

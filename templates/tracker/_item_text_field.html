@@ -1,0 +1,12 @@
+{% load tracker_tags %}{% comment %} "Item (brand + model)" combo box. Context: field (the item_name bound field), add_field (hidden add_brand).
+   Typing / focus / ▾ fetch partials/item_assist.html into .item-assist; base.html opens the list and handles picks and keys. {% endcomment %}
+<div data-item-field class="combo">
+  <label for="{{ field.id_for_label }}" class="block text-[0.8rem] font-semibold text-ink-muted">{{ field.label }}{% if field.field.required %} <span class="text-primary">*</span>{% endif %}</label>
+  <div class="combo-box mt-1">
+    {{ field }}
+    <button type="button" class="combo-toggle" data-combo-toggle tabindex="-1" aria-label="Show all items">{% icon "chevron-down" "w-4 h-4" %}</button>
+  </div>
+  {% for e in field.errors %}<p class="mt-1 text-xs font-medium text-danger-ink">{{ e }}</p>{% endfor %}
+  {{ add_field }}
+  <div class="item-assist"></div>
+</div>

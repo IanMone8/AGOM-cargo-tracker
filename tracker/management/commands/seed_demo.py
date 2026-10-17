@@ -8,7 +8,7 @@ import datetime
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from tracker.models import Box, Cargo, Catalog, CustomerRequest, JapanItem
+from tracker.models import Box, Cargo, Catalog, Customer, CustomerRequest, JapanItem
 
 CARGOS = [("JP", "JP Cargo"), ("GN", "GN Cargo"), ("KL", "KL Cargo"), ("KAG", "KAG Cargo")]
 CATALOG = [
@@ -46,6 +46,7 @@ class Command(BaseCommand):
 
         today = timezone.localdate()
         gn, kl, jp = (Cargo.objects.get(code=c) for c in ("GN", "KL", "JP"))
+        BAGS = [("Titleist Stand Bag", "Black"), ("Ping Hoofer", "Navy"), ("Callaway Cart Bag", "White / red")]
         boxes = [
             (gn, 3, today - datetime.timedelta(days=12), None),
             (gn, 4, today - datetime.timedelta(days=20), today - datetime.timedelta(days=2)),
@@ -58,13 +59,25 @@ class Command(BaseCommand):
                 defaults={"japan_ship_date": shipped, "myanmar_received_date": received},
             )
             if created:
+                bag_name, bag_color = BAGS[no % len(BAGS)]
                 JapanItem.objects.bulk_create([
-                    JapanItem(box=box, type="Driver", item_name="Titleist TSR2", flex="S", loft="10", qty=1, condition="used", price_jpy=25000, customer="Ko Aung"),
-                    JapanItem(box=box, type="Iron set", item_name="Mizuno JPX 923 5-P", flex="R", qty=1, price_jpy=98000),
-                    JapanItem(box=box, type="Wedge", item_name="Cleveland RTX 6", loft="56", qty=2, condition="used"),
-                    JapanItem(box=box, type="Balls", item_name="Titleist Pro V1 (dozen)", qty=5),
+                    JapanItem(box=box, is_bag=True, type=JapanItem.BAG_TYPE, item_name=bag_name, color=bag_color,
+                              qty=1, condition="used"),
+                    JapanItem(box=box, type="Club", item_name="Titleist TSR2 Driver", brand="Titleist", model="TSR2",
+                              club_type="Driver", club_number="1W", flex="S", loft="10", shaft_material="graphite",
+                              specification="Tour AD UB-6, 45.5in", color="Black", qty=1, condition="used",
+                              price_jpy=25000, customer="Ko Aung"),
+                    JapanItem(box=box, type="Club set", item_name="Mizuno JPX 923 Irons", brand="Mizuno", model="JPX 923",
+                              club_type="Iron set", club_number="5-P", flex="R", shaft_material="steel",
+                              specification="N.S.PRO 950", color="Silver", qty=1, quantity_unit="set", price_jpy=98000),
+                    JapanItem(box=box, type="Club", item_name="Cleveland RTX 6 Wedge", brand="Cleveland", model="RTX 6",
+                              club_type="Wedge", loft="56", shaft_material="steel", qty=2, condition="used"),
+                    JapanItem(box=box, type="Balls", item_name="Titleist Pro V1", brand="Titleist", model="Pro V1",
+                              color="White", qty=5, quantity_unit="dozen"),
                 ])
             box.refresh_status()
+        for name in JapanItem.objects.exclude(customer="").values_list("customer", flat=True).distinct():
+            Customer.ensure(name)  # bulk_create above skips the automatic customer creation
         CustomerRequest.objects.get_or_create(
             customer="Ma Hnin", item_name="Ping G430 Max",
             defaults={"type": "Driver", "flex": "SR", "loft": "10.5"},

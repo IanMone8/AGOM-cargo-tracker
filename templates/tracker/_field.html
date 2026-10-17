@@ -1,5 +1,7 @@
-<label class="block text-sm font-medium text-slate-700">{{ field.label }}{% if field.field.required %} *{% endif %}
-  <div class="mt-1">{{ field }}</div>
-  {% if field.help_text %}<p class="mt-1 text-xs font-normal text-slate-500">{{ field.help_text }}</p>{% endif %}
-  {% for e in field.errors %}<p class="mt-1 text-xs text-red-600">{{ e }}</p>{% endfor %}
+<label class="block text-[0.8rem] font-semibold text-ink-muted">{{ field.label }}{% if field.field.required %} <span class="text-primary">*</span>{% endif %}
+  {% if field.name == "price_jpy" or field.name == "cargo_fee_jpy" %}
+    <div class="yen-wrap mt-1"><span class="yen-sign" aria-hidden="true">¥</span>{{ field }}</div>
+  {% else %}<div class="mt-1">{{ field }}</div>{% endif %}
+  {% if field.help_text %}<p class="mt-1 text-xs font-normal text-ink-muted">{{ field.help_text }}</p>{% endif %}
+  {% for e in field.errors %}<p class="mt-1 text-xs font-medium text-danger-ink">{{ e }}</p>{% endfor %}
 </label>

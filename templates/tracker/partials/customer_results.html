@@ -1,0 +1,21 @@
+<input type="hidden" name="sort" value="{{ sort }}"><input type="hidden" name="dir" value="{{ dir }}">
+<div class="crm-table card" role="table" aria-label="Customers">
+  <div class="crm-head" role="row">
+    {% include "tracker/partials/customer_th.html" with col="name" label="Name" %}
+    <div role="columnheader">Phone</div>
+    <div role="columnheader" class="crm-col-address">Address</div>
+    <div role="columnheader" class="crm-col-viber">Viber</div>
+    {% include "tracker/partials/customer_th.html" with col="orders" label="Orders" %}
+    {% include "tracker/partials/customer_th.html" with col="balance" label="Balance (Ks)" %}
+    <div role="columnheader" class="crm-col-money">Money</div>
+    <div role="columnheader">Status</div>
+    {% include "tracker/partials/customer_th.html" with col="updated" label="Last update" %}
+    <div role="columnheader"><span class="sr-only">Favourite</span></div>
+    <div role="columnheader"><span class="sr-only">Actions</span></div>
+  </div>
+  <div role="rowgroup" class="crm-body">
+    {% include "tracker/partials/customer_rows.html" %}
+    {% if not customers %}<p class="px-4 py-10 text-center text-sm text-ink-muted">No customers match.</p>{% endif %}
+  </div>
+</div>
+<p class="mt-2 px-1 text-xs font-medium text-ink-muted">Showing <span id="crm-shown">{{ shown_count }}</span> of {{ match_count }}</p>

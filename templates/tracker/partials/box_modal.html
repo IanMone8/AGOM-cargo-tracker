@@ -1,0 +1,27 @@
+{% load tracker_tags %}
+<div class="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <div class="modal-backdrop absolute inset-0" onclick="closeModal()"></div>
+  <form class="modal-panel relative flex max-h-[94vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-3xl bg-page shadow-2xl sm:rounded-3xl"
+        hx-post="{% url 'box_create' %}" hx-target="#modal">
+    <div class="modal-head flex items-center justify-between px-5 py-4">
+      <div class="flex items-center gap-3">
+        <div class="modal-icon grid h-10 w-10 place-items-center rounded-xl">{% icon "box" %}</div>
+        <div><h2 id="modal-title" class="text-lg font-bold leading-tight">Add box</h2><p class="text-xs text-ink">Japan packing list</p></div>
+      </div>
+      <button type="button" class="rounded-lg p-2 hover:bg-white/50" onclick="closeModal()" aria-label="Close">{% icon "x" "w-6 h-6" %}</button>
+    </div>
+    <div class="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+      {% include "tracker/partials/box_form_body.html" %}
+    </div>
+    {% if can_see_money %}
+      {# live total: Bag + Items + Cargo fee (base.html keeps it up to date while typing) #}
+      <div class="money-summary border-t border-line bg-sage px-4 py-2.5 text-sm sm:px-6" data-money-summary aria-live="polite">
+        <span>Bag <b data-sum="bag">¥0</b></span><span class="op">+</span><span>Items <b data-sum="items">¥0</b></span><span class="op">+</span><span>Cargo fee <b data-sum="fee">¥0</b></span><span class="op">=</span><span class="money-total">Total <b data-sum="total">¥0</b></span>
+      </div>
+    {% endif %}
+    <div class="flex gap-2 border-t border-line bg-card px-4 py-3 sm:px-6">
+      <button type="button" class="btn btn-ghost flex-1 sm:flex-none" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-save flex-1">{% icon "check" %} Save box</button>
+    </div>
+  </form>
+</div>

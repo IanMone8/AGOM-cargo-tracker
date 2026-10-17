@@ -1,0 +1,22 @@
+{% load tracker_tags %}
+<div class="mb-3 flex items-center justify-between">
+  <h2 class="text-lg font-bold">{% if selected %}{{ selected.code }} · {{ selected.name }}{% else %}All cargo companies{% endif %}</h2>
+  {% if selected %}<a href="{% url 'cargo_history' %}" hx-get="{% url 'cargo_history' %}" hx-target="#history-results" hx-push-url="true" class="text-sm font-semibold text-primary">Show all</a>{% endif %}
+</div>
+<div class="card divide-y divide-line">
+  {% for box in boxes %}
+    <a href="{% url 'box_detail' box.pk %}" class="flex items-center gap-3 p-4 hover:bg-sage">
+      <div class="min-w-0 flex-1">
+        <div class="flex flex-wrap items-center gap-2"><span class="min-w-0 font-extrabold">{{ box.label }}{% if box.bag_name %}<span class="font-semibold text-ink-muted"> · {{ box.bag_name }}</span>{% endif %}</span><span class="{{ box.status|badge }}">{{ box.get_status_display }}</span>
+          {% if box.problem_count or box.extra_count %}<span class="text-xs font-semibold text-danger-ink">{{ box.problem_count|add:box.extra_count }} issue{{ box.problem_count|add:box.extra_count|pluralize }}</span>{% endif %}</div>
+        <div class="mt-0.5 text-xs text-ink-muted">
+          🇯🇵 {{ box.japan_ship_date|date:"j M Y"|default:"not shipped" }} → 🇲🇲 {{ box.myanmar_received_date|date:"j M Y"|default:"—" }}
+          {% if box.transit_days is not None %}· <b class="text-ink">{{ box.transit_days }} days</b>{% endif %}
+        </div>
+      </div>
+      <div class="shrink-0 text-right text-xs text-ink-muted"><span class="block font-bold text-ink">{{ box.item_count }}</span>items</div>
+    </a>
+  {% empty %}
+    <p class="p-6 text-center text-sm text-ink-muted">No boxes yet.</p>
+  {% endfor %}
+</div>

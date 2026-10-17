@@ -1,0 +1,8 @@
+{# Box ID in the Add box modal; replaced by views.box_next_id whenever the cargo company changes #}
+<div id="box-id-field">
+  <label class="block text-[0.8rem] font-semibold text-ink-muted">{{ form.box_id.label }}
+    <div class="mt-1">{{ form.box_id }}</div>
+    <p class="mt-1 text-xs font-normal text-ink-muted" data-box-id-hint>{{ box_id_hint }}</p>
+    {% for e in form.box_id.errors %}<p class="mt-1 text-xs font-medium text-danger-ink">{{ e }}</p>{% endfor %}
+  </label>
+</div>

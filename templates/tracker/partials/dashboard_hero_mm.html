@@ -1,0 +1,30 @@
+{% load tracker_tags %}{% comment %}
+Dashboard banner for the Myanmar checker: same card, gradient, hills and edge as the English banner,
+a centred Burmese message (Noto Sans Myanmar) and one sticker in each corner.
+{% endcomment %}
+<section class="hero hero-mm" aria-label="Message for the Myanmar team">
+  <svg class="hero-hill" viewBox="0 0 640 260" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M110 260 C 230 150, 360 120, 470 150 S 610 190, 640 160 L 640 260 Z" class="hill-1"/>
+    <path d="M250 260 C 360 190, 470 180, 560 205 S 630 225, 640 215 L 640 260 Z" class="hill-2"/>
+    <path d="M420 260 C 490 228, 560 222, 640 240 L 640 260 Z" class="hill-3"/>
+  </svg>
+  <div class="hero-text mm-text" lang="my">
+    <p class="mm-lead">ပျော်ရွှင်စရာလုပ်ငန်းခွင်က အချိန်တိုင်းမရနိုင်ပါ။</p>
+    <p>သို့ပေမဲ့ သင်ဟာ ရုပ်ချောနေတာ တစ်ခုတည်းနဲ့ ပျော်ရွှင်ဖို့ထိုက်တန်ပါတယ်။</p>
+    <p>ပြုံးလိုက်ပါ ရယ်မောလိုက်ပါ။</p>
+    <p>သာယာရွှင်လန်းပြီးအလုပ်လုပ်ရတဲ့နေ့လေးကိုပိုင်ဆိုင်နိုင်ပါစေ <span class="mm-name" lang="en">Miss Thaw Thaw</span>။</p>
+  </div>
+  {% if stickers %}
+    <div class="stickers" aria-hidden="true">
+      {% for s in stickers %}
+        {# reduced motion: the still PNG copy; otherwise the animated WebP, with the GIF as fallback #}
+        <picture class="sticker sticker-{{ s.name }}" data-corner="{{ s.corner }}">
+          {% if s.still %}<source media="(prefers-reduced-motion: reduce)" srcset="{% static_v s.still %}" type="image/webp">{% endif %}
+          {% if s.webp %}<source srcset="{% static_v s.webp %}" type="image/webp">{% endif %}
+          <img src="{% static_v s.gif %}" alt="" width="120" height="120" loading="lazy" decoding="async"
+               onerror="this.closest('.sticker').style.display='none'">
+        </picture>
+      {% endfor %}
+    </div>
+  {% endif %}
+</section>
