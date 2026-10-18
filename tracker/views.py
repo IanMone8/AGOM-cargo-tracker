@@ -1,4 +1,7 @@
 import datetime
+from zoneinfo import ZoneInfo
+
+from django.conf import settings
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -33,7 +36,9 @@ from .forms import (
 )
 from .models import (Box, Cargo, Catalog, Customer, CustomerRequest, ExtraItem, JapanItem, OrderLine, Payment, ReceiveCheck,
                      add_order_money, brand_names, customer_money, mark_old_orders_paid, money_status, order_pay_state, order_totals,
-                     yangon_today)
+                     site_today, yangon_today)
+
+SITE_TZ = ZoneInfo(settings.TIME_ZONE)       # business dates (not the viewer's display zone)
 
 ITEM_CATEGORIES = ["Club", "Club set", "Bag", "Balls", "Shoes", "Apparel", "Accessory"]
 CLUB_TYPES = ["Driver", "Fairway wood", "Utility", "Iron set", "Iron", "Wedge", "Putter"]
@@ -353,7 +358,7 @@ def box_detail(request, pk):
     return render(request, "tracker/box_detail.html", {
         "box": box,
         "can_edit_this_box": roles.can_edit_box(request.user, box),
-        "ships_later": not box.can_be_received_on(timezone.localdate()),
+        "ships_later": not box.can_be_received_on(site_today()),
         "can_edit_items": roles.can_edit_box_items(request.user, box),
         "japan_locked": roles.can_edit_japan(request.user) and not roles.can_edit_box_items(request.user, box),
         "items": items,
@@ -392,13 +397,13 @@ class ReceivedBeforeShipped(Exception):
 
 
 def _start_check(box):
-    if not box.myanmar_received_date and not box.can_be_received_on(timezone.localdate()):
+    if not box.myanmar_received_date and not box.can_be_received_on(site_today()):
         raise ReceivedBeforeShipped(
             f"{box.label} ships from Japan on {box.japan_ship_date.day} {box.japan_ship_date:%b %Y} – "
             "it can't be received in Myanmar before that."
         )
     if not box.myanmar_received_date:
-        box.myanmar_received_date = timezone.localdate()
+        box.myanmar_received_date = site_today()
         box.save(update_fields=["myanmar_received_date", "updated_at"])
     box.refresh_status()
 
@@ -413,7 +418,7 @@ def box_mark_shipped(request, pk):
     if box.status == Box.Status.PACKED:
         box.status = Box.Status.SHIPPED
         if not box.japan_ship_date:
-            box.japan_ship_date = timezone.localdate()
+            box.japan_ship_date = site_today()
         box.save(update_fields=["status", "japan_ship_date", "updated_at"])
         messages.success(request, f"{box.label} marked as shipped – Myanmar can now see it.")
     return redirect("box_detail", pk=box.pk)
@@ -723,7 +728,7 @@ def customer_rows(user, q="", viber="", orders="", money="", date_from=None, dat
         else:
             c.tag = ("none", "No orders")
         # last update = the latest order date; customers with only box items fall back to the box's last change
-        days = [x["order_date"] for x in r] or [timezone.localtime(x["box__updated_at"]).date() for x in it]
+        days = [x["order_date"] for x in r] or [x["box__updated_at"].astimezone(SITE_TZ).date() for x in it]
         c.last_update = max(days) if days else None
         c.in_range = any((not date_from or x["order_date"] >= date_from) and (not date_to or x["order_date"] <= date_to)
                          for x in r)

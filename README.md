@@ -231,15 +231,16 @@ source .venv/bin/activate            # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
 python manage.py migrate
-python manage.py setup_roles --create-users   # creates the groups + 4 users, prints passwords
+python manage.py setup_roles                  # the 4 role groups: Admin, Owner, Japan Sender, Myanmar Checker
+python manage.py createsuperuser              # your own Admin account (choose the username and password)
 python manage.py seed_demo                    # cargo companies JP/GN/KL/KAG + starter catalog
 # optional: python manage.py seed_demo --demo  # sample boxes and requests to play with
 
 python manage.py runserver
 ```
 
-Open http://127.0.0.1:8000 and log in with one of the printed accounts.
-To change a password: `python manage.py changepassword owner` (or use `/admin/`).
+Open http://127.0.0.1:8000 and log in. Add the other people in `/admin/` → Users (and put each one in their
+group). To change a password: `python manage.py changepassword <username>` (or use `/admin/`).
 Edit the cargo company names under **Admin → Cargos**.
 
 To try it from a phone on the same Wi-Fi:
@@ -299,23 +300,36 @@ box,cargo,kind,brand,model,color,club_option,flex,qty,amount_jpy,cargo_fee_jpy,c
 
 ## Production
 
-```bash
-export DEBUG=False
-export SECRET_KEY='a-long-random-string'
-export DATABASE_URL='postgres://agom:password@db-host:5432/agom'
-export ALLOWED_HOSTS='agom.example.com'
-export CSRF_TRUSTED_ORIGINS='https://agom.example.com'
+**PythonAnywhere (free plan, SQLite): step by step in [DEPLOY_PYTHONANYWHERE.md](DEPLOY_PYTHONANYWHERE.md).**
 
-pip install -r requirements.txt
-python manage.py migrate
-python manage.py collectstatic --noinput
-python manage.py setup_roles --create-users
-python manage.py seed_demo
-gunicorn agom.wsgi --bind 0.0.0.0:8000
+Settings come from environment variables, which on the server are kept in a git-ignored `.env` file next to
+`manage.py` (or at the path in `AGOM_ENV_FILE`):
+
+```bash
+SECRET_KEY=a-long-random-string
+DEBUG=false
+ALLOWED_HOSTS=agom.pythonanywhere.com
+CSRF_TRUSTED_ORIGINS=https://agom.pythonanywhere.com
+SQLITE_PATH=/home/agom/data/agom.sqlite3      # outside the git folder: `git pull` never touches the data
+# optional: STATIC_ROOT (default: staticfiles/), BACKUP_DIR (default: backups/ next to the database), TIME_ZONE
 ```
 
-Static files (the admin CSS) are served by WhiteNoise, so no extra web server config is needed.
-This works on Render, Railway, Fly.io or a small VPS behind nginx/Caddy.
+```bash
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py collectstatic --noinput   # -> STATIC_ROOT, served by the host's static files mapping
+python manage.py setup_roles               # the 4 role groups (no users, no passwords)
+python manage.py backup_db                 # dated copy of the SQLite file in BACKUP_DIR, keeps the newest 14
+```
+
+With DEBUG off: HTTPS redirect, secure cookies, `SECURE_PROXY_SSL_HEADER` and HSTS; static files get hashed
+names for cache-busting (WhiteNoise can also serve them if no static mapping is set up).
+The app stores no uploaded files (CSV imports are read, not kept), so no media storage is needed.
+
+**Time zones:** each user sees dates and times in their own zone – Japan Sender: Asia/Tokyo, Myanmar Checker:
+Asia/Yangon, Owner / Admin: Asia/Bangkok, or the zone set on the user in `/admin/` (shown in the user card,
+e.g. "Japan Sender · JST"). Business rules don't follow the viewer: Box IDs use Japan time, order dates and the
+date checks use the site's `TIME_ZONE` (Asia/Yangon).
 
 ## Project layout
 
@@ -327,7 +341,8 @@ tracker/
   roles.py       role helpers (Owner / Japan Sender / Myanmar Checker)
   csv_import.py  CSV parser/validator
   admin.py       Django admin registration
-  management/commands/  setup_roles, seed_demo
+  management/commands/  setup_roles, seed_demo, backup_db
+  middleware.py         per-user display time zone
 templates/       base layout (sidebar), pages, HTMX partials (Add box modal, item cards…)
 static/          css/agom.css (golf theme), img/ (logos, icons; small copies in img/display/)
 ```
