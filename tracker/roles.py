@@ -1,6 +1,6 @@
 """The four AGOM users map onto these roles.
 
-- Admin            -> Django superuser (maintains the site, uses /admin)
+- Admin            -> Django superuser (maintains the site, uses /admin), or group "Admin" (same app rights as Owner)
 - Owner            -> group "Owner": can see and do everything in the app
 - Japan sender     -> group "Japan Sender": boxes, Japan lists, CSV import
 - Myanmar checker  -> group "Myanmar Checker": arrival, receive checks, extra items
@@ -11,10 +11,15 @@ from functools import wraps
 
 from django.core.exceptions import PermissionDenied
 
+ADMIN = "Admin"
 OWNER = "Owner"
 JAPAN = "Japan Sender"
 MYANMAR = "Myanmar Checker"
-ALL_GROUPS = [OWNER, JAPAN, MYANMAR]
+ALL_GROUPS = [ADMIN, OWNER, JAPAN, MYANMAR]
+
+# Display time zone when a user hasn't chosen one (UserProfile.time_zone): by group.
+DEFAULT_TIME_ZONES = {JAPAN: "Asia/Tokyo", MYANMAR: "Asia/Yangon", OWNER: "Asia/Bangkok", ADMIN: "Asia/Bangkok"}
+MANAGER_TIME_ZONE = "Asia/Bangkok"          # superusers
 
 
 def _in_group(user, name):
@@ -28,7 +33,7 @@ def _in_group(user, name):
 
 
 def is_manager(user):
-    return user.is_authenticated and (user.is_superuser or _in_group(user, OWNER))
+    return user.is_authenticated and (user.is_superuser or _in_group(user, OWNER) or _in_group(user, ADMIN))
 
 
 def can_edit_japan(user):
@@ -48,6 +53,17 @@ def can_set_box_status(user, status):
     """Arrived / Checked come only from the Myanmar side: the Myanmar check itself, the Myanmar checker or
     Owner / Admin (corrections). The Japan sender may only set Packed / Shipped – on every endpoint."""
     return status not in MYANMAR_STATUSES or can_check(user)
+
+
+def default_time_zone(user):
+    """The display time zone for a user who hasn't picked one: Japan Sender -> Tokyo, Myanmar Checker -> Yangon,
+    Owner / Admin -> Bangkok (checked in that order of precedence: managers first)."""
+    if is_manager(user):
+        return MANAGER_TIME_ZONE
+    for group in (JAPAN, MYANMAR):
+        if _in_group(user, group):
+            return DEFAULT_TIME_ZONES[group]
+    return None                                  # no role: the site's TIME_ZONE
 
 
 def is_japan_sender(user):

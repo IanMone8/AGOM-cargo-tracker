@@ -1,4 +1,5 @@
 from . import roles as r
+from .models import user_time_zone, zone_label
 
 
 def roles(request):
@@ -7,6 +8,7 @@ def roles(request):
         return {}
     return {
         "role_name": r.role_name(user),
+        "zone_label": zone_label(user_time_zone(user)),          # user card: "Japan Sender · JST"
         "can_edit_japan": r.can_edit_japan(user),
         "can_check": r.can_check(user),
         "is_manager": r.is_manager(user),

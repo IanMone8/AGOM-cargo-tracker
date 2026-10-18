@@ -231,15 +231,16 @@ source .venv/bin/activate            # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
 python manage.py migrate
-python manage.py setup_roles --create-users   # creates the groups + 4 users, prints passwords
+python manage.py setup_roles                  # the 4 role groups: Admin, Owner, Japan Sender, Myanmar Checker
+python manage.py createsuperuser              # your own Admin account (choose the username and password)
 python manage.py seed_demo                    # cargo companies JP/GN/KL/KAG + starter catalog
 # optional: python manage.py seed_demo --demo  # sample boxes and requests to play with
 
 python manage.py runserver
 ```
 
-Open http://127.0.0.1:8000 and log in with one of the printed accounts.
-To change a password: `python manage.py changepassword owner` (or use `/admin/`).
+Open http://127.0.0.1:8000 and log in. Add the other people in `/admin/` → Users (and put each one in their
+group). To change a password: `python manage.py changepassword <username>` (or use `/admin/`).
 Edit the cargo company names under **Admin → Cargos**.
 
 To try it from a phone on the same Wi-Fi:
@@ -309,13 +310,19 @@ export CSRF_TRUSTED_ORIGINS='https://agom.example.com'
 pip install -r requirements.txt
 python manage.py migrate
 python manage.py collectstatic --noinput
-python manage.py setup_roles --create-users
+python manage.py setup_roles
 python manage.py seed_demo
 gunicorn agom.wsgi --bind 0.0.0.0:8000
 ```
 
-Static files (the admin CSS) are served by WhiteNoise, so no extra web server config is needed.
-This works on Render, Railway, Fly.io or a small VPS behind nginx/Caddy.
+Static files are served by WhiteNoise (compressed, with hashed names for cache-busting), so no extra web
+server config is needed. **Render (Singapore) is set up in `render.yaml` – step by step in [DEPLOY.md](DEPLOY.md).**
+The app stores no uploaded files (CSV imports are read, not kept), so no media storage is needed.
+
+**Time zones:** each user sees dates and times in their own zone – Japan Sender: Asia/Tokyo, Myanmar Checker:
+Asia/Yangon, Owner / Admin: Asia/Bangkok, or the zone set on the user in `/admin/` (shown in the user card,
+e.g. "Japan Sender · JST"). Business rules don't follow the viewer: Box IDs use Japan time, order dates and the
+date checks use the site's `TIME_ZONE` (Asia/Yangon).
 
 ## Project layout
 

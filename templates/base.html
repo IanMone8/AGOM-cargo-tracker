@@ -55,7 +55,7 @@
     <div class="shrink-0 rounded-2xl bg-white/55 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_2px_0_rgba(15,59,44,0.12)]">
       <div class="flex items-center gap-3">
         <div class="grid h-10 w-10 place-items-center rounded-full bg-primary font-bold uppercase text-white">{{ user.get_username|slice:":1" }}</div>
-        <div class="min-w-0 flex-1"><div class="truncate text-sm font-semibold">{{ user.get_username }}</div><div class="text-xs text-primary-hover">{{ role_name }}</div></div>
+        <div class="min-w-0 flex-1"><div class="truncate text-sm font-semibold">{{ user.get_username }}</div><div class="text-xs text-primary-hover" data-role-zone><span class="whitespace-nowrap">{{ role_name }}</span> <span class="whitespace-nowrap" title="Dates and times are shown in this time zone">· {{ zone_label }}</span></div></div>
         <form method="post" action="{% url 'logout' %}">{% csrf_token %}
           <button class="rounded-lg p-2 text-primary-hover hover:bg-mint" title="Log out" aria-label="Log out">{% icon "logout" %}</button>
         </form>

@@ -19,13 +19,21 @@ def env_list(name, default=""):
     return [v.strip() for v in os.environ.get(name, default).split(",") if v.strip()]
 
 
-DEBUG = env_bool("DEBUG", True)
+# Render sets RENDER=true on its servers: there DEBUG is off unless DEBUG=true is set on purpose.
+# Locally (no RENDER) everything works as before: DEBUG on, SQLite, no HTTPS.
+ON_RENDER = env_bool("RENDER", False)
+DEBUG = env_bool("DEBUG", not ON_RENDER)
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-insecure-change-me" if DEBUG else "")
 if not SECRET_KEY:
     raise RuntimeError("SECRET_KEY environment variable is required when DEBUG is off.")
 
 ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", "localhost,127.0.0.1" if DEBUG else "")
 CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS")
+# Render gives every web service a hostname (agom-cargo-tracker.onrender.com): allow it automatically.
+RENDER_EXTERNAL_HOSTNAME = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
+if RENDER_EXTERNAL_HOSTNAME:
+    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
+    CSRF_TRUSTED_ORIGINS.append(f"https://{RENDER_EXTERNAL_HOSTNAME}")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -44,6 +52,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "tracker.middleware.UserTimeZoneMiddleware",           # dates / times shown in each user's own zone
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -68,7 +77,7 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "agom.wsgi.application"
 
-# SQLite by default; set DATABASE_URL=postgres://user:pass@host:5432/dbname in production.
+# SQLite by default (local); production sets DATABASE_URL=postgres://user:pass@host:5432/dbname (psycopg).
 DATABASES = {
     "default": dj_database_url.config(
         default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
@@ -85,6 +94,8 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LANGUAGE_CODE = "en-us"
+# The site's business time zone: order dates and date rules use it (Box IDs use Japan time). What each user SEES
+# is their own zone (tracker.middleware.UserTimeZoneMiddleware, UserProfile.time_zone).
 TIME_ZONE = os.environ.get("TIME_ZONE", "Asia/Yangon")
 USE_I18N = True
 USE_TZ = True
@@ -108,7 +119,21 @@ LOGIN_REDIRECT_URL = "dashboard"
 LOGOUT_REDIRECT_URL = "login"
 
 if not DEBUG:
+    # HTTPS only (Render ends TLS at its proxy and passes X-Forwarded-Proto)
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", True)
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
-    SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", True)
+    SECURE_HSTS_SECONDS = int(os.environ.get("SECURE_HSTS_SECONDS", str(60 * 60 * 24 * 365)))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool("SECURE_HSTS_INCLUDE_SUBDOMAINS", True)
+    SECURE_HSTS_PRELOAD = env_bool("SECURE_HSTS_PRELOAD", True)
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_REFERRER_POLICY = "same-origin"
+
+if ON_RENDER:                              # errors and warnings go to the Render log
+    LOGGING = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "handlers": {"console": {"class": "logging.StreamHandler"}},
+        "root": {"handlers": ["console"], "level": os.environ.get("LOG_LEVEL", "WARNING")},
+    }
