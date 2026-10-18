@@ -33,6 +33,57 @@ MYANMAR_TZ = ZoneInfo("Asia/Yangon")
 BOX_CODE_RE = re.compile(r"^(%s)(\d{2})-([A-Z0-9]+)-0*(\d+)$" % "|".join(MONTHS))
 
 
+def site_today():
+    """Today in the site's business time zone (settings.TIME_ZONE, Asia/Yangon) – for ship / receive dates and the
+    "today or later" date rules. Not the viewer's display zone, so the rules are the same for everyone."""
+    from django.utils import timezone
+    return timezone.localdate(timezone=ZoneInfo(settings.TIME_ZONE))
+
+
+def time_zone_choices():
+    import zoneinfo
+    return [("", "Default for the role")] + [(z, z) for z in sorted(zoneinfo.available_timezones())
+                                             if "/" in z and not z.startswith(("Etc/", "SystemV/", "posix/", "right/"))]
+
+
+# Short names for the user card ("Japan Sender · JST"); others show their own abbreviation or city.
+ZONE_LABELS = {"Asia/Tokyo": "JST", "Asia/Yangon": "MMT", "Asia/Bangkok": "ICT", "Asia/Singapore": "SGT", "UTC": "UTC"}
+
+
+def zone_label(name):
+    if name in ZONE_LABELS:
+        return ZONE_LABELS[name]
+    from django.utils import timezone
+    abbr = timezone.now().astimezone(ZoneInfo(name)).tzname() or ""
+    return abbr if abbr.isalpha() else name.rsplit("/", 1)[-1].replace("_", " ")
+
+
+class UserProfile(models.Model):
+    """Per-user settings. time_zone: how dates and times are SHOWN to this user (empty = the role's default:
+    Japan Sender -> Asia/Tokyo, Myanmar Checker -> Asia/Yangon, Owner / Admin -> Asia/Bangkok). Business rules
+    (Box IDs in Japan time, order dates in Myanmar time, date checks) don't depend on it."""
+
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="profile")
+    time_zone = models.CharField("Time zone", max_length=64, blank=True, choices=time_zone_choices,
+                                 help_text="How dates and times are shown to this user. Empty: the role's default.")
+
+    def __str__(self):
+        return f"{self.user}: {self.time_zone or 'role default'}"
+
+
+def user_time_zone(user):
+    """The zone name dates and times are shown in for this user (falls back to the site's TIME_ZONE)."""
+    from . import roles
+    if not user.is_authenticated:
+        return settings.TIME_ZONE
+    chosen = getattr(user, "_agom_tz", None)
+    if chosen is None:
+        profile = UserProfile.objects.filter(user=user).only("time_zone").first()
+        chosen = (profile.time_zone if profile else "") or roles.default_time_zone(user) or settings.TIME_ZONE
+        user._agom_tz = chosen
+    return chosen
+
+
 def yangon_today():
     """Today's date in Myanmar (the default order date)."""
     from django.utils import timezone

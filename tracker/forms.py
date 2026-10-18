@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from . import roles
 from .models import (Box, Cargo, OrderLine, Payment, brand_names, choose_option_message, parse_box_code, set_brand_model,
+                     site_today,
                      ClubCategory, ClubOption, Customer, CustomerRequest, ExtraItem, JapanItem)
 
 INPUT = "field"  # styled in static/css/agom.css
@@ -133,7 +134,7 @@ class BoxForm(StyledMixin, forms.ModelForm):
         """Calendars can't pick a date before today, and the received date can't be
         before the ship date. A date already saved on the box stays selectable,
         otherwise the browser would refuse to submit the form."""
-        today = timezone.localdate()
+        today = site_today()
         ship = self.instance.japan_ship_date
         received = self.instance.myanmar_received_date
         if "japan_ship_date" in self.fields:
@@ -162,7 +163,7 @@ class BoxForm(StyledMixin, forms.ModelForm):
                 self.add_error("code", f"This box is for {cargo.code}, so its ID must have {cargo.code} in it.")
             else:
                 self.instance.period, self.instance.seq = period, seq
-        today = timezone.localdate()
+        today = site_today()
         for name in ("japan_ship_date", "myanmar_received_date"):
             value = data.get(name)
             if name in self.changed_data and value and value < today:
@@ -709,7 +710,7 @@ class OrderPaymentForm(StyledMixin, forms.ModelForm):
         self.fields["method"].queryset = PaymentMethod.objects.filter(active=True)
         self.fields["method"].required = True
         self.fields["method"].empty_label = "Choose…"
-        self.fields["date"].initial = timezone.localdate()
+        self.fields["date"].initial = site_today()
         self.fields["amount_ks"].widget.attrs["data-pay-amount"] = ""
 
     def clean_amount_ks(self):

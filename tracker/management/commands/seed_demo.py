@@ -8,7 +8,7 @@ import datetime
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from tracker.models import Box, Cargo, Catalog, Customer, CustomerRequest, JapanItem
+from tracker.models import Box, Cargo, Catalog, Customer, CustomerRequest, JapanItem, site_today
 
 CARGOS = [("JP", "JP Cargo"), ("GN", "GN Cargo"), ("KL", "KL Cargo"), ("KAG", "KAG Cargo")]
 CATALOG = [
@@ -44,7 +44,7 @@ class Command(BaseCommand):
         if not opts["demo"]:
             return
 
-        today = timezone.localdate()
+        today = site_today()
         gn, kl, jp = (Cargo.objects.get(code=c) for c in ("GN", "KL", "JP"))
         BAGS = [("Titleist Stand Bag", "Black"), ("Ping Hoofer", "Navy"), ("Callaway Cart Bag", "White / red")]
         boxes = [

@@ -3385,3 +3385,143 @@ class SidebarCopyrightTests(BaseTest):
                 self.assertIn('text-center text-xs text-primary-hover" data-copyright>© AGOM 2026</p>', html)
                 self.assertLess(html.index("data-copyright"), html.index('aria-label="Log out"'))
                 self.assertGreater(html.index("data-copyright"), html.index("</nav>"))
+
+
+class UserTimeZoneTests(BaseTest):
+    """Dates and times are SHOWN in each user's zone; business rules keep their fixed zones."""
+
+    # 31 Oct 2026 15:30 UTC: Tokyo is already 1 Nov (00:30), Yangon still 31 Oct (22:00), Bangkok 31 Oct (22:30)
+    MOMENT = datetime.datetime(2026, 10, 31, 15, 30, tzinfo=datetime.timezone.utc)
+
+    def test_default_zone_by_group_and_override(self):
+        from django.contrib.auth.models import Group
+        from .models import UserProfile, user_time_zone
+        admin_group = User.objects.create_user("ad", password="pw-12345-x")
+        admin_group.groups.add(Group.objects.get_or_create(name=roles.ADMIN)[0])
+        superuser = User.objects.create_superuser("root2", password="pw-12345-x")
+        nobody = User.objects.create_user("nobody", password="pw-12345-x")
+        for user, zone in ((self.japan, "Asia/Tokyo"), (self.myanmar, "Asia/Yangon"), (self.owner, "Asia/Bangkok"),
+                           (admin_group, "Asia/Bangkok"), (superuser, "Asia/Bangkok"), (nobody, "Asia/Yangon")):
+            with self.subTest(user=user.username):
+                self.assertEqual(user_time_zone(User.objects.get(pk=user.pk)), zone)
+        UserProfile.objects.create(user=self.japan, time_zone="Asia/Singapore")          # chosen in /admin/
+        self.assertEqual(user_time_zone(User.objects.get(pk=self.japan.pk)), "Asia/Singapore")
+
+    def test_middleware_activates_the_users_zone(self):
+        from django.test import RequestFactory
+        from django.utils import timezone
+        from .middleware import UserTimeZoneMiddleware
+        seen = []
+        mw = UserTimeZoneMiddleware(lambda r: seen.append(timezone.get_current_timezone_name()) or "ok")
+        for user, zone in ((self.japan, "Asia/Tokyo"), (self.myanmar, "Asia/Yangon"), (self.owner, "Asia/Bangkok")):
+            request = RequestFactory().get("/")
+            request.user = User.objects.get(pk=user.pk)
+            mw(request)
+            self.assertEqual(seen[-1], zone)
+        self.assertEqual(timezone.get_current_timezone_name(), "Asia/Yangon")              # reset after the request
+
+    def test_times_shown_in_own_zone_and_zone_in_user_card(self):
+        from django.contrib.auth.models import Group
+        from django.template import Context, Template
+        from django.utils import timezone
+        for user, label in ((self.japan, ">Japan Sender</span>"), (self.myanmar, ">Myanmar Checker</span>"),
+                            (self.owner, ">Owner</span>")):
+            self.client.force_login(user)
+            html = self.client.get(reverse("dashboard")).content.decode()
+            self.assertIn(label, html)
+        self.client.force_login(self.japan)
+        self.assertIn('title="Dates and times are shown in this time zone">· JST</span>',
+                      self.client.get(reverse("dashboard")).content.decode())
+        self.client.force_login(self.myanmar)
+        self.assertIn(">· MMT</span>", self.client.get(reverse("dashboard")).content.decode())
+        render = Template('{{ t|date:"j M H:i" }}').render
+        with timezone.override("Asia/Tokyo"):
+            self.assertEqual(render(Context({"t": self.MOMENT})), "1 Nov 00:30")
+        with timezone.override("Asia/Bangkok"):
+            self.assertEqual(render(Context({"t": self.MOMENT})), "31 Oct 22:30")
+
+    def test_business_rules_keep_their_zones(self):
+        from unittest import mock
+        from django.utils import timezone
+        from .forms import BoxForm, CustomerOrderForm
+        from .models import Box, CustomerRequest, box_period, site_today, yangon_today
+        with mock.patch.object(timezone, "now", return_value=self.MOMENT):
+            for viewer in ("Asia/Tokyo", "Asia/Bangkok", "Asia/Yangon", "UTC"):
+                with self.subTest(viewer=viewer), timezone.override(viewer):
+                    self.assertEqual(box_period()[0], "NOV26")                                 # Box IDs: Japan time
+                    self.assertEqual(Box.next_code(self.cargo)[0][:5], "NOV26")
+                    self.assertEqual(yangon_today(), datetime.date(2026, 10, 31))             # order dates: Myanmar
+                    self.assertEqual(CustomerRequest(customer="x", item_name="y").order_date, datetime.date(2026, 10, 31))
+                    self.assertEqual(site_today(), datetime.date(2026, 10, 31))               # date rules: site zone
+                    form = CustomerOrderForm()
+                    self.assertEqual(form.fields["order_date"].widget.attrs["max"], "2026-10-31")
+                    self.assertEqual(BoxForm(instance=self.box).fields["japan_ship_date"].widget.attrs["min"], "2026-10-31")
+            # end to end: a Japan sender (Tokyo) and an owner (Bangkok) get the same business dates
+            self.ship()
+            self.client.force_login(self.myanmar)
+            self.client.post(reverse("box_start_check", args=[self.box.pk]))
+            self.box.refresh_from_db()
+            self.assertEqual(self.box.myanmar_received_date, datetime.date(2026, 10, 31))
+            from .models import Customer
+            ko = Customer.objects.create(name="Ko Aung")
+            self.client.force_login(self.owner)
+            self.client.post(reverse("customer_new_order", args=[ko.pk]), order_data((("XXIO", "MP1400"), 1, "1000")))
+            self.assertEqual(CustomerRequest.objects.get(customer="Ko Aung").order_date, datetime.date(2026, 10, 31))
+            self.client.force_login(self.japan)
+            future = self.client.post(reverse("customer_new_order", args=[ko.pk]), order_data((("XXIO", "MP1400"), 1, "1")))
+            self.assertEqual(future.status_code, 403)                                         # (never sees orders)
+
+    def test_setup_roles_creates_four_groups_and_no_users(self):
+        from django.contrib.auth.models import Group
+        Group.objects.all().delete()
+        before = User.objects.count()
+        call_command("setup_roles", stdout=io.StringIO())
+        self.assertEqual(sorted(Group.objects.values_list("name", flat=True)),
+                         ["Admin", "Japan Sender", "Myanmar Checker", "Owner"])
+        call_command("setup_roles", stdout=io.StringIO())                                     # safe to re-run
+        self.assertEqual(Group.objects.count(), 4)
+        self.assertEqual(User.objects.count(), before)
+        src = open("tracker/management/commands/setup_roles.py").read()
+        self.assertNotIn("password", src.split('"""', 2)[2].lower())
+
+
+class BackupDbTests(TestCase):
+    def test_dated_copy_and_keeps_the_newest_14(self):
+        import sqlite3, tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "agom.sqlite3"
+            con = sqlite3.connect(db)
+            con.execute("create table t (x)"); con.execute("insert into t values (42)"); con.commit(); con.close()
+            folder = Path(tmp) / "backups"
+            folder.mkdir()
+            for day in range(1, 16):                                         # 15 older backups already there
+                (folder / f"agom-2026-09-{day:02d}-000000.sqlite3").write_text("old")
+            (folder / "notes.txt").write_text("not a backup")
+            out = io.StringIO()
+            call_command("backup_db", source=str(db), dir=str(folder), stdout=out)
+            backups = sorted(p.name for p in folder.glob("agom-*.sqlite3"))
+            self.assertEqual(len(backups), 14)
+            self.assertNotIn("agom-2026-09-01-000000.sqlite3", backups)          # oldest removed
+            newest = folder / backups[-1]
+            self.assertRegex(newest.name, r"^agom-\d{4}-\d{2}-\d{2}-\d{6}\.sqlite3$")
+            self.assertEqual(sqlite3.connect(newest).execute("select x from t").fetchone(), (42,))   # a real copy
+            self.assertTrue((folder / "notes.txt").exists())
+            self.assertIn("Backup saved", out.getvalue())
+
+    def test_env_file_loader(self):
+        import os, tempfile
+        from pathlib import Path
+        from agom.settings import load_env_file
+        with tempfile.TemporaryDirectory() as tmp:
+            env = Path(tmp) / ".env"
+            env.write_text("# comment\nAGOM_T1=plain\nexport AGOM_T2='quoted value'\nAGOM_T3=\"a=b\"\n\nAGOM_T4=set\n")
+            os.environ["AGOM_T4"] = "real"                                     # real environment wins
+            try:
+                load_env_file(env)
+                self.assertEqual([os.environ.get(k) for k in ("AGOM_T1", "AGOM_T2", "AGOM_T3", "AGOM_T4")],
+                                 ["plain", "quoted value", "a=b", "real"])
+            finally:
+                for k in ("AGOM_T1", "AGOM_T2", "AGOM_T3", "AGOM_T4"):
+                    os.environ.pop(k, None)
+            load_env_file(Path(tmp) / "missing.env")                           # no file: nothing happens

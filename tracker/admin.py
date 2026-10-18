@@ -351,3 +351,26 @@ class BrandModelAdmin(admin.ModelAdmin):
     search_fields = ["display_name", "match_key", "brand__display_name"]
     readonly_fields = ["match_key"]
     list_select_related = ["brand"]
+
+
+# --- Users: time zone for display (UserProfile) -------------------------------------------------
+from django.contrib.auth import get_user_model                      # noqa: E402
+from django.contrib.auth.admin import UserAdmin as BaseUserAdmin     # noqa: E402
+
+from .models import UserProfile                                      # noqa: E402
+
+
+class UserProfileInline(admin.StackedInline):
+    model = UserProfile
+    can_delete = False
+    fields = ["time_zone"]
+    verbose_name_plural = "Time zone (how dates and times are shown to this user)"
+
+
+User = get_user_model()
+admin.site.unregister(User)
+
+
+@admin.register(User)
+class UserAdmin(BaseUserAdmin):
+    inlines = [UserProfileInline]
