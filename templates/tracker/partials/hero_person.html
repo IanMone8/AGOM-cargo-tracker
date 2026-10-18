@@ -1,0 +1,6 @@
+{% load tracker_tags %}{# One picture on the Japan sender's banner (decorative: alt=""). Context: side ("girl" / "boy"), p (views.banner_people) #}
+<picture class="jp-person jp-{{ side }}" data-person="{{ side }}">
+  {% if p %}{% if p.webp %}<source srcset="{% static_v p.webp %}" type="image/webp">{% endif %}
+  <img src="{% static_v p.png %}" alt="" width="200" height="200" decoding="async"
+       onerror="this.closest('.jp-person').classList.add('is-missing')">{% endif %}
+</picture>

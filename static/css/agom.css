@@ -339,6 +339,26 @@ textarea.field { resize: vertical; }
 }
 @media (max-width: 380px) { .hero-title { font-size: 1.16rem; } }
 
+/* ---------- Japan sender's banner: girl left, centred Burmese thank-you, boy right (both on the card's bottom edge) ---------- */
+.hero-jp { display: grid; grid-template-columns: 190px minmax(0, 1fr) 190px; align-items: end; gap: 1.25rem;
+  min-height: 250px; padding: 1.5rem 2rem 0; }
+.jp-person { display: block; height: 190px; align-self: end; }                 /* 160–200px tall, bottom-aligned */
+.jp-person img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: bottom center;
+  filter: drop-shadow(0 8px 12px rgba(31, 58, 43, .18)); }
+.jp-person.is-missing img { display: none; }
+.mm-text.jp-text { align-self: center; max-width: 40rem; padding-bottom: 1.5rem; line-height: 1.9; overflow-wrap: anywhere; }
+.jp-text p + p { margin-top: .35rem; }
+@media (max-width: 1279px) {                                                     /* sidebar + narrower content */
+  .hero-jp { grid-template-columns: 140px minmax(0, 1fr) 140px; padding-inline: 1.25rem; }
+  .jp-person { height: 160px; }
+}
+@media (max-width: 767px) {
+  .hero-jp { display: grid; grid-template-columns: 84px minmax(0, 1fr) 84px; gap: .4rem; min-height: 0;
+    padding: 1rem .6rem 0; }
+  .jp-person { height: 92px; }                                                  /* 80–96px on phones */
+  .mm-text.jp-text { padding-bottom: 1rem; font-size: .82rem; line-height: 1.9; }
+}
+
 /* ---------- Myanmar checker's banner: centred Burmese message, one sticker in each corner ---------- */
 .hero-mm { justify-content: center; min-height: 310px; padding: 2.25rem 11rem; }   /* side padding clears the corner stickers */
 .mm-text { max-width: 44rem; margin: 0 auto; text-align: center; font-family: "Noto Sans Myanmar", "Plus Jakarta Sans", sans-serif;

@@ -56,6 +56,14 @@ after replacing a GIF (don't use `make_display_images.py` for them – that woul
 fallback for browsers without animated WebP. With *reduce motion* the still PNG copies (happy, stars, peace, ok,
 made by `make_display_images.py`) are shown instead. A sticker whose files are missing is not shown.
 
+**Japan sender's banner:** the Japan sender (only – not Owner/Admin) sees a Burmese thank-you in the same card: the
+girl picture on the left, the two-line message centred in Noto Sans Myanmar (line height 1.9), the boy picture on the
+right, both standing on the card's bottom edge (about 190px tall on wide screens, 160px on medium, 92px on phones,
+same order). Put the originals at `static/img/stickers/girl.png` and `boy.png` and run
+`python scripts/make_display_images.py`: it crops them and writes `static/img/display/stickers/girl|boy.webp` + `.png`,
+which the page uses. Until a copy exists its place stays empty. Both banners are chosen by **group**
+(Japan Sender / Myanmar Checker), never by username, so users can be renamed.
+
 **Dashboard icons:** `static/img/icons/plane.png`, `boxes.png`, `box-checked.png` and `warning.png`
 (Cargos, Total boxes, Checked in Myanmar, Needs review). A missing icon is hidden.
 

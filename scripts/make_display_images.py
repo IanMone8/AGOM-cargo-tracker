@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent / "static" / "img"
 OUT = ROOT / "display"
 ICONS = ["plane", "boxes", "box-checked", "warning", "house", "flying-box", "calendar"]
 STICKERS = ["ok", "peace", "stars", "happy"]  # Myanmar checker's dashboard banner
+PEOPLE = ["girl", "boy"]  # Japan sender's dashboard banner: shown up to ~200px tall, so 2× that for sharp screens
 APP_BG = (244, 246, 239, 255)  # --sand; iPhone shows transparent home-screen icons as black
 
 
@@ -61,6 +62,14 @@ def main():
         src = ROOT / "stickers" / f"{name}.png"
         if src.exists():
             fit(Image.open(src), 240).save(OUT / "stickers" / f"{name}.webp", "WEBP", quality=86, method=6)
+    for name in PEOPLE:
+        src = ROOT / "stickers" / f"{name}.png"
+        if src.exists():
+            img = Image.open(src).convert("RGBA")
+            img = img.crop(img.getbbox() or (0, 0, *img.size))   # no empty margin: the feet sit on the card's edge
+            img.thumbnail((400, 400), Image.LANCZOS)
+            img.save(OUT / "stickers" / f"{name}.webp", "WEBP", quality=86, method=6)
+            img.save(OUT / "stickers" / f"{name}.png", optimize=True)          # for browsers without WebP
     logo = ROOT / "3D logo.png"
     if logo.exists():
         fit(Image.open(logo), 256).save(OUT / "3d-logo.png", optimize=True)

@@ -138,6 +138,18 @@ def banner_stickers():
     return found
 
 
+def banner_people():
+    """The Japan sender's banner pictures (display copies from scripts/make_display_images.py): {"girl": {...}, "boy": {...}};
+    a picture that hasn't been made yet is simply not shown."""
+    found = {}
+    for name in ("girl", "boy"):
+        webp, png = f"img/display/stickers/{name}.webp", f"img/display/stickers/{name}.png"
+        has_webp, has_png = bool(finders.find(webp)), bool(finders.find(png))
+        if has_webp or has_png:
+            found[name] = {"webp": webp if has_webp else "", "png": png if has_png else webp}
+    return found
+
+
 @login_required
 def dashboard(request):
     boxes = visible_boxes(request.user)
@@ -155,9 +167,11 @@ def dashboard(request):
         "in_transit": in_transit,
         "needs_review": needs_review,
         "recent": boxes_with_counts(boxes.order_by("-updated_at"))[:5],
-        # the Myanmar checker gets their own (Burmese) banner
+        # the Myanmar checker and the Japan sender each get their own (Burmese) banner – chosen by group
         "myanmar_banner": roles.is_myanmar_checker(request.user),
         "stickers": banner_stickers() if roles.is_myanmar_checker(request.user) else [],
+        "japan_banner": roles.is_japan_sender(request.user),
+        "people": banner_people() if roles.is_japan_sender(request.user) else {},
     })
 
 

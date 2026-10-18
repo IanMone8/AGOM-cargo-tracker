@@ -50,6 +50,11 @@ def can_set_box_status(user, status):
     return status not in MYANMAR_STATUSES or can_check(user)
 
 
+def is_japan_sender(user):
+    """The Japan sender themself (group "Japan Sender", never the username) – not Owner / Admin."""
+    return _in_group(user, JAPAN) and not is_manager(user)
+
+
 def is_myanmar_checker(user):
     """The Myanmar checker themself – not Owner / Admin, who can also check."""
     return _in_group(user, MYANMAR) and not is_manager(user)

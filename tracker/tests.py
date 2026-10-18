@@ -1005,7 +1005,7 @@ class CustomerPhoneAndOrderTests(BaseTest):
 
 class DashboardHeroTests(BaseTest):
     def test_hero_for_every_role(self):
-        for user in (self.owner, self.japan):   # the Myanmar checker has its own banner (MyanmarBannerTests)
+        for user in (self.owner,):   # the Myanmar checker and the Japan sender have their own banners
             self.client.force_login(user)
             html = self.client.get(reverse("dashboard")).content.decode()
             with self.subTest(user=user.username):
@@ -1644,7 +1644,7 @@ class LoginPageTests(BaseTest):
 
 
 class MyanmarBannerTests(BaseTest):
-    """The Myanmar checker sees a Burmese banner with stickers; everyone else keeps the English one."""
+    """The Myanmar checker sees a Burmese banner with stickers; Owner / Admin keep the English one."""
 
     LINES = [
         "ပျော်ရွှင်စရာလုပ်ငန်းခွင်က အချိန်တိုင်းမရနိုင်ပါ။",
@@ -1675,7 +1675,7 @@ class MyanmarBannerTests(BaseTest):
 
     def test_other_roles_keep_english_banner(self):
         superuser = User.objects.create_superuser("admin2", password="pw-12345-x")
-        for user in (self.owner, self.japan, superuser):
+        for user in (self.owner, superuser):                      # the Japan sender has their own (JapanBannerTests)
             with self.subTest(user=user.username):
                 html = self.dashboard(user)
                 self.assertIn("Golf stock route", html)
@@ -3308,3 +3308,66 @@ class SharedItemCardTests(BaseTest):
         self.htmx(self.myanmar, reverse("order_edit", args=[order.pk]), data)
         line.refresh_from_db()
         self.assertEqual((line.club_label, line.title), ("", "XXIO MP1400"))       # cleared
+
+
+class JapanBannerTests(BaseTest):
+    """The Japan sender (by group, never by username) gets a Burmese thank-you banner with the girl and boy pictures;
+    the Myanmar checker's banner is chosen by group too."""
+
+    LINES = ["အမြဲအလုပ်ကြိုးစားပေးတဲ့ အစ်ကို့ကို AGOM Business Partner အနေနဲ့ အထူး ကျေးဇူးတင်လျက်ပါ။",
+             "သာယာရွှင်လန်းသောနေ့ရက်လေး ဖြစ်ပါစေကြောင်း ဆုမွန်ကောင်းတောင်းပါတယ်…"]
+
+    def dashboard(self, user):
+        self.client.force_login(user)
+        return self.client.get(reverse("dashboard")).content.decode()
+
+    def test_japan_sender_sees_the_banner_text_exactly(self):
+        import re
+        html = self.dashboard(self.japan)
+        self.assertIn('class="hero hero-jp"', html)
+        self.assertNotIn("hero-mm", html)
+        text = html[html.index('<div class="hero-text mm-text jp-text" lang="my">'):]
+        text = text[:text.index("</div>")]
+        self.assertEqual([p.strip() for p in re.findall(r"<p>(.*?)</p>", text, re.S)], self.LINES)   # two lines
+        self.assertIn("family=Noto+Sans+Myanmar", html)
+        girl, text_at, boy = html.index('data-person="girl"'), html.index("jp-text"), html.index('data-person="boy"')
+        self.assertLess(girl, text_at)                     # girl – text – boy
+        self.assertLess(text_at, boy)
+
+    def test_pictures_use_display_copies_with_empty_alt(self):
+        from unittest import mock
+        from . import views
+        with mock.patch.object(views.finders, "find", return_value="/x"):
+            html = self.dashboard(self.japan)
+        for name in ("girl", "boy"):
+            self.assertIn(f'<source srcset="/static/img/display/stickers/{name}.webp', html)
+            self.assertRegex(html, rf'<img src="/static/img/display/stickers/{name}\.png[^"]*" alt=""')
+        with mock.patch.object(views.finders, "find", return_value=None):      # not made yet: no broken image
+            html = self.dashboard(self.japan)
+        self.assertNotIn("stickers/girl", html)
+        self.assertIn('data-person="girl"', html)
+
+    def test_chosen_by_group_not_username(self):
+        from django.contrib.auth.models import Group
+        renamed = User.objects.create_user("tanaka", password="pw-12345-x")       # any username in the group
+        renamed.groups.add(Group.objects.get(name=roles.JAPAN))
+        self.assertIn("hero-jp", self.dashboard(renamed))
+        named_japan = User.objects.create_user("japan2", password="pw-12345-x")   # a "japan"-like name, no group
+        self.assertNotIn("hero-jp", self.dashboard(named_japan))
+        mm = User.objects.create_user("thaw", password="pw-12345-x")
+        mm.groups.add(Group.objects.get(name=roles.MYANMAR))
+        self.assertIn("hero-mm", self.dashboard(mm))
+        User.objects.filter(pk=self.myanmar.pk).update(username="someone-else")    # renaming keeps the banner
+        self.myanmar.refresh_from_db()
+        self.assertIn("hero-mm", self.dashboard(self.myanmar))
+
+    def test_others_do_not_see_it(self):
+        for user in (self.owner, self.myanmar):
+            self.assertNotIn("hero-jp", self.dashboard(user))
+        self.assertIn("hero-mm", self.dashboard(self.myanmar))                    # unchanged
+
+    def test_display_script_makes_the_copies(self):
+        script = open("scripts/make_display_images.py").read()
+        self.assertIn('PEOPLE = ["girl", "boy"]', script)
+        self.assertIn('/ "stickers" / f"{name}.webp"', script)
+        self.assertIn('/ "stickers" / f"{name}.png"', script)

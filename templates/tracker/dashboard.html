@@ -1,13 +1,15 @@
 {% extends "base.html" %}
 {% load tracker_tags %}
-{% block head %}{% if myanmar_banner %}
+{% block head %}{% if myanmar_banner or japan_banner %}
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Myanmar:wght@400;600&display=swap" rel="stylesheet">
 {% endif %}{% endblock %}
 {% block content %}
 {% include "tracker/_page_header.html" with eyebrow="Welcome back, "|add:user.get_username title="Dashboard" subtitle="Golf shipments from Japan to Myanmar" show_add=True %}
 
-{% if myanmar_banner %}{% include "tracker/partials/dashboard_hero_mm.html" %}{% else %}{% include "tracker/partials/dashboard_hero.html" %}{% endif %}
+{% if myanmar_banner %}{% include "tracker/partials/dashboard_hero_mm.html" %}
+{% elif japan_banner %}{% include "tracker/partials/dashboard_hero_jp.html" %}
+{% else %}{% include "tracker/partials/dashboard_hero.html" %}{% endif %}
 
 <div class="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
   {% url 'cargo_history' as cargo_url %}{% url 'box_list' as boxes_url %}
