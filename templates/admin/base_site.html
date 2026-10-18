@@ -1,0 +1,4 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+{% comment %} The Django admin gets the same one-tap-one-submit guard as the app (static/js/submit-guard.js). {% endcomment %}
+{% block extrahead %}{{ block.super }}<script src="{% static 'js/submit-guard.js' %}" defer></script>{% endblock %}

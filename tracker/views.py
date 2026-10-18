@@ -1047,3 +1047,48 @@ def web_manifest(request):
     response = JsonResponse(data, json_dumps_params={"ensure_ascii": False})
     response["Content-Type"] = "application/manifest+json"
     return response
+
+
+# --- CSRF failure (settings.CSRF_FAILURE_VIEW) -------------------------------------------------------------
+def _safe_next(request, value):
+    """value if it is a URL on this site (url_has_allowed_host_and_scheme), else ""."""
+    from django.utils.http import url_has_allowed_host_and_scheme
+    if value and url_has_allowed_host_and_scheme(value, allowed_hosts={request.get_host()},
+                                                 require_https=request.is_secure()):
+        return value
+    return ""
+
+
+def csrf_failure(request, reason="", template_name=None):
+    """A form sent with an out-of-date CSRF token – usually a second tap on "Log in" on a slow connection (logging in
+    replaces the token, so the second submit carries the old one). CSRF protection stays on: nothing from the
+    request is acted on; the person is only sent somewhere sensible.
+
+    - Login form, already logged in (the first tap worked): go to `next` if it is on this site, else the dashboard.
+    - Not logged in: back to the login page with "Please log in again." (`next` kept when it is safe).
+    - Any other page while logged in: a friendly "out of date" page, status 403 (HTMX requests: reload the page).
+    """
+    from django.contrib.auth.views import redirect_to_login
+    from urllib.parse import urlparse
+    login_paths = {reverse("login"), reverse("admin:login")}
+    on_login = request.path in login_paths
+    nxt = _safe_next(request, request.POST.get("next") or request.GET.get("next"))
+    referer = _safe_next(request, request.META.get("HTTP_REFERER", ""))
+    referer_path = urlparse(referer).path if referer else ""
+    if on_login and request.user.is_authenticated:
+        return redirect(nxt or "dashboard")
+    if not request.user.is_authenticated:
+        messages.info(request, "Please log in again.")
+        if not on_login and not nxt and referer_path and referer_path not in login_paths:
+            nxt = referer_path                                  # come back to the page they were on
+        if is_htmx(request):
+            response = HttpResponse(status=403)
+            response["HX-Redirect"] = reverse("login") + (f"?next={nxt}" if nxt else "")
+            return response
+        return redirect_to_login(nxt, reverse("login")) if nxt else redirect("login")
+    if is_htmx(request):                                        # an old page: reload it with a fresh token
+        response = HttpResponse("This page was out of date – please try again.", status=403)
+        response["HX-Refresh"] = "true"
+        return response
+    return render(request, "tracker/csrf_failure.html",
+                  {"back_url": referer or reverse("dashboard")}, status=403)

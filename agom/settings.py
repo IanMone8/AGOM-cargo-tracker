@@ -136,6 +136,10 @@ STORAGES = {
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+# An out-of-date CSRF token (e.g. a second tap on "Log in" on a slow connection) gets a friendly answer instead of
+# Django's raw 403 page. CSRF protection itself stays on everywhere.
+CSRF_FAILURE_VIEW = "tracker.views.csrf_failure"
+
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "dashboard"
 LOGOUT_REDIRECT_URL = "login"
