@@ -8,7 +8,8 @@
   <div class="grid gap-4 sm:grid-cols-2">
     {% for field in form %}{% include "tracker/_field.html" %}{% endfor %}
   </div>
-  <p class="text-xs text-ink-muted">Status moves forward automatically: a ship date → Shipped, a received date → Arrived, all items checked → Checked. Choosing a status here overrides that.</p>
+  {% if can_check %}<p class="text-xs text-ink-muted">Status moves forward automatically: a ship date → Shipped, a received date → Arrived, all items checked → Checked. Choosing a status here overrides that.</p>
+{% endif %}
   <button class="btn btn-primary w-full py-3 sm:w-auto sm:px-8">Save</button>
 </form>
 <script>

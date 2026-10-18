@@ -8,6 +8,8 @@ One file may contain several boxes. The ``box`` column holds the Box ID:
 The cargo code must already exist.
 Each box holds exactly one golf bag: a row with ``kind`` = ``bag``; the other
 rows are the items inside it.
+Optional ``status`` column (packed / shipped / arrived / checked) sets the box's status after the import.
+Arrived and Checked come only from the Myanmar side: a Japan-side import (myanmar_status=False) gets a row error.
 The whole file is validated first and nothing is saved if any row is bad.
 """
 import csv
@@ -252,8 +254,9 @@ def _check_bags(parsed, cargos, replace):
     return problems
 
 
-def import_japan_csv(uploaded_file, replace=False, allow_bag_exception=False, customers=True):
-    """customers=False (the Japan sender): a customer column is ignored."""
+def import_japan_csv(uploaded_file, replace=False, allow_bag_exception=False, customers=True, myanmar_status=True):
+    """customers=False (the Japan sender): a customer column is ignored.
+    myanmar_status=False (the Japan sender): a status of arrived / checked is a row error."""
     result = ImportResult()
     raw = uploaded_file.read()
     try:
@@ -285,6 +288,7 @@ def import_japan_csv(uploaded_file, replace=False, allow_bag_exception=False, cu
     fees = {}       # box key -> cargo fee from the bag row
     auto_open = {}  # cargo code -> the new (auto-numbered) box the next item rows go into
     names = []      # parsed brand + model per row, remembered (new brands/models) once the file is valid
+    statuses = {}   # box key -> (status, row) from the optional status column
 
     for row_no, row in enumerate(reader, start=2):
         row = {k: (v or "").strip() for k, v in row.items() if k}
@@ -307,6 +311,18 @@ def import_japan_csv(uploaded_file, replace=False, allow_bag_exception=False, cu
         key = _box_key(row, row_no, is_bag, cargos, auto_open, errors)
         if key is None:
             continue
+        status = row.get("status", "").lower()
+        if status and status not in Box.Status.values:
+            allowed = "packed, shipped, arrived or checked" if myanmar_status else "packed or shipped"
+            errors.append((row_no, f"status must be {allowed}, got '{row['status']}'"))
+        elif status in ("arrived", "checked") and not myanmar_status:
+            errors.append((row_no, f"status '{row['status']}': Arrived and Checked are set by the Myanmar check, "
+                                   "not from Japan – use packed or shipped"))
+        elif status:
+            if key in statuses and statuses[key][0] != status:
+                errors.append((row_no, f"status '{status}' differs from '{statuses[key][0]}' on row {statuses[key][1]} "
+                                       "for the same box"))
+            statuses.setdefault(key, (status, row_no))
         if is_bag:
             if not row.get("item_name"):
                 errors.append((row_no, "bag row: put the bag's name in item, e.g. Titleist Stand Bag"))
@@ -387,6 +403,16 @@ def import_japan_csv(uploaded_file, replace=False, allow_bag_exception=False, cu
         result.errors.append((0, "The file has no data rows."))
     if result.errors:
         return result
+    if not myanmar_status:                 # Japan side: a box Myanmar has started is no longer theirs to change
+        seen = set()
+        for key, _, row_no in parsed:
+            box = None if key in seen else _existing_box(key, cargos)
+            seen.add(key)
+            if box and box.myanmar_started:
+                result.errors.append((row_no, f"Box {box.label} is {box.get_status_display()} – the Myanmar check has "
+                                              "started, so its Japan list can no longer change"))
+        if result.errors:
+            return result
     bag_problems = _check_bags(parsed, cargos, replace)
     if allow_bag_exception:
         result.warnings = bag_problems
@@ -424,6 +450,10 @@ def import_japan_csv(uploaded_file, replace=False, allow_bag_exception=False, cu
         result.created_bags = sum(kwargs["is_bag"] for _, kwargs, _ in parsed)
         result.created_items = len(parsed) - result.created_bags
         result.boxes = list(boxes.values())
-        for box in result.boxes:
-            box.refresh_status()
+        for key, box in boxes.items():
+            if key in statuses:                   # a status from the file wins over the automatic rules
+                box.status = statuses[key][0]
+                box.save(update_fields=["status", "updated_at"])
+            else:
+                box.refresh_status()
     return result

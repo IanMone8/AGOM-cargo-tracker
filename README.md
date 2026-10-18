@@ -83,6 +83,11 @@ You can still pick a status by hand on the *Edit* page. A manual choice override
 | `myanmar` | Group **Myanmar Checker** | Start Myanmar check, set the received date, receive checks, extra items, customers and their orders |
 
 Everyone can view the dashboard, shipments and cargo history. **CSV import** is for Owner and Admin only.
+**Box status:** the Japan sender sets only Packed or Shipped (Edit box, Mark as shipped); Arrived and Checked come
+only from the Myanmar side – "Start Myanmar check" → Arrived, the bag and every item checked → Checked, undoing a
+check → Arrived – and are rejected from the Japan role on the server too. Japan still sees them as read-only pills
+(the Shipments filter keeps all four). Owner / Admin keep all four for corrections. CSV files may have an optional
+`status` column (packed / shipped / arrived / checked; a Japan-side import gets a row error for arrived / checked).
 There is no separate Customer requests page: customer orders are added and tracked on each customer's page
 (**+ New order**). Each order has an **Order date** (default today in Myanmar time, Asia/Yangon; past dates allowed,
 future dates rejected; editable under Edit; existing orders took the day they were created). The customer page lists

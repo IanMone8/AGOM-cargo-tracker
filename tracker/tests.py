@@ -3045,3 +3045,136 @@ class OrderDateTests(BaseTest):
         mig.from_created(apps, None)
         o.refresh_from_db()
         self.assertEqual(o.order_date, datetime.date(2025, 7, 1))           # 00:30 on 1 Jul in Yangon
+
+
+class JapanNeverSetsMyanmarStatusTests(BaseTest):
+    """Arrived / Checked come only from the Myanmar side; the Japan sender sets Packed / Shipped only."""
+
+    def edit_data(self, box, **extra):
+        return {"cargo": box.cargo_id, "box_no": box.box_no, "status": box.status, "notes": box.notes, **extra}
+
+    def csv(self, text, **kwargs):
+        from .csv_import import import_japan_csv
+        return import_japan_csv(SimpleUploadedFile("l.csv", text.encode(), content_type="text/csv"), **kwargs)
+
+    def test_edit_page_offers_packed_and_shipped_only(self):
+        self.client.force_login(self.japan)
+        html = self.client.get(reverse("box_edit", args=[self.box.pk])).content.decode()
+        select = html[html.index('name="status"'):]
+        select = select[:select.index("</select>")]
+        self.assertIn('value="packed"', select)
+        self.assertIn('value="shipped"', select)
+        self.assertNotIn('value="arrived"', select)
+        self.assertNotIn('value="checked"', select)
+        self.assertIn("Arrived and Checked come only from the Myanmar check", html)
+
+    def test_direct_post_of_arrived_or_checked_is_rejected(self):
+        self.client.force_login(self.japan)
+        for status in ("arrived", "checked"):
+            r = self.client.post(reverse("box_edit", args=[self.box.pk]), self.edit_data(self.box, status=status))
+            self.assertEqual(r.status_code, 200)                       # form shown again with the error
+            self.assertContains(r, "valid choice")
+            self.box.refresh_from_db()
+            self.assertEqual(self.box.status, Box.Status.PACKED)
+        self.client.post(reverse("box_edit", args=[self.box.pk]), self.edit_data(self.box, status="shipped"))
+        self.box.refresh_from_db()
+        self.assertEqual(self.box.status, Box.Status.SHIPPED)
+
+    def test_form_rule_itself_rejects_myanmar_statuses_for_japan(self):
+        from .forms import BoxForm
+        form = BoxForm(self.edit_data(self.box, status="arrived"), instance=self.box, user=self.japan)
+        form.fields["status"].choices = Box.Status.choices             # even if the choices were tampered with
+        self.assertFalse(form.is_valid())
+        self.assertIn("Arrived and Checked are set by the Myanmar check, not from Japan.", form.errors["status"])
+        self.assertTrue(roles.can_set_box_status(self.japan, "shipped"))
+        self.assertFalse(roles.can_set_box_status(self.japan, "checked"))
+        self.assertTrue(roles.can_set_box_status(self.myanmar, "checked"))
+        self.assertTrue(roles.can_set_box_status(self.owner, "arrived"))
+
+    def test_add_box_ignores_a_posted_status(self):
+        data = {"cargo": self.cargo.pk, "box_id": "OCT26-GN-9", "status": "arrived", "bag-item_name": "Stand Bag",
+                "items-TOTAL_FORMS": "0", "items-INITIAL_FORMS": "0", "items-MIN_NUM_FORMS": "0",
+                "items-MAX_NUM_FORMS": "1000"}
+        self.client.force_login(self.japan)
+        html = self.client.get(reverse("box_create"), HTTP_HX_REQUEST="true").content.decode()
+        self.assertNotIn('name="status"', html)
+        self.htmx(self.japan, reverse("box_create"), data)
+        self.assertEqual(Box.objects.get(code="OCT26-GN-9").status, Box.Status.PACKED)
+
+    def test_japan_cannot_touch_an_arrived_or_checked_box(self):
+        self.add_bag()
+        for status in ("arrived", "checked"):
+            Box.objects.filter(pk=self.box.pk).update(status=status)
+            self.client.force_login(self.japan)
+            self.assertEqual(self.client.get(reverse("box_edit", args=[self.box.pk])).status_code, 403)
+            self.assertEqual(self.client.post(reverse("box_edit", args=[self.box.pk]),
+                                              self.edit_data(self.box, status="shipped")).status_code, 403)
+            self.client.post(reverse("box_mark_shipped", args=[self.box.pk]))
+            self.client.post(reverse("item_delete", args=[self.item1.pk]))
+            self.box.refresh_from_db()
+            self.assertEqual(self.box.status, status)
+            self.assertTrue(JapanItem.objects.filter(pk=self.item1.pk).exists())
+            html = self.client.get(reverse("box_detail", args=[self.box.pk])).content.decode()
+            self.assertIn(f">{status.title()}<", html)                      # still sees it, read-only
+            self.assertNotIn("Mark as shipped", html)
+            self.assertIn(f">{status.title()}<", self.client.get(reverse("box_list")).content.decode())
+
+    def test_csv_japan_side_rejects_arrived_and_checked(self):
+        r = self.csv("box,kind,item,status\nOCT26-GN-7,bag,Stand Bag,arrived\nOCT26-GN-7,,Qi10,Checked\n",
+                     myanmar_status=False)
+        self.assertEqual([row for row, _ in r.errors], [2, 3])
+        self.assertIn("Arrived and Checked are set by the Myanmar check", r.errors[0][1])
+        self.assertFalse(Box.objects.filter(code="OCT26-GN-7").exists())
+        r = self.csv("box,kind,item,status\nOCT26-GN-7,bag,Stand Bag,shipped\n", myanmar_status=False)
+        self.assertEqual(r.errors, [])
+        self.assertEqual(Box.objects.get(code="OCT26-GN-7").status, Box.Status.SHIPPED)
+
+    def test_csv_japan_side_cannot_change_a_box_myanmar_started(self):
+        self.box.set_code("OCT26-GN-3")
+        self.box.status = Box.Status.ARRIVED
+        self.box.save()
+        r = self.csv("box,kind,item\nOCT26-GN-3,,Extra wedge\n", myanmar_status=False)
+        self.assertIn("the Myanmar check has started", r.errors[0][1])
+        self.assertEqual(self.box.items.count(), 2)
+
+    def test_csv_page_is_owner_admin_only_and_owner_may_set_any_status(self):
+        f = SimpleUploadedFile("l.csv", b"box,kind,item,status\nOCT26-GN-8,bag,Stand Bag,arrived\n", content_type="text/csv")
+        self.client.force_login(self.japan)
+        self.assertEqual(self.client.post(reverse("csv_import"), {"file": f}).status_code, 403)
+        f.seek(0)
+        self.client.force_login(self.owner)
+        self.assertContains(self.client.post(reverse("csv_import"), {"file": f}), "Imported 0 item(s) and 1 golf bag(s)")
+        self.assertEqual(Box.objects.get(code="OCT26-GN-8").status, Box.Status.ARRIVED)
+        r = self.csv("box,kind,item,status\nOCT26-GN-9,bag,Stand Bag,lost\n")
+        self.assertIn("status must be packed, shipped, arrived or checked", r.errors[0][1])
+
+    def test_owner_keeps_all_four_statuses(self):
+        self.client.force_login(self.owner)
+        html = self.client.get(reverse("box_edit", args=[self.box.pk])).content.decode()
+        for value in Box.Status.values:
+            self.assertIn(f'value="{value}"', html)
+        self.client.post(reverse("box_edit", args=[self.box.pk]), self.edit_data(self.box, status="checked"))
+        self.box.refresh_from_db()
+        self.assertEqual(self.box.status, Box.Status.CHECKED)
+
+    def test_myanmar_actions_set_arrived_and_checked(self):
+        bag = self.add_bag()
+        Box.objects.filter(pk=self.box.pk).update(status="shipped", japan_ship_date=datetime.date(2026, 1, 5))
+        self.client.force_login(self.myanmar)
+        self.client.post(reverse("box_start_check", args=[self.box.pk]))
+        self.box.refresh_from_db()
+        self.assertEqual(self.box.status, Box.Status.ARRIVED)
+        self.assertIsNotNone(self.box.myanmar_received_date)
+        for item in (bag, self.item1, self.item2):
+            self.htmx(self.myanmar, reverse("item_check", args=[item.pk]), {"result": "matched"})
+        self.box.refresh_from_db()
+        self.assertEqual(self.box.status, Box.Status.CHECKED)
+        self.htmx(self.myanmar, reverse("item_check_clear", args=[self.item2.pk]))
+        self.box.refresh_from_db()
+        self.assertEqual(self.box.status, Box.Status.ARRIVED)
+
+    def test_shipments_filter_keeps_all_four_for_viewing(self):
+        self.client.force_login(self.japan)
+        html = self.client.get(reverse("box_list")).content.decode()
+        for label in ("Packed", "Shipped", "Arrived", "Checked"):
+            self.assertIn(f">{label}</option>", html)

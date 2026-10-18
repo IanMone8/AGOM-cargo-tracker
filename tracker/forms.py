@@ -114,7 +114,15 @@ class BoxForm(StyledMixin, forms.ModelForm):
                     (Box.Status.PACKED, Box.Status.PACKED.label),
                     (Box.Status.SHIPPED, Box.Status.SHIPPED.label),
                 ]
+                self.fields["status"].help_text = "From Japan: Packed or Shipped. Arrived and Checked come only from the Myanmar check."
+        self.user = user
         self._limit_calendars()
+
+    def clean_status(self):
+        status = self.cleaned_data["status"]
+        if self.user is not None and not roles.can_set_box_status(self.user, status):
+            raise forms.ValidationError("Arrived and Checked are set by the Myanmar check, not from Japan.")
+        return status
 
     def _limit_calendars(self):
         """Calendars can't pick a date before today, and the received date can't be

@@ -989,7 +989,8 @@ def csv_import(request):
     if request.method == "POST" and form.is_valid():
         result = import_japan_csv(form.cleaned_data["file"], replace=form.cleaned_data["replace"],
                                   allow_bag_exception=form.cleaned_data["allow_bag_exception"],
-                                  customers=roles.can_use_customers(request.user))
+                                  customers=roles.can_use_customers(request.user),
+                                  myanmar_status=roles.can_check(request.user))
         if not result.errors:
             bags = f" and {result.created_bags} golf bag(s)" if result.created_bags else ""
             messages.success(

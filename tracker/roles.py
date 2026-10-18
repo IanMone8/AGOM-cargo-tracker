@@ -41,6 +41,15 @@ def can_check(user):
     return is_manager(user) or _in_group(user, MYANMAR)
 
 
+MYANMAR_STATUSES = ("arrived", "checked")       # box statuses only the Myanmar side sets
+
+
+def can_set_box_status(user, status):
+    """Arrived / Checked come only from the Myanmar side: the Myanmar check itself, the Myanmar checker or
+    Owner / Admin (corrections). The Japan sender may only set Packed / Shipped – on every endpoint."""
+    return status not in MYANMAR_STATUSES or can_check(user)
+
+
 def is_myanmar_checker(user):
     """The Myanmar checker themself – not Owner / Admin, who can also check."""
     return _in_group(user, MYANMAR) and not is_manager(user)
