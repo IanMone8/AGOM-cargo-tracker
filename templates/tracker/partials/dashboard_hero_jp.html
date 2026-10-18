@@ -2,7 +2,8 @@
 Dashboard banner for the Japan sender (chosen by group, see roles.is_japan_sender): the same card as the Myanmar banner,
 girl on the left, a centred Burmese thank-you (Noto Sans Myanmar) in the middle, boy on the right, both standing on the
 card's bottom edge. Pictures: display copies made by scripts/make_display_images.py from static/img/stickers/girl.png
-and boy.png; one that hasn't been made yet keeps its space empty.
+and boy.png; one that hasn't been made yet keeps its space empty. Each phrase is a .ph span, so a phone wraps
+the lines at the spaces between phrases, never inside a Burmese word.
 {% endcomment %}
 <section class="hero hero-jp" aria-label="Message for the Japan team">
   <svg class="hero-hill" viewBox="0 0 640 260" preserveAspectRatio="none" aria-hidden="true">
@@ -12,8 +13,8 @@ and boy.png; one that hasn't been made yet keeps its space empty.
   </svg>
   {% include "tracker/partials/hero_person.html" with side="girl" p=people.girl %}
   <div class="hero-text mm-text jp-text" lang="my">
-    <p>အမြဲအလုပ်ကြိုးစားပေးတဲ့ အစ်ကို့ကို AGOM Business Partner အနေနဲ့ အထူး ကျေးဇူးတင်လျက်ပါ။</p>
-    <p>သာယာရွှင်လန်းသောနေ့ရက်လေး ဖြစ်ပါစေကြောင်း ဆုမွန်ကောင်းတောင်းပါတယ်…</p>
+    <p><span class="ph">အမြဲအလုပ်ကြိုးစားပေးတဲ့</span> <span class="ph">အစ်ကို့ကို</span> <span class="ph">AGOM</span> <span class="ph">Business</span> <span class="ph">Partner</span> <span class="ph">အနေနဲ့</span> <span class="ph">အထူး</span> <span class="ph">ကျေးဇူးတင်လျက်ပါ။</span></p>
+    <p><span class="ph">သာယာရွှင်လန်းသောနေ့ရက်လေး</span> <span class="ph">ဖြစ်ပါစေကြောင်း</span> <span class="ph">ဆုမွန်ကောင်းတောင်းပါတယ်…</span></p>
   </div>
   {% include "tracker/partials/hero_person.html" with side="boy" p=people.boy %}
 </section>

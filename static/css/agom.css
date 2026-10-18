@@ -346,7 +346,8 @@ textarea.field { resize: vertical; }
 .jp-person img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: bottom center;
   filter: drop-shadow(0 8px 12px rgba(31, 58, 43, .18)); }
 .jp-person.is-missing img { display: none; }
-.mm-text.jp-text { align-self: center; max-width: 40rem; padding-bottom: 1.5rem; line-height: 1.9; overflow-wrap: anywhere; }
+.mm-text.jp-text { align-self: center; max-width: 40rem; padding-bottom: 1.5rem; line-height: 1.9; }
+.jp-text .ph { display: inline-block; max-width: 100%; }   /* lines break between phrases; a phrase wider than the column still wraps */
 .jp-text p + p { margin-top: .35rem; }
 @media (max-width: 1279px) {                                                     /* sidebar + narrower content */
   .hero-jp { grid-template-columns: 140px minmax(0, 1fr) 140px; padding-inline: 1.25rem; }

@@ -3328,7 +3328,9 @@ class JapanBannerTests(BaseTest):
         self.assertNotIn("hero-mm", html)
         text = html[html.index('<div class="hero-text mm-text jp-text" lang="my">'):]
         text = text[:text.index("</div>")]
-        self.assertEqual([p.strip() for p in re.findall(r"<p>(.*?)</p>", text, re.S)], self.LINES)   # two lines
+        paras = [re.sub(r"<[^>]+>", "", p).strip() for p in re.findall(r"<p>(.*?)</p>", text, re.S)]
+        self.assertEqual(paras, self.LINES)                # exactly these two lines
+        self.assertIn('<span class="ph">AGOM</span> <span class="ph">Business</span>', text)   # wraps between phrases
         self.assertIn("family=Noto+Sans+Myanmar", html)
         girl, text_at, boy = html.index('data-person="girl"'), html.index("jp-text"), html.index('data-person="boy"')
         self.assertLess(girl, text_at)                     # girl – text – boy
