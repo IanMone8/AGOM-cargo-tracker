@@ -90,7 +90,7 @@
 {% endwith %}
   <div id="modal"></div>
   <script src="{% static_v 'js/numbers.js' %}" defer></script>
-  {% if can_see_money %}<script src="{% static_v 'js/money.js' %}" defer></script>{% endif %}
+  {% if can_see_money or can_use_payments %}<script src="{% static_v 'js/money.js' %}" defer></script>{% endif %}
   {% block scripts %}{% endblock %}
   <script>
     function toggleSidebar(open) {
@@ -196,9 +196,9 @@
       e.preventDefault(); e.stopPropagation();          // capture phase: htmx never sees this submit
       first.closest('.item-card').scrollIntoView({behavior: 'smooth', block: 'center'});
     }, true);
-    // "Item (brand + model)" combo box (tracker/_item_text_field.html + partials/item_assist.html).
-    // The server renders the list: names typed in this open box (above the line), every saved name A → Z (below),
-    // or "+ Add '…' as new item". Here: open / close, ▾ (full list), taps, and ↑ ↓ Enter Esc.
+    // Model combo box on item cards (tracker/_brand_model_field.html + partials/item_assist.html).
+    // The server renders the chosen brand's list: models typed on this open box's cards for the same brand (above the
+    // line) and the brand's saved models A → Z (below). Here: open / close, ▾ (full list), taps, and ↑ ↓ Enter Esc.
     const comboField = el => el && el.closest && el.closest('[data-item-field]');
     const comboInput = field => field.querySelector('[data-item-text]');
     const comboList = field => field.querySelector('[data-combo-list]');
@@ -229,9 +229,8 @@
       else input.removeAttribute('aria-activedescendant');
     }
     function comboPick(field, value) {
-      const input = comboInput(field), add = field.querySelector('[data-add-brand]');
+      const input = comboInput(field);
       input.value = value;                 // exactly that spelling
-      if (add) add.value = '';
       comboClose(field);
       htmx.trigger(input, 'refresh');      // update "Saved as …" (the list stays closed)
     }
@@ -257,11 +256,19 @@
     });
     document.addEventListener('focusout', e => {
       const field = comboField(e.target);
-      if (field && e.target.matches('[data-item-text]') && !field.contains(e.relatedTarget)) comboClose(field);
+      const keep = e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('.combo-box, .item-assist');
+      if (field && e.target.matches('[data-item-text]') && !(keep && field.contains(keep))) comboClose(field);
+    });
+    // a new brand: its own models (the list is fetched again; "Saved as …" follows)
+    document.addEventListener('change', e => {
+      if (!e.target.matches('[data-brand-select]')) return;
+      const field = comboField(e.target);
+      comboClose(field);
+      htmx.trigger(comboInput(field), 'refresh');
     });
     // keep the focus in the box while tapping a row or ▾ (so the list doesn't close under the finger)
     document.addEventListener('mousedown', e => {
-      if (e.target.closest('[data-combo-list], [data-combo-toggle], [data-item-field] [data-pick], [data-item-field] [data-add-brand-set]')) e.preventDefault();
+      if (e.target.closest('[data-combo-list], [data-combo-toggle], [data-item-field] [data-pick]')) e.preventDefault();
     });
     document.addEventListener('click', e => {
       const toggle = e.target.closest('[data-combo-toggle]');
@@ -272,14 +279,11 @@
         comboOpen(field, true);
         return;
       }
-      const pick = e.target.closest('[data-pick]'), ask = e.target.closest('[data-add-brand-set]');
-      if (!pick && !ask) return;
+      const pick = e.target.closest('[data-pick]');
+      if (!pick) return;
       const field = comboField(e.target);
       if (!field) return;
-      if (pick) { comboPick(field, pick.dataset.pick); comboInput(field).focus(); return; }
-      const add = field.querySelector('[data-add-brand]');   // "Is … a brand?" Yes / No / undo
-      if (add) add.value = ask.dataset.addBrandSet;
-      htmx.trigger(comboInput(field), 'refresh');
+      comboPick(field, pick.dataset.pick); comboInput(field).focus();
     });
     // keyboard: ↓ opens / moves, ↑ moves, Enter picks the highlighted row, Esc closes the list (not the modal)
     document.addEventListener('keydown', e => {
@@ -301,9 +305,9 @@
         comboClose(field);
       }
     }, true);
-    // Names typed on the cards of the open, unsaved box (bag + item cards), kept only here in the page until
-    // the box is saved; newest first. Noted when a name box loses focus or a card is copied; each list request
-    // sends the other cards' names (views.item_suggest normalises them like saving and lists them above the line).
+    // Models typed on the cards of the open, unsaved box (bag + item cards), kept only here in the page until
+    // the box is saved; newest first. Noted when a Model box loses focus or a card is copied; each list request
+    // sends the models of the other cards with the same brand (views.item_suggest styles them like saving).
     const boxNames = new Map();             // card element -> typed text (insertion order = oldest first)
     const nameCard = el => el.closest('.item-card, .bag-card');
     const cardGone = card => !card.isConnected || card.style.display === 'none'
@@ -319,9 +323,10 @@
       const el = e.detail.elt;
       if (!el.matches || !el.matches('[data-item-text]')) return;
       const own = nameCard(el), names = [];
+      const brandOf = card => (card && card.querySelector('[data-brand-select]') || {}).value || '';
       boxNames.forEach((text, card) => {
         if (cardGone(card)) { if (!card.isConnected) boxNames.delete(card); return; }   // deleted / closed
-        if (card !== own) names.unshift(text);                                        // newest first
+        if (card !== own && brandOf(card) === brandOf(own)) names.unshift(text);      // same brand, newest first
       });
       e.detail.parameters['in_box'] = names;
       if (comboField(el).dataset.all) e.detail.parameters['all'] = '1';
@@ -336,19 +341,22 @@
         row.hidden = !!brand && row.dataset.brand !== brand;
       });
     });
-    // "Copy" on an Add box item card: duplicate it with the next formset index.
+    // "Copy" on an item card in a formset (Add box modal "items-", order form "lines-"): duplicate it with the next index.
     function copyItemCard(btn) {
-      const card = btn.closest('.item-card'), total = document.getElementById('id_items-TOTAL_FORMS');
-      const first = card.querySelector('[name^="items-"]');
-      if (!first || !total) return;
-      const from = first.name.match(/^items-(\d+)-/)[1], to = total.value;
+      const card = btn.closest('.item-card'), first = card.querySelector('[name*="-"][name$="-qty"]');
+      const m = first && first.name.match(/^(\w+)-(\d+)-/);
+      const total = m && card.closest('form').querySelector(`[name="${m[1]}-TOTAL_FORMS"]`);
+      if (!total) return;
+      const prefix = m[1], from = m[2], to = total.value;
       const clone = card.cloneNode(true), src = card.querySelectorAll('input, select, textarea');
       clone.querySelectorAll('input, select, textarea').forEach((el, i) => {
-        ['name', 'id'].forEach(a => el.hasAttribute(a) && el.setAttribute(a, el.getAttribute(a).replace(`items-${from}-`, `items-${to}-`)));
+        ['name', 'id'].forEach(a => el.hasAttribute(a) && el.setAttribute(a, el.getAttribute(a).replace(`${prefix}-${from}-`, `${prefix}-${to}-`)));
         if (el.type === 'checkbox') el.checked = src[i].checked; else el.value = src[i].value;
         if (el.matches('[data-delete-flag]')) el.value = '';
+        if (el.matches(`[name="${prefix}-${to}-id"]`)) el.value = '';      // a copy is a new line, not the saved one
       });
-      document.getElementById('item-cards').append(clone);   // at the end, so saved order = screen order
+      card.parentElement.append(clone);                      // at the end, so saved order = screen order
+      htmx.process(clone);
       total.value = +to + 1;
       const name = clone.querySelector('[data-item-text]');
       if (name) noteName(name);                               // the copy's name is "in this box" straight away

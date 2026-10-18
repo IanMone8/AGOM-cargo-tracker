@@ -171,9 +171,9 @@ textarea.field { resize: vertical; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 
 /* Number item cards automatically (survives deletes). */
-#item-cards { counter-reset: item; }
-#item-cards .item-card { counter-increment: item; }
-#item-cards .item-num::after { content: counter(item); }
+#item-cards, [data-lines] { counter-reset: item; }
+#item-cards .item-card, [data-lines] .item-card:not([style*="none"]) { counter-increment: item; }
+#item-cards .item-num::after, [data-lines] .item-card .item-num::after { content: counter(item); }
 .item-num:empty::after { content: "+"; }
 
 
@@ -384,7 +384,8 @@ textarea.field { resize: vertical; }
 .piece-toggle[hidden], .piece-grid[hidden] { display: none; }
 .piece-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr)); gap: .5rem; margin-top: .25rem; }
 .piece-price { display: block; font-size: .75rem; font-weight: 600; color: var(--text-muted); }
-.piece-price .yen-wrap { display: block; }
+.piece-price .yen-wrap, .piece-price .ks-wrap { display: block; }
+.piece-price .ks-wrap .ks-unit { top: 50%; transform: translateY(-50%); }
 .money-summary { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-end; gap: .2rem .45rem; color: var(--text-muted); }
 .money-summary b { color: var(--text); font-variant-numeric: tabular-nums; }
 .money-summary .op { color: var(--text-muted); }

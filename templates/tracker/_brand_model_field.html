@@ -1,0 +1,18 @@
+{% load tracker_tags %}{% comment %} Brand (dropdown: the Brand list A → Z, then "Other") + Model (text box with the chosen brand's saved models).
+   Context: form (BrandModelMixin). Typing / focus / ▾ in Model fetch partials/item_assist.html into .item-assist (the brand
+   select is sent along: hx-include closest [data-item-field]); base.html opens the list and handles picks and keys. {% endcomment %}
+<div data-item-field class="combo grid grid-cols-1 gap-3 sm:grid-cols-2">
+  <label class="block text-[0.8rem] font-semibold text-ink-muted">{{ form.brand.label }}{% if form.brand.field.required or form.brand_required %} <span class="text-primary">*</span>{% endif %}
+    <div class="mt-1">{{ form.brand }}</div>
+    {% for e in form.brand.errors %}<p class="mt-1 text-xs font-medium text-danger-ink">{{ e }}</p>{% endfor %}
+  </label>
+  <div>
+    <label for="{{ form.model.id_for_label }}" class="block text-[0.8rem] font-semibold text-ink-muted">{{ form.model.label }} <span class="font-normal">(optional)</span></label>
+    <div class="combo-box mt-1">
+      {{ form.model }}
+      <button type="button" class="combo-toggle" data-combo-toggle tabindex="-1" aria-label="Show this brand's models">{% icon "chevron-down" "w-4 h-4" %}</button>
+    </div>
+    {% for e in form.model.errors %}<p class="mt-1 text-xs font-medium text-danger-ink">{{ e }}</p>{% endfor %}
+    <div class="item-assist"></div>
+  </div>
+</div>

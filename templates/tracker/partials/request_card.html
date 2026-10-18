@@ -14,10 +14,11 @@
   </div>
 
   <ul class="order-items mt-2" data-order-items>
+    {# "XXIO MP1400 · Driver 10.5° · S ×1 — 1,400,000 Ks" #}
     {% for l in r.lines.all %}
-      <li>
-        <span class="min-w-0"><b>{{ l.item_name }}</b>{% if l.club_label %} <span class="text-ink-muted">· {{ l.club_label }}</span>{% endif %} <b>×{{ l.qty }}</b></span>
-        {% if can_use_payments %}<span class="shrink-0 tabular-nums">{% if l.price_ks is not None %}{% if l.qty > 1 %}<span class="text-xs text-ink-muted">{{ l.price_ks|ks }} × {{ l.qty }} = </span>{% endif %}{{ l.line_total|ks }}{% else %}<span class="text-xs font-semibold text-ink-muted">Price not set</span>{% endif %}</span>{% endif %}
+      <li data-order-line>
+        <span class="min-w-0"><b>{{ l.title }}</b> ×{{ l.qty }}{% if can_use_payments %}{% if l.line_total is not None %} — <b class="tabular-nums">{{ l.line_total|ks }}</b>{% if l.piece_prices %} <span class="text-xs text-ink-muted">({{ l.piece_prices|join_ks }})</span>{% elif l.qty > 1 %} <span class="text-xs text-ink-muted">({{ l.price_ks|ks }} × {{ l.qty }})</span>{% endif %}{% else %} — <span class="text-xs font-semibold text-ink-muted">Price not set</span>{% endif %}{% endif %}
+          {% if l.note %}<span class="block text-xs italic text-ink-muted">{{ l.note }}</span>{% endif %}</span>
       </li>
     {% empty %}
       <li><span><b>{{ r.item_name }}</b> ×{{ r.qty }}</span></li>

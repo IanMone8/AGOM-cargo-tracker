@@ -466,7 +466,8 @@ class CustomerRequest(models.Model):
         if hasattr(self, "_prefetched_objects_cache"):
             self._prefetched_objects_cache.pop("lines", None)
         if lines:
-            self.item_name = ", ".join(l.item_name + (f" ×{l.qty}" if l.qty > 1 else "") for l in lines)[:200]
+            self.item_name = ", ".join((l.item_name or l.club_label or "Item") + (f" ×{l.qty}" if l.qty > 1 else "")
+                                       for l in lines)[:200]
             self.qty = sum(l.qty for l in lines)
             self.save(update_fields=["item_name", "qty", "updated_at"])
 
@@ -619,7 +620,8 @@ def club_value_problem(type_, *, loft="", shaft="", club_number="", length_in=""
 
 
 class Brand(models.Model):
-    """Known brands for the "Item (brand + model)" field. Edit in /admin/."""
+    """The Brand dropdown on item cards (active brands A → Z, then "Other"). Owner / Admin add or switch off brands
+    in /admin/; an inactive brand is kept but no longer listed."""
 
     display_name = models.CharField(max_length=60, unique=True, help_text='As it should be shown, e.g. "XXIO", "TaylorMade"')
     match_key = models.CharField(max_length=60, unique=True, editable=False,
@@ -662,61 +664,52 @@ class BrandModel(models.Model):
         super().save(*args, **kwargs)
 
 
-def brand_choices():
-    return [(b.match_key, b.display_name) for b in Brand.objects.filter(active=True)]
+def brand_names():
+    """The Brand dropdown: active brands A → Z ignoring case ("Other" is added after them by the form)."""
+    return sorted(Brand.objects.filter(active=True).values_list("display_name", flat=True), key=str.lower)
 
 
-def models_for(brand_display):
-    return [(m.match_key, m.display_name)
-            for m in BrandModel.objects.filter(brand__display_name=brand_display, active=True)]
+def find_brand(text):
+    """A list brand (or "Other") for typed text, ignoring case/spaces/punctuation; old names accepted
+    ("Cleveland" -> "Cleveland Golf", "Ping" -> "PING"). None when it isn't on the list."""
+    from .brands import BRAND_ALIASES, OTHER, match_key
+    key = match_key(text)
+    if not key:
+        return None
+    if key == match_key(OTHER):
+        return OTHER
+    names = {match_key(n): n for n in brand_names()}
+    return names.get(key) or (BRAND_ALIASES.get(key) if BRAND_ALIASES.get(key) in names.values() else None)
 
 
-def parse_item(text, add_brand=False):
-    """Parse "xxio mp 1400" against the saved brands/models (see brands.parse). Nothing is written.
-
-    add_brand: the user said yes to "Is 'Honma' a brand?" – the first word counts as a (new) brand."""
-    from . import brands
-    known = brand_choices()
-    parsed = brands.parse(text, known, models_for)
-    if parsed.unknown_brand and add_brand:
-        new = brands.style_name(parsed.unknown_brand)          # "ryoma" -> "Ryoma"
-        parsed = brands.parse(text, known + [(brands.match_key(new), new)], models_for)
-    return parsed
-
-
-def saved_item_names():
-    """Every saved item name, {match_key: display}: the Brand + Model list, then names on items in any box
-    (which also covers names with no brand, e.g. "Golf Bag"). One entry per match key."""
-    from .brands import match_key
-    names = {}
-    for m in BrandModel.objects.filter(active=True, brand__active=True).select_related("brand"):
-        names.setdefault(match_key(str(m)), str(m))
-    for name in JapanItem.objects.exclude(item_name="").order_by().values_list("item_name", flat=True).distinct():
-        names.setdefault(match_key(name), name)
-    names.pop("", None)
-    return names
+def model_display(brand, text):
+    """How a model is saved and shown: the spelling already saved for that brand when it matches (ignoring
+    case/spaces/punctuation), else styled with model codes in capitals ("mp 1400" -> "MP 1400")."""
+    from .brands import match_key, style_name, tidy
+    text = tidy(text)
+    if not text:
+        return ""
+    if brand:
+        saved = BrandModel.objects.filter(brand__display_name=brand, match_key=match_key(text)).first()
+        if saved:
+            return saved.display_name
+    return style_name(text)
 
 
-def remember_item(parsed):
-    """Save a new brand / model the first time it's used (called when the item is saved)."""
-    from .brands import match_key
-    if not parsed or not parsed.brand:
-        return
-    brand, _ = Brand.objects.get_or_create(match_key=match_key(parsed.brand),
-                                           defaults={"display_name": parsed.brand})
-    if parsed.model:
-        BrandModel.objects.get_or_create(brand=brand, match_key=match_key(parsed.model),
-                                         defaults={"display_name": parsed.model})
-
-
-def apply_item_text(item, text, add_brand=False, save_names=True):
-    """Set item.brand / item.model / item.item_name ("XXIO MP1400") from the typed text. Returns the Parsed result."""
-    parsed = parse_item(text, add_brand)
-    item.brand, item.model = (parsed.brand, parsed.model) if parsed.text else ("", "")
-    item.item_name = parsed.display[:200]
-    if save_names:
-        remember_item(parsed)
-    return parsed
+def set_brand_model(item, brand, model, save_names=True):
+    """Brand (a list name or "Other") + model typed on an item card or in a CSV row -> item.brand / item.model /
+    item.item_name ("XXIO MP1400"; with "Other" the model alone, e.g. "Honma TW757"). A new model of a list brand
+    is remembered for that brand's suggestions."""
+    from .brands import OTHER, match_key
+    brand = "" if brand == OTHER else (brand or "")
+    item.brand, item.model = brand, model_display(brand, model)
+    item.item_name = " ".join(x for x in (item.brand, item.model) if x)[:200]
+    if save_names and brand and item.model:
+        b = Brand.objects.filter(display_name=brand).first()
+        if b:
+            BrandModel.objects.get_or_create(brand=b, match_key=match_key(item.model),
+                                             defaults={"display_name": item.model})
+    return item
 
 
 # --- Customer payments (Myanmar Kyat, whole numbers) --------------------------------------------------
@@ -746,17 +739,28 @@ class PaymentMethod(models.Model):
 
 
 class OrderLine(models.Model):
-    """One item of a customer order: item (brand + model), club option, qty and price per piece (Ks)."""
+    """One item of a customer order, entered on the same item card as a box item (forms.ItemCardMixin):
+    brand + model, club option, flex, qty, note and the price per piece in Myanmar Kyat (or one per piece)."""
 
     order = models.ForeignKey(CustomerRequest, on_delete=models.CASCADE, related_name="lines")
-    item_name = models.CharField("Item (brand + model)", max_length=200)
+    item_name = models.CharField("Item (brand + model)", max_length=200, blank=True)
     brand = models.CharField(max_length=60, blank=True)
     model = models.CharField(max_length=120, blank=True)
-    club_option = models.ForeignKey(ClubOption, on_delete=models.SET_NULL, null=True, blank=True)
-    club_label = models.CharField("Club option", max_length=80, blank=True,
-                                  help_text='e.g. "Driver 10.5°" (kept as text, so renaming an option is safe)')
+    # club option: the same fields a box item gets from the two-tap picker (ClubOption.apply_to)
+    type = models.CharField(max_length=50, blank=True)
+    club_type = models.CharField(max_length=50, blank=True)
+    loft = models.CharField(max_length=20, blank=True)
+    shaft_material = models.CharField(max_length=10, choices=JapanItem.Shaft.choices, blank=True)
+    club_number = models.CharField(max_length=20, blank=True)
+    length_in = models.CharField(max_length=10, blank=True)
+    head_only = models.BooleanField(default=False)
+    flex = models.CharField(max_length=3, choices=JapanItem.Flex.choices, blank=True)
     qty = models.PositiveIntegerField(default=1)
     price_ks = models.PositiveIntegerField("Price (Ks)", null=True, blank=True, help_text="Whole Kyat per piece")
+    piece_prices = models.JSONField(
+        "Piece prices (Ks)", default=list, blank=True, validators=[validate_piece_prices],
+        help_text="Different prices per piece, e.g. [450000, 420000] – one per piece (count = qty)")
+    note = models.CharField(max_length=255, blank=True)
 
     class Meta:
         ordering = ["id"]
@@ -764,13 +768,27 @@ class OrderLine(models.Model):
     def __str__(self):
         return f"{self.title} ×{self.qty}"
 
+    def save(self, *args, **kwargs):
+        pieces = [int(p) for p in (self.piece_prices or []) if p is not None]
+        self.piece_prices = pieces if len(pieces) == self.qty and self.qty >= 2 else []
+        if self.piece_prices:
+            self.price_ks = self.piece_prices[0]
+        super().save(*args, **kwargs)
+
+    @property
+    def club_label(self):
+        return club_label(self.club_type or self.type, head_only=self.head_only, loft=self.loft,
+                          shaft=self.shaft_material, club_number=self.club_number, length_in=self.length_in)
+
     @property
     def title(self):
-        return " · ".join(x for x in (self.item_name, self.club_label) if x)
+        """ "XXIO MP1400 · Driver 10.5° · S" """
+        return " · ".join(x for x in (self.item_name, self.club_label, self.flex) if x) or "Item"
 
     @property
     def line_total(self):
-        return None if self.price_ks is None else self.price_ks * self.qty
+        """Sum of the piece prices when they differ, else price × qty; None while there's no price."""
+        return JapanItem.compute_line_total(self.price_ks, self.qty, self.piece_prices)
 
 
 class Payment(models.Model):
@@ -818,13 +836,14 @@ def order_totals(order_ids):
     """{order id: (total, priced, paid)} in two queries."""
     from django.db.models import Sum
     out = {pk: [0, True, 0, 0] for pk in order_ids}               # total, priced, paid, line count
-    for line in OrderLine.objects.filter(order__in=order_ids).values("order", "qty", "price_ks"):
+    for line in OrderLine.objects.filter(order__in=order_ids).values("order", "qty", "price_ks", "piece_prices"):
         row = out[line["order"]]
         row[3] += 1
-        if line["price_ks"] is None:
+        total = JapanItem.compute_line_total(line["price_ks"], line["qty"], line["piece_prices"])
+        if total is None:
             row[1] = False
         else:
-            row[0] += line["price_ks"] * line["qty"]
+            row[0] += total
     for p in Payment.objects.filter(order__in=order_ids).values("order").annotate(s=Sum("amount_ks")):
         out[p["order"]][2] = p["s"] or 0
     return {pk: (t, priced and n > 0, paid) for pk, (t, priced, paid, n) in out.items()}

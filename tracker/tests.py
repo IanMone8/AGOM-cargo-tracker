@@ -12,17 +12,62 @@ from .models import Box, Cargo, CustomerRequest, ExtraItem, JapanItem, ReceiveCh
 
 
 def order_data(*lines, note="", existing=0):
-    """POST data for the New order / Edit order forms: lines = (item, qty, price, club option pk[, line id, delete])."""
+    """POST data for the New order / Edit order forms: lines = (item, qty, price, club option pk[, line id, delete]).
+    item: ("XXIO", "MP1400") for brand + model, or one text (brand "Other", the text as the model)."""
     data = {"note": note, "lines-TOTAL_FORMS": str(len(lines)), "lines-INITIAL_FORMS": str(existing),
             "lines-MIN_NUM_FORMS": "0", "lines-MAX_NUM_FORMS": "1000"}
     for i, line in enumerate(lines):
         item, qty, price, club = (list(line) + ["", "", ""])[:4]
-        data.update({f"lines-{i}-item_name": item, f"lines-{i}-qty": str(qty), f"lines-{i}-price_ks": str(price or ""),
-                     f"lines-{i}-club_option": str(club or "")})
+        brand, model = item if isinstance(item, tuple) else ("Other", item)   # ("XXIO", "MP1400") or one text
+        data.update({f"lines-{i}-brand": brand, f"lines-{i}-model": model, f"lines-{i}-qty": str(qty),
+                     f"lines-{i}-price_ks": str(price or ""), f"lines-{i}-club_option": str(club or "")})
         if len(line) > 4:
             data[f"lines-{i}-id"] = str(line[4])
         if len(line) > 5 and line[5]:
             data[f"lines-{i}-DELETE"] = "on"
+    return data
+
+
+def brand_columns(text):
+    """Older test CSVs have one "item" column for brand + model. Every row now needs a brand from the list, so a file
+    without a brand column gets brand "Other" with the item text as the model – the saved name stays the same."""
+    import csv
+    rows = list(csv.reader(io.StringIO(text)))
+    if not rows:
+        return text
+    head = [h.strip().lower().replace(" ", "_") for h in rows[0]]
+    if "brand" in head:
+        return text
+    named = next((i for i, h in enumerate(head) if h in ("item", "item_name", "name")), None)
+    if named is not None and "model" not in head:
+        rows[0][named] = "model"
+    out = io.StringIO()
+    writer = csv.writer(out, lineterminator="\n")
+    writer.writerow(rows[0] + ["brand"])
+    for row in rows[1:]:
+        writer.writerow(row + (["Other"] if any(c.strip() for c in row) else []))
+    return out.getvalue()
+
+
+def brand_fields(data):
+    """Item card posts written for the old single "Item (brand + model)" box: every card (Add box modal "items-N-",
+    golf bag "bag-", the box page's Add item form) gets brand "Other" with the typed text as its model."""
+    import re
+    if not isinstance(data, dict):
+        return data
+    data = dict(data)
+    prefixes = set()
+    for key in list(data):
+        m = re.fullmatch(r"((?:items|lines)-\d+-|bag-)?(item_name|qty|club_option|club_other|color)", key)
+        if m:
+            prefixes.add(m.group(1) or "")
+    for pre in prefixes:
+        if pre == "" and "cargo" in data:                     # a box form, not an item
+            continue
+        if f"{pre}item_name" in data:
+            data.setdefault(f"{pre}model", data.pop(f"{pre}item_name"))
+        if f"{pre}brand" not in data and (pre != "bag-" or data.get(f"{pre}model")):
+            data[f"{pre}brand"] = "Other"
     return data
 
 
@@ -67,7 +112,7 @@ class BaseTest(TestCase):
 
     def htmx(self, user, url, data=None):
         self.client.force_login(user)
-        return self.client.post(url, data or {}, HTTP_HX_REQUEST="true")
+        return self.client.post(url, brand_fields(data or {}), HTTP_HX_REQUEST="true")
 
 
 class ModelTests(BaseTest):
@@ -175,7 +220,7 @@ class CSVImportTests(BaseTest):
 
     def upload(self, text, **extra):
         self.client.force_login(self.owner)
-        f = SimpleUploadedFile("list.csv", text.encode("utf-8-sig"), content_type="text/csv")
+        f = SimpleUploadedFile("list.csv", brand_columns(text).encode("utf-8-sig"), content_type="text/csv")
         return self.client.post(reverse("csv_import"), {"file": f, **extra})
 
     def test_import_creates_boxes_and_items(self):
@@ -211,7 +256,7 @@ class AddBoxModalTests(BaseTest):
                 "items-TOTAL_FORMS": "3", "items-INITIAL_FORMS": "0",
                 "items-MIN_NUM_FORMS": "0", "items-MAX_NUM_FORMS": "1000"}
         data.update(items)
-        return data
+        return brand_fields(data)
 
     def test_modal_opens_over_page(self):
         self.client.force_login(self.japan)
@@ -219,14 +264,16 @@ class AddBoxModalTests(BaseTest):
         self.assertContains(r, 'role="dialog"')
         self.assertContains(r, "Items inside")
         self.assertContains(r, 'name="items-0-club_option"')
-        for gone in ("shaft_material", "brand", "model", "loft", "items-0-type"):
+        self.assertContains(r, 'name="items-0-brand"')
+        self.assertContains(r, 'name="items-0-model"')
+        for gone in ("shaft_material", "item_name", "loft", "items-0-type"):
             self.assertNotContains(r, f'name="items-0-{gone}"' if "items-0" not in gone else f'name="{gone}"')
         self.assertNotContains(r, "<html")  # fragment, not a full page
 
     def test_add_item_card(self):
         self.client.force_login(self.japan)
         r = self.client.get(reverse("box_item_card"), {"items-TOTAL_FORMS": "2"}, HTTP_HX_REQUEST="true")
-        self.assertContains(r, 'name="items-2-item_name"')
+        self.assertContains(r, 'name="items-2-brand"')
         self.assertContains(r, 'id="id_items-TOTAL_FORMS" value="3" hx-swap-oob="true"')
         self.assertContains(r, "Delete")
 
@@ -342,14 +389,15 @@ class CSVNewFieldsTests(CSVImportTests):
         Cargo.objects.create(code="KL", name="KL Cargo")
         self.client.force_login(self.owner)
         template = self.client.get(reverse("csv_template")).content.decode()
-        self.assertTrue(template.startswith("box,cargo,kind,item,color,club_option,flex,qty,amount_jpy,cargo_fee_jpy,"
-                                            "customer,note"))
+        self.assertTrue(template.startswith("box,cargo,kind,brand,model,color,club_option,flex,qty,amount_jpy,"
+                                            "cargo_fee_jpy,customer,note"))
         r = self.upload(template, replace="on")
         self.assertContains(r, "Imported 4 item(s) and 2 golf bag(s) into 2 box(es)")
-        self.assertEqual(Box.objects.get(cargo__code="KL", code__isnull=False).bag_name, "Ping Hoofer")
+        self.assertEqual(Box.objects.get(cargo__code="KL", code__isnull=False).bag_name, "PING Hoofer")
         head = JapanItem.objects.get(item_name="", box__cargo__code="GN", box__code__isnull=False)
         self.assertEqual((head.type, head.loft, head.head_only, head.qty, head.title), ("Driver", "9.5", True, 2, "Driver head 9.5°"))
-        self.assertEqual(JapanItem.objects.get(item_name="Cleveland RTX 6").club_label, "Wedge 52°")
+        self.assertEqual(JapanItem.objects.get(item_name="Cleveland Golf RTX 6").club_label, "Wedge 52°")
+        self.assertEqual(JapanItem.objects.get(item_name="Titleist TSR2").brand, "Titleist")
 
 
 class JapanSenderLockTests(BaseTest):
@@ -426,7 +474,7 @@ class JapanSenderHiddenPagesTests(BaseTest):
         for name in ("request_status", "order_edit"):
             with self.subTest(name=name):
                 self.assertEqual(self.client.post(reverse(name, args=[req.pk]), {"status": "delivered"}).status_code, 403)
-        f = SimpleUploadedFile("l.csv", b"box,type,item_name\nGN-3,Bag,Stand bag\n", content_type="text/csv")
+        f = SimpleUploadedFile("l.csv", brand_columns("box,type,item_name\nGN-3,Bag,Stand bag\n").encode(), content_type="text/csv")
         self.assertEqual(self.client.post(reverse("csv_import"), {"file": f}).status_code, 403)
         req.refresh_from_db()
         self.assertEqual(req.status, "ordered")
@@ -760,7 +808,7 @@ class CustomerPageTests(BaseTest):
         self.item2.customer = "Daw Mya"
         self.item2.save()
         self.client.force_login(self.owner)
-        f = SimpleUploadedFile("l.csv", b"box,type,item_name,customer\nGN-3,Bag,Stand bag,Ko Zaw\n", content_type="text/csv")
+        f = SimpleUploadedFile("l.csv", brand_columns("box,type,item_name,customer\nGN-3,Bag,Stand bag,Ko Zaw\n").encode(), content_type="text/csv")
         self.client.post(reverse("csv_import"), {"file": f})
         names = set(self.Customer.objects.values_list("name", flat=True))
         self.assertTrue({"U Tun", "Daw Mya", "Ko Zaw"} <= names)
@@ -940,7 +988,7 @@ class CustomerPhoneAndOrderTests(BaseTest):
         self.assertIn("crm-tag-waiting", row)
 
     def test_new_order_validation_keeps_form_open(self):
-        r = self.client.post(reverse("customer_new_order", args=[self.ko.pk]), order_data(("", 1, "")))
+        r = self.client.post(reverse("customer_new_order", args=[self.ko.pk]), order_data((("", ""), 1, "")))
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "Add at least one item.")
         self.assertNotContains(r, 'id="new-order" method="post" action="/customers/%d/orders/new/" class="hidden' % self.ko.pk)
@@ -981,7 +1029,8 @@ class ClubOptionTests(BaseTest):
         self.client.force_login(self.japan)
 
     def add(self, **fields):
-        return self.client.post(reverse("item_add", args=[self.box.pk]), {"qty": "1", **fields}, HTTP_HX_REQUEST="true")
+        return self.client.post(reverse("item_add", args=[self.box.pk]), brand_fields({"qty": "1", **fields}),
+                                HTTP_HX_REQUEST="true")
 
     def test_seeded_options_and_labels(self):
         self.assertEqual(len(self.opt), 36)
@@ -992,15 +1041,15 @@ class ClubOptionTests(BaseTest):
 
     def test_card_has_only_simple_fields_and_picker(self):
         html = self.client.get(reverse("item_add", args=[self.box.pk]), HTTP_HX_REQUEST="true").content.decode()
-        for name in ("item_name", "club_option", "club_other", "flex", "qty", "note"):
+        for name in ("brand", "model", "club_option", "club_other", "flex", "qty", "note"):
             self.assertIn(f'name="{name}"', html)
         self.assertNotIn('name="customer"', html)                 # no customers for the Japan sender
         self.client.force_login(self.owner)
         owner = self.client.get(reverse("item_add", args=[self.box.pk]), HTTP_HX_REQUEST="true").content.decode()
-        self.assertLess(owner.index('name="item_name"'), owner.index('name="customer"'))   # right below Item name
+        self.assertLess(owner.index('name="model"'), owner.index('name="customer"'))   # right below Brand + Model
         self.assertLess(owner.index('name="customer"'), owner.index('name="club_option"'))
         self.client.force_login(self.japan)
-        for gone in ("type", "loft", "brand", "model", "shaft_material"):
+        for gone in ("type", "loft", "item_name", "shaft_material"):
             self.assertNotIn(f'name="{gone}"', html)
         cats = ["Driver", "Driver head", "Wood", "Hybrid", "Iron", "Wedge", "Putter", "Other"]
         positions = [html.index(f">{cat}</button>") for cat in cats]
@@ -1041,8 +1090,8 @@ class ClubOptionTests(BaseTest):
 
     def test_validation(self):
         before = JapanItem.objects.count()
-        r = self.add()
-        self.assertContains(r, "Pick a club option or type an item name.")
+        r = self.client.post(reverse("item_add", args=[self.box.pk]), {"qty": "1"}, HTTP_HX_REQUEST="true")
+        self.assertContains(r, "Choose the brand (or Other).")
         r = self.add(club_option="other", club_other="")
         self.assertContains(r, "Type the club or item.")
         r = self.add(club_option="999999")
@@ -1126,7 +1175,7 @@ class ClubOptionTests(BaseTest):
     def test_csv_club_option_and_old_columns(self):
         bag = self.add_bag()
         self.client.force_login(self.owner)
-        f = SimpleUploadedFile("l.csv", (
+        f = SimpleUploadedFile("l.csv", brand_columns(
             "box,item_name,club_option,flex,qty\n"
             "GN-3,,iron graphite 5,R,1\n"
             "GN-3,Vokey,Wedge 56°,,2\n"
@@ -1135,14 +1184,14 @@ class ClubOptionTests(BaseTest):
         self.assertContains(r, "Imported 3 item(s)")
         labels = sorted(i.club_label for i in JapanItem.objects.filter(box=self.box).exclude(pk__in=[self.item1.pk, self.item2.pk, bag.pk]))
         self.assertEqual(labels, ["Driver head 10°", "Iron · Graphite", "Wedge 56°"])   # old spelling still works
-        f = SimpleUploadedFile("l.csv", b"box,item_name,club_option\nGN-3,X,Wedge 99\n", content_type="text/csv")
+        f = SimpleUploadedFile("l.csv", brand_columns("box,item_name,club_option\nGN-3,X,Wedge 99\n").encode(), content_type="text/csv")
         self.assertContains(self.client.post(reverse("csv_import"), {"file": f}), "Unknown club_option")
 
     def test_csv_wood_hybrid_putter(self):
         bag = self.add_bag()
         self.client.force_login(self.owner)
         rows = ["Wood 3W", "wood 3", "Hybrid 4", "4H", "Putter 34", "Putter 34″", "hybrid 4h", "3w"]
-        f = SimpleUploadedFile("l.csv", ("box,club_option\n" + "".join(f"GN-3,{r}\n" for r in rows)).encode(),
+        f = SimpleUploadedFile("l.csv", brand_columns("box,club_option\n" + "".join(f"GN-3,{r}\n" for r in rows)).encode(),
                                content_type="text/csv")
         self.assertContains(self.client.post(reverse("csv_import"), {"file": f}), "Imported 8 item(s)")
         items = JapanItem.objects.filter(box=self.box).exclude(pk__in=[self.item1.pk, self.item2.pk, bag.pk]).order_by("id")
@@ -1151,9 +1200,9 @@ class ClubOptionTests(BaseTest):
                           "Wood 3W"])
         self.assertEqual((items[0].type, items[0].club_number), ("Wood", "3W"))
         self.assertEqual((items[4].type, items[4].length_in), ("Putter", "34"))
-        f = SimpleUploadedFile("l.csv", b"box,club_option\nGN-3,Wood 8\n", content_type="text/csv")
+        f = SimpleUploadedFile("l.csv", brand_columns("box,club_option\nGN-3,Wood 8\n").encode(), content_type="text/csv")
         self.assertContains(self.client.post(reverse("csv_import"), {"file": f}), "Unknown club_option")
-        f = SimpleUploadedFile("l.csv", b"box,type,item_name,loft,shaft_material\nGN-3,Club,Old style,10,steel\n",
+        f = SimpleUploadedFile("l.csv", brand_columns("box,type,item_name,loft,shaft_material\nGN-3,Club,Old style,10,steel\n").encode(),
                                content_type="text/csv")
         self.assertContains(self.client.post(reverse("csv_import"), {"file": f}), "Imported 1 item(s)")
         self.assertEqual(JapanItem.objects.get(item_name="Old Style").shaft_material, "steel")   # no brand: Title Case
@@ -1171,11 +1220,12 @@ class ItemCardCustomerTests(BaseTest):
         page = self.client.get(reverse("box_detail", args=[self.box.pk])).content.decode()
         self.assertIn('<datalist id="customer-names"><option value="Ko Aung">', page)
         # optional: an item without a customer saves fine
-        self.client.post(reverse("item_add", args=[self.box.pk]), {"item_name": "Bag", "qty": "1"}, HTTP_HX_REQUEST="true")
+        self.client.post(reverse("item_add", args=[self.box.pk]), brand_fields({"item_name": "Bag", "qty": "1"}),
+                         HTTP_HX_REQUEST="true")
         self.assertEqual(JapanItem.objects.latest("id").customer, "")
         # a new name is saved on the item and creates the customer
         self.client.post(reverse("item_add", args=[self.box.pk]),
-                         {"item_name": "TSR2", "customer": "  Ma   Hnin ", "qty": "1"}, HTTP_HX_REQUEST="true")
+                         brand_fields({"item_name": "TSR2", "customer": "  Ma   Hnin ", "qty": "1"}), HTTP_HX_REQUEST="true")
         self.assertEqual(JapanItem.objects.latest("id").customer, "Ma Hnin")
         self.assertTrue(Customer.objects.filter(name="Ma Hnin").exists())
 
@@ -1190,24 +1240,23 @@ class GolfBagTests(BaseTest):
                 "items-MIN_NUM_FORMS": "0", "items-MAX_NUM_FORMS": "1000",
                 "items-0-item_name": "Pro V1", "items-0-qty": "2"}
         data.update(extra)
-        return data
+        return brand_fields(data)
 
     def csv(self, text, **extra):
         self.client.force_login(self.owner)
-        f = SimpleUploadedFile("l.csv", text.encode(), content_type="text/csv")
+        f = SimpleUploadedFile("l.csv", brand_columns(text).encode(), content_type="text/csv")
         return self.client.post(reverse("csv_import"), {"file": f, **extra})
 
     # --- Add box modal -------------------------------------------------------
     def test_modal_has_required_bag_card_before_items(self):
         self.client.force_login(self.japan)
         html = self.client.get(reverse("box_create"), HTTP_HX_REQUEST="true").content.decode()
-        for name in ("bag-item_name", "bag-color", "bag-note"):
+        for name in ("bag-brand", "bag-model", "bag-color", "bag-note"):
             self.assertIn(f'name="{name}"', html)
         self.assertNotIn('name="bag-customer"', html)            # no customers for the Japan sender
-        self.assertLess(html.index('name="bag-item_name"'), html.index("Items inside the bag"))
+        self.assertLess(html.index('name="bag-brand"'), html.index("Items inside the bag"))
         self.assertLess(html.index("Items inside the bag"), html.index('name="items-0-club_option"'))
-        self.assertIn('name="bag-item_name"', html)
-        self.assertRegex(html, r'name="bag-item_name"[^>]*required')
+        self.assertRegex(html, r'Brand <span class="text-primary">\*</span>\s*<div class="mt-1"><select name="bag-brand"')
         self.assertNotIn("allow_no_bag", html)               # no override for the Japan sender
         self.client.force_login(self.owner)
         owner = self.client.get(reverse("box_create"), HTTP_HX_REQUEST="true")
@@ -1237,7 +1286,7 @@ class GolfBagTests(BaseTest):
         # half-filled bag with the override: the name is still needed
         r = self.htmx(self.owner, reverse("box_create"), self.modal_data(box_id="OCT26-GN-13", allow_no_bag="on",
                                                                          **{"bag-color": "Red"}))
-        self.assertContains(r, "Enter the bag&#x27;s name")
+        self.assertContains(r, "Choose the bag&#x27;s brand (or clear the bag fields).")
 
     def test_bag_word_rejected_as_item_inside(self):
         r = self.htmx(self.japan, reverse("box_create"), self.modal_data(**{
@@ -1272,7 +1321,7 @@ class GolfBagTests(BaseTest):
     def test_add_and_edit_bag_on_box_page(self):
         self.client.force_login(self.japan)
         r = self.client.get(reverse("box_bag", args=[self.box.pk]), HTTP_HX_REQUEST="true")
-        self.assertContains(r, 'name="bag-item_name"')
+        self.assertContains(r, 'name="bag-brand"')
         r = self.htmx(self.japan, reverse("box_bag", args=[self.box.pk]), {"bag-item_name": ""})
         self.assertEqual(r["HX-Retarget"], "#bag-form-slot")
         r = self.htmx(self.japan, reverse("box_bag", args=[self.box.pk]),
@@ -1388,7 +1437,7 @@ class GolfBagTests(BaseTest):
                      "OCT26-GN-5,bag,,,1\n"
                      "OCT26-GN-5,bag,X,Wedge 52,2\n"
                      "OCT26-GN-5,box,Y,,1\n")
-        for msg in ("Row 2: bag row: put the bag&#x27;s name in item", "Row 3: bag row: leave club_option empty",
+        for msg in ("Row 3: bag row: leave club_option empty",
                     "Row 3: bag row: qty must be 1", "Row 4: kind must be bag or item"):
             self.assertContains(r, msg)
 
@@ -1790,7 +1839,7 @@ class YenAmountTests(BaseTest):
 
     def test_csv_amounts_and_cargo_fee(self):
         self.client.force_login(self.owner)
-        f = SimpleUploadedFile("l.csv", (
+        f = SimpleUploadedFile("l.csv", brand_columns(
             "box,kind,item_name,qty,amount_jpy,cargo_fee_jpy\n"
             "OCT26-GN-8,bag,Ping Hoofer,1,8000,\"¥12,500\"\n"
             "OCT26-GN-8,,TSR2,2,\"12,500\",\n"
@@ -1800,7 +1849,7 @@ class YenAmountTests(BaseTest):
         self.assertEqual(box.cargo_fee_jpy, 12500)
         self.assertEqual(sorted(box.items.values_list("price_jpy", flat=True)), [3000, 8000, 12500])
         self.assertEqual(box.money()["total"], 8000 + 25000 + 3000 + 12500)
-        f = SimpleUploadedFile("l.csv", (
+        f = SimpleUploadedFile("l.csv", brand_columns(
             "box,kind,item_name,amount_jpy,cargo_fee_jpy\n"
             "OCT26-GN-9,bag,Bag,,\n"
             "OCT26-GN-9,,TSR2,12.5,500\n").encode(), content_type="text/csv")
@@ -1915,7 +1964,7 @@ class MonthlyBoxIdTests(BaseTest):
 
     def csv(self, text):
         self.client.force_login(self.owner)
-        f = SimpleUploadedFile("l.csv", text.encode(), content_type="text/csv")
+        f = SimpleUploadedFile("l.csv", brand_columns(text).encode(), content_type="text/csv")
         return self.client.post(reverse("csv_import"), {"file": f})
 
     def test_csv_empty_box_gets_new_ids(self):
@@ -1956,98 +2005,123 @@ class MonthlyBoxIdTests(BaseTest):
 
 
 class BrandModelItemTests(BaseTest):
-    """ "Item (brand + model)": parsed into brand + model, shown as "XXIO MP1400"."""
+    """Item cards: Brand dropdown (the Brand list A → Z, then Other) + Model box, shown as "XXIO MP1400"."""
 
-    def add(self, text, **extra):
+    LIST = ["Bettinardi", "Callaway", "Cleveland Golf", "Cobra", "Mizuno", "Odyssey", "PING", "PXG",
+            "Scotty Cameron", "Srixon", "TaylorMade", "Titleist", "Wilson Staff", "XXIO"]
+
+    def add(self, brand, model="", **extra):
         return self.htmx(self.japan, reverse("item_add", args=[self.box.pk]),
-                         {"item_name": text, "qty": "1", **extra})
+                         {"brand": brand, "model": model, "qty": "1", **extra})
 
     def latest(self):
         return JapanItem.objects.latest("id")
 
-    def test_seeded_brands(self):
-        from .models import Brand
-        names = set(Brand.objects.values_list("display_name", flat=True))
-        for b in ("XXIO", "Titleist", "TaylorMade", "Scotty Cameron", "Fourteen", "PXG"):
-            self.assertIn(b, names)
-        self.assertEqual(Brand.objects.get(display_name="TaylorMade").match_key, "taylormade")
-
-    def test_case_space_and_punctuation_variants_give_one_model(self):
-        from .models import BrandModel
-        for text in ("xxio mp 1400", "XXIO MP1400", "Xxio Mp-1400", "  xxio   mp1400 ", "XXIOmp1400"):
-            with self.subTest(text=text):
-                self.add(text)
-                item = self.latest()
-                self.assertEqual((item.brand, item.item_name), ("XXIO", "XXIO MP 1400"))
-        self.assertEqual(BrandModel.objects.filter(brand__display_name="XXIO").count(), 1)  # first spelling kept
-        self.assertEqual(self.latest().model, "MP 1400")                  # model code in capitals
-
-    def test_brand_display_spelling_and_new_model_styled(self):
-        self.add("taylormade  Qi10   Max")
-        item = self.latest()
-        self.assertEqual((item.brand, item.model, item.item_name), ("TaylorMade", "QI10 Max", "TaylorMade QI10 Max"))
-        self.assertEqual(item.title, "TaylorMade QI10 Max")
-        self.add("TAYLORMADE qi 10 max")                         # same model key -> saved spelling
-        self.assertEqual(self.latest().item_name, "TaylorMade QI10 Max")
-
-    def test_longest_brand_wins(self):
-        from .models import Brand
-        Brand.objects.create(display_name="Scotty")
-        self.add("scotty cameron phantom 5")
-        self.assertEqual((self.latest().brand, self.latest().model), ("Scotty Cameron", "Phantom 5"))
-
-    def test_unknown_brand_prompt(self):
-        from .models import Brand
-        self.client.force_login(self.japan)
-        r = self.client.get(reverse("item_suggest"), {"item_name": "Ryoma D1"}, HTTP_HX_REQUEST="true")
-        self.assertContains(r, "Is “Ryoma” a brand?")
-        self.assertContains(r, 'data-add-brand-set="yes">Yes, add brand')
-        self.assertContains(r, 'data-add-brand-set="no">No')
-        self.add("Ryoma D1")                                      # not answered / "No": all of it is the model
-        self.assertEqual((self.latest().brand, self.latest().model, self.latest().item_name), ("", "Ryoma D1", "Ryoma D1"))
-        self.assertFalse(Brand.objects.filter(display_name="Ryoma").exists())
-        r = self.client.get(reverse("item_suggest"), {"item_name": "Ryoma D1", "add_brand": "yes"}, HTTP_HX_REQUEST="true")
-        self.assertContains(r, "✓ “Ryoma” will be added as a brand – saved as <b>Ryoma D1</b>")
-        self.assertFalse(Brand.objects.filter(display_name="Ryoma").exists())   # only when the item is saved
-        self.add("Ryoma D1", add_brand="yes")                     # "Yes, add brand"
-        self.assertEqual((self.latest().brand, self.latest().model), ("Ryoma", "D1"))
-        self.assertTrue(Brand.objects.filter(display_name="Ryoma", match_key="ryoma").exists())
-        self.add("ryoma d-1")                                     # now known
-        self.assertEqual(self.latest().item_name, "Ryoma D1")
-
-    def test_did_you_mean(self):
-        from .models import Brand, BrandModel
-        BrandModel.objects.create(brand=Brand.objects.get(display_name="XXIO"), display_name="MP1400")
-        self.client.force_login(self.japan)
-        r = self.client.get(reverse("item_suggest"), {"item_name": "xxip mp1400"}, HTTP_HX_REQUEST="true")
-        self.assertContains(r, 'data-pick="XXIO MP1400">XXIO MP1400</button>')
-        r = self.client.get(reverse("item_suggest"), {"item_name": "xxio mp1410"}, HTTP_HX_REQUEST="true")
-        self.assertContains(r, 'data-pick="XXIO MP1400"')
-        r = self.client.get(reverse("item_suggest"), {"item_name": "Pro V1"}, HTTP_HX_REQUEST="true")
-        self.assertNotContains(r, "Did you mean")                 # short word, not close enough
-
-    def test_suggestions_search_match_keys(self):
-        from .models import Brand, BrandModel
-        xxio = Brand.objects.get(display_name="XXIO")
-        BrandModel.objects.create(brand=xxio, display_name="MP1400")
-        BrandModel.objects.create(brand=Brand.objects.get(display_name="Titleist"), display_name="TSR2")
-        self.client.force_login(self.japan)
-        r = self.client.get(reverse("item_suggest"), {"items-0-item_name": "xxio 14"}, HTTP_HX_REQUEST="true")
-        self.assertContains(r, 'data-pick="XXIO MP1400"')
-        self.assertNotContains(r, "TSR2")
-        self.client.force_login(self.myanmar)                                     # order lines use it too
-        self.assertEqual(self.client.get(reverse("item_suggest"), {"item_name": "x"}).status_code, 200)
-        self.client.force_login(User.objects.create_user("viewer", password="pw-12345-x"))
-        self.assertEqual(self.client.get(reverse("item_suggest"), {"item_name": "x"}).status_code, 403)
-
-    def test_bag_and_modal_use_the_same_field(self):
+    def test_brand_list_and_order(self):
+        import re
+        from .models import Brand, brand_names
+        self.assertEqual(brand_names(), self.LIST)
+        self.assertFalse(Brand.objects.get(display_name="Honma").active)           # kept, not deleted
         self.client.force_login(self.japan)
         html = self.client.get(reverse("box_create"), HTTP_HX_REQUEST="true").content.decode()
-        self.assertIn("Item (brand + model)", html)
-        self.assertIn("Bag (brand + model)", html)
-        self.assertEqual(html.count('name="items-0-add_brand"'), 1)
+        select = html[html.index('name="items-0-brand"'):]
+        select = select[:select.index("</select>")]
+        self.assertEqual(re.findall(r'<option value="([^"]*)"', select), [""] + self.LIST + ["Other"])
+        self.assertNotIn("Honma", select)
+        Brand.objects.create(display_name="Honma Golf")                             # owner adds one in /admin/
+        self.assertIn("Honma Golf", brand_names())
+        self.assertEqual(brand_names()[4:6], ["Honma Golf", "Mizuno"])
+
+    def test_brand_and_model_saved_and_shown(self):
+        from .models import BrandModel
+        self.add("XXIO", "mp 1400")
+        item = self.latest()
+        self.assertEqual((item.brand, item.model, item.item_name), ("XXIO", "MP 1400", "XXIO MP 1400"))
+        for typed in ("MP1400", "mp-1400", "  Mp 1400 "):                         # same model: saved spelling
+            self.add("XXIO", typed)
+            self.assertEqual(self.latest().item_name, "XXIO MP 1400")
+        self.assertEqual(BrandModel.objects.filter(brand__display_name="XXIO").count(), 1)
+        self.add("TaylorMade", "qi10 max")
+        self.assertEqual(self.latest().item_name, "TaylorMade QI10 Max")
+        self.add("PING")                                                            # model optional
+        self.assertEqual((self.latest().brand, self.latest().model, self.latest().item_name), ("PING", "", "PING"))
+
+    def test_other_brand_model_is_free_text(self):
+        from .models import Brand
+        self.add("Other", "honma tw757")
+        item = self.latest()
+        self.assertEqual((item.brand, item.model, item.item_name), ("", "Honma TW757", "Honma TW757"))
+        self.assertFalse(Brand.objects.get(display_name="Honma").active)           # no brand created or switched on
+        from .forms import JapanItemForm
+        form = JapanItemForm(instance=item)
+        self.assertEqual((form["brand"].value(), form["model"].value()), ("Other", "Honma TW757"))
+
+    def test_brand_required_model_optional(self):
+        r = self.add("", "MP1400")
+        self.assertContains(r, "Choose the brand (or Other).")
+        r = self.add("Kasco", "Zeus")                                              # not on the list
+        self.assertContains(r, "Select a valid choice")
+        self.assertEqual(self.box.items.count(), 2)
+
+    def test_no_free_text_brand_parsing(self):
+        self.add("Other", "XXIO MP1400")                                           # typed brand words stay text
+        self.assertEqual((self.latest().brand, self.latest().model, self.latest().item_name),
+                         ("", "XXIO MP1400", "XXIO MP1400"))
+        self.client.force_login(self.japan)
+        html = self.client.get(reverse("item_suggest"), {"brand": "", "model": "Ryoma D1"}).content.decode()
+        self.assertNotIn("a brand?", html)
+        self.assertNotIn("add_brand", html)
+
+    def test_model_suggestions_per_brand(self):
+        import re
+        from .models import Brand, BrandModel
+        xxio, titleist = Brand.objects.get(display_name="XXIO"), Brand.objects.get(display_name="Titleist")
+        for name in ("MP1400", "MP1200", "Zeus 12", "Zeus 7"):
+            BrandModel.objects.create(brand=xxio, display_name=name)
+        BrandModel.objects.create(brand=titleist, display_name="TSR2")
+        self.client.force_login(self.japan)
+
+        def rows(**params):
+            html = self.client.get(reverse("item_suggest"), params, HTTP_HX_REQUEST="true").content.decode()
+            return re.findall(r'data-pick="([^"]*)" data-section="(\w+)"', html), html
+        got, _ = rows(**{"items-0-brand": "XXIO", "items-0-model": ""})
+        self.assertEqual([p for p, _ in got], ["MP1200", "MP1400", "Zeus 7", "Zeus 12"])     # A → Z, numbers by value
+        got, _ = rows(**{"items-0-brand": "XXIO", "items-0-model": "mp-14"})                # ignores case/punctuation
+        self.assertEqual(got, [("MP1400", "saved")])
+        got, _ = rows(**{"items-0-brand": "Titleist", "items-0-model": ""})                  # another brand
+        self.assertEqual(got, [("TSR2", "saved")])
+        got, html = rows(**{"items-0-brand": "Other", "items-0-model": "honma tw757"})        # free text: no list
+        self.assertEqual(got, [])
+        self.assertIn("Saved as <b>Honma TW757</b>", html)
+        got, html = rows(**{"items-0-brand": "", "items-0-model": "mp"})
+        self.assertEqual(got, [])
+        self.assertIn("Choose the brand first", html)
+        # models typed on other cards of the open box (same brand) come first, newest first
+        got, html = rows(**{"items-1-brand": "XXIO", "items-1-model": "", "in_box": ["zeus 2", "mp1400"]})
+        self.assertEqual(got[:2], [("Zeus 2", "box"), ("MP1400", "box")])
+        self.assertNotIn(("MP1400", "saved"), got)
+        got, html = rows(**{"items-0-brand": "XXIO", "items-0-model": "mp1410"})
+        self.assertIn('data-pick="MP1400">MP1400</button>', html)                          # did you mean
+        self.assertIn("Saved as <b>XXIO MP1410</b> <span class=\"item-tag\">new model</span>", html)
+
+    def test_suggestions_permissions(self):
+        self.client.force_login(self.myanmar)                                       # order lines use it too
+        self.assertEqual(self.client.get(reverse("item_suggest"), {"brand": "XXIO"}).status_code, 200)
+        self.client.force_login(User.objects.create_user("viewer", password="pw-12345-x"))
+        self.assertEqual(self.client.get(reverse("item_suggest"), {"brand": "XXIO"}).status_code, 403)
+
+    def test_cards_share_the_brand_and_model_fields(self):
+        self.client.force_login(self.japan)
+        html = self.client.get(reverse("box_create"), HTTP_HX_REQUEST="true").content.decode()
+        for name in ("bag-brand", "bag-model", "items-0-brand", "items-0-model"):
+            self.assertIn(f'name="{name}"', html)
+        self.assertNotIn("item_name", html)
+        self.assertEqual(html.count("data-combo-toggle"), 2)                       # bag + first item card
         self.assertIn('hx-get="/items/suggest/"', html)
-        self.assertIn('hx-target="next .item-assist"', html)
+        self.assertIn('hx-include="closest [data-item-field]"', html)
+        page_form = self.client.get(reverse("item_add", args=[self.box.pk]), HTTP_HX_REQUEST="true").content.decode()
+        self.assertIn('name="brand"', page_form)
+        self.assertIn("data-combo-toggle", page_form)
 
     def test_migration_converts_existing_names(self):
         import importlib
@@ -2055,16 +2129,41 @@ class BrandModelItemTests(BaseTest):
         convert = importlib.import_module("tracker.migrations.0011_brands_and_models").seed_and_convert
         a = JapanItem.objects.create(box=self.box, item_name="titleist  tsr-2", brand="", model="")
         b = JapanItem.objects.create(box=self.box, item_name="Golf balls", brand="", model="")
-        c = JapanItem.objects.create(box=self.box, item_name="Kasco Zeus", brand="Kasco", model="")
         convert(apps, None)
-        a.refresh_from_db(); b.refresh_from_db(); c.refresh_from_db()
+        a.refresh_from_db(); b.refresh_from_db()
         self.assertEqual((a.brand, a.model, a.item_name), ("Titleist", "TSR-2", "Titleist TSR-2"))
         self.assertEqual((b.brand, b.model, b.item_name), ("", "", "Golf balls"))          # no brand: unchanged
-        self.assertEqual((c.brand, c.model, c.item_name), ("Kasco", "Zeus", "Kasco Zeus"))  # brand already on an item
+
+    def test_migration_maps_old_brand_names(self):
+        import importlib
+        from django.apps import apps
+        from .models import Brand, BrandModel, OrderLine
+        mig = importlib.import_module("tracker.migrations.0022_brand_list_and_order_line_cards")
+        Brand.objects.filter(display_name="PING").update(display_name="Ping", match_key="ping")
+        Brand.objects.filter(display_name="Cleveland Golf").update(display_name="Cleveland", match_key="cleveland")
+        Brand.objects.filter(display_name="PXG").update(display_name="Parsons Xtreme Golf", match_key="parsonsxtremegolf")
+        Brand.objects.filter(display_name="Honma").update(active=True)
+        g430 = BrandModel.objects.create(brand=Brand.objects.get(display_name="Ping"), display_name="G430")
+        items = [JapanItem.objects.create(box=self.box, brand=b, model=m, item_name=f"{b} {m}".strip())
+                 for b, m in (("Ping", "G430"), ("Cleveland", "RTX 6"), ("Wilson", "Staff Model"),
+                              ("Parsons Xtreme Golf", "0311"), ("Honma", "TW757"), ("", "Golf Balls"))]
+        order = make_order("Ko Aung", ("XXIO MP1400", 1, 1000))                    # typed before brands existed
+        mig.brands_and_names(apps, None)
+        got = [(i.brand, i.model, i.item_name) for i in JapanItem.objects.filter(pk__in=[i.pk for i in items]).order_by("id")]
+        self.assertEqual(got, [("PING", "G430", "PING G430"), ("Cleveland Golf", "RTX 6", "Cleveland Golf RTX 6"),
+                               ("Wilson Staff", "Staff Model", "Wilson Staff Staff Model"), ("PXG", "0311", "PXG 0311"),
+                               ("", "Honma TW757", "Honma TW757"), ("", "Golf Balls", "Golf Balls")])
+        self.assertEqual(sorted(Brand.objects.filter(active=True).values_list("display_name", flat=True), key=str.lower),
+                         self.LIST)
+        self.assertFalse(Brand.objects.get(display_name="Honma").active)
+        g430.refresh_from_db()
+        self.assertEqual(g430.brand.display_name, "PING")                          # its models move along
+        line = OrderLine.objects.get(order=order)
+        self.assertEqual((line.brand, line.model, line.item_name), ("XXIO", "MP1400", "XXIO MP1400"))
 
     def test_brand_filters(self):
         other = Box.objects.create(cargo=self.cargo, box_no=4)
-        self.add("xxio mp1400")
+        self.add("XXIO", "mp1400")
         JapanItem.objects.create(box=other, item_name="Titleist TSR2", brand="Titleist", model="TSR2")
         self.client.force_login(self.owner)
         r = self.client.get(reverse("box_list"), {"brand": "XXIO"})
@@ -2075,23 +2174,29 @@ class BrandModelItemTests(BaseTest):
         self.assertIn('data-brand="XXIO"', html)
 
     def csv(self, text):
-        self.client.force_login(self.owner)
-        f = SimpleUploadedFile("l.csv", text.encode(), content_type="text/csv")
-        return self.client.post(reverse("csv_import"), {"file": f})
+        from .csv_import import import_japan_csv
+        return import_japan_csv(SimpleUploadedFile("l.csv", text.encode(), content_type="text/csv"))
 
-    def test_csv_item_text_or_brand_model_columns(self):
+    def test_csv_brand_must_be_on_the_list(self):
         self.add_bag()
-        r = self.csv("box,item,brand,model\n"
-                     "GN-3,xxio mp 1400,,\n"
-                     "GN-3,,Kasco,Zeus 1\n"
-                     "GN-3,,titleist,tsr 2\n")
-        self.assertContains(r, "Imported 3 item(s)")
+        r = self.csv("box,brand,model\n"
+                     "GN-3,xxio,mp 1400\n"
+                     "GN-3,ping,g430\n"                         # old spelling accepted
+                     "GN-3,Cleveland,RTX 6\n"
+                     "GN-3,other,Honma TW757\n"
+                     "GN-3,PXG,\n")
+        self.assertEqual(r.errors, [])
         got = list(self.box.items.filter(is_bag=False).exclude(pk__in=[self.item1.pk, self.item2.pk])
                    .order_by("id").values_list("brand", "model", "item_name"))
-        self.assertEqual(got, [("XXIO", "MP 1400", "XXIO MP 1400"), ("Kasco", "Zeus 1", "Kasco Zeus 1"),
-                               ("Titleist", "TSR 2", "Titleist TSR 2")])
-        from .models import Brand
-        self.assertTrue(Brand.objects.filter(display_name="Kasco").exists())   # brand column: added
+        self.assertEqual(got, [("XXIO", "MP 1400", "XXIO MP 1400"), ("PING", "G430", "PING G430"),
+                               ("Cleveland Golf", "RTX 6", "Cleveland Golf RTX 6"), ("", "Honma TW757", "Honma TW757"),
+                               ("PXG", "", "PXG")])
+        r = self.csv("box,brand,model\nGN-3,Kasco,Zeus 1\nGN-3,,TSR2\n")
+        self.assertEqual([row for row, _ in r.errors], [2, 3])
+        self.assertIn("Unknown brand 'Kasco' – use one of: Bettinardi, Callaway", r.errors[0][1])
+        self.assertIn("brand is required", r.errors[1][1])
+        r = self.csv("box,item\nGN-3,xxio mp1400\n")                               # the old one-box column
+        self.assertIn("put the brand in the brand column and the model in the model column", r.errors[0][1])
 
 
 class JapanSenderNoCustomerTests(BaseTest):
@@ -2161,7 +2266,7 @@ class JapanSenderNoCustomerTests(BaseTest):
 
     def test_csv_import_without_customers_ignores_column(self):
         from .csv_import import import_japan_csv
-        f = SimpleUploadedFile("l.csv", b"box,item,qty,customer\nGN-3,Titleist TSR2,1,Ko Aung\n")
+        f = SimpleUploadedFile("l.csv", brand_columns("box,item,qty,customer\nGN-3,Titleist TSR2,1,Ko Aung\n").encode())
         result = import_japan_csv(f, customers=False)
         self.assertEqual(result.errors, [])
         self.assertEqual(JapanItem.objects.latest("id").customer, "")
@@ -2240,7 +2345,7 @@ class PiecePriceTests(BaseTest):
 
     def csv(self, text):
         from .csv_import import import_japan_csv
-        return import_japan_csv(SimpleUploadedFile("l.csv", text.encode()))
+        return import_japan_csv(SimpleUploadedFile("l.csv", brand_columns(text).encode()))
 
     def test_csv_piece_prices(self):
         result = self.csv('box,item,qty,amount_jpy\nGN-3,Titleist TSR2,2,"45000;41,500"\nGN-3,Ping G430,2,9000\n')
@@ -2265,78 +2370,6 @@ class PiecePriceTests(BaseTest):
         self.assertEqual(self.item2.line_total_jpy, 12600)              # 4200 × 3
 
 
-class ItemComboBoxTests(BaseTest):
-    """The "Item (brand + model)" combo box: names typed in the open box above the line (newest first),
-    every saved name A → Z below it, "+ Add '…' as new item" when nothing matches."""
-
-    def setUp(self):
-        super().setUp()
-        from .models import Brand, BrandModel
-        xxio = Brand.objects.get(display_name="XXIO")
-        BrandModel.objects.create(brand=xxio, display_name="MP1400")
-        BrandModel.objects.create(brand=Brand.objects.get(display_name="TaylorMade"), display_name="QI10")
-        JapanItem.objects.create(box=self.box, item_name="Golf Balls", qty=1)          # a saved name with no brand
-        self.client.force_login(self.japan)
-
-    def suggest(self, q="", **params):
-        return self.client.get(reverse("item_suggest"), {"items-1-item_name": q, **params},
-                               HTTP_HX_REQUEST="true").content.decode()
-
-    def rows(self, html, section=None):
-        import re
-        rows = re.findall(r'class="combo-opt[^"]*"[^>]*data-pick="([^"]*)" data-section="(\w+)"', html)
-        return [p for p, sec in rows if section in (None, sec)]
-
-    def test_one_list_box_names_newest_first_then_saved_a_to_z(self):
-        html = self.suggest("", in_box=["zz new club", "xxio mp 1400", "Ryoma stand bag"])   # newest first
-        self.assertEqual(self.rows(html, "box"), ["Zz New Club", "XXIO MP1400", "Ryoma Stand Bag"])
-        # saved: Brand + Model list and names on items, A → Z ignoring case, nothing that is already above the line
-        self.assertEqual(self.rows(html, "saved"), ["Golf Balls", "RTX 6", "TaylorMade QI10", "TSR2"])
-        self.assertEqual(html.count('class="combo-divider"'), 1)
-        self.assertLess(html.index("Ryoma Stand Bag"), html.index("combo-divider"))
-        self.assertNotIn("item-chip", html)                                          # no chips any more
-        html = self.suggest("")                                                      # nothing typed in the box yet
-        self.assertEqual(self.rows(html, "box"), [])
-        self.assertNotIn("combo-divider", html)
-
-    def test_typing_filters_both_sections_and_all_shows_everything(self):
-        html = self.suggest("xxio 14", in_box=["Xxio Zeus 2"])
-        self.assertEqual(self.rows(html), ["XXIO MP1400"])
-        html = self.suggest("xxio", in_box=["Xxio Zeus 2"])
-        self.assertEqual((self.rows(html, "box"), self.rows(html, "saved")), (["XXIO Zeus 2"], ["XXIO MP1400"]))
-        html = self.suggest("xxio", in_box=["Xxio Zeus 2"], all="1")                  # ▾ opens the full list
-        self.assertEqual(len(self.rows(html, "saved")), 5)
-        self.assertNotIn("as new item", html)
-
-    def test_add_new_row_only_when_nothing_matches(self):
-        from .models import Brand, BrandModel
-        before = (Brand.objects.count(), BrandModel.objects.count(), JapanItem.objects.count())
-        html = self.suggest("titleist golf bag", in_box=["Ping G430"])
-        self.assertEqual(self.rows(html, "new"), ["Titleist Golf Bag"])              # fills the saved spelling
-        self.assertIn("+ Add ‘titleist golf bag’ as new item", html)
-        self.assertNotIn("as new item", self.suggest("golf"))
-        self.assertEqual((Brand.objects.count(), BrandModel.objects.count(), JapanItem.objects.count()), before)
-
-    def test_saved_box_names_join_the_list_for_the_next_box(self):
-        self.assertNotIn("XXIO Zeus 7", self.rows(self.suggest("")))
-        self.htmx(self.japan, reverse("item_add", args=[self.box.pk]), {"item_name": "xxio zeus 7", "qty": "1"})
-        self.assertIn("XXIO Zeus 7", self.rows(self.suggest(""), "saved"))       # below the line from now on
-        self.assertEqual(self.rows(self.suggest("zeus")), ["XXIO Zeus 7"])
-        self.htmx(self.japan, reverse("item_add", args=[self.box.pk]), {"item_name": "xxio zeus 12", "qty": "1"})
-        self.assertEqual(self.rows(self.suggest("zeus")), ["XXIO Zeus 7", "XXIO Zeus 12"])   # numbers by value
-
-    def test_field_is_a_combo_box(self):
-        html = self.client.get(reverse("box_create"), HTTP_HX_REQUEST="true").content.decode()
-        for hook in ('data-combo-toggle', 'aria-label="Show all items"', 'aria-expanded="false"',
-                     'hx-trigger="input changed delay:200ms, focus, refresh"'):
-            self.assertIn(hook, html)
-        self.assertEqual(html.count("data-combo-toggle"), 2)                        # Golf bag + first item card
-        self.assertNotIn("{#", html + self.suggest("x"))                            # template comments stay hidden
-        page_form = self.client.get(reverse("item_add", args=[self.box.pk]), HTTP_HX_REQUEST="true").content.decode()
-        self.assertIn("data-combo-toggle", page_form)
-        self.assertNotIn("data-suggest-box", page_form)
-
-
 class DisplaySpellingTests(BaseTest):
     """Brand in its own spelling, model codes in capitals, names with no known brand in Title Case."""
 
@@ -2346,12 +2379,9 @@ class DisplaySpellingTests(BaseTest):
                              ("golf bag", "Golf Bag"), ("pro v1", "Pro V1"), ("phantom 5", "Phantom 5"),
                              ("TourEdge exs", "TourEdge Exs")):
             self.assertEqual(style_name(typed), shown)
-        from .models import parse_item
-        self.assertEqual(parse_item("xxio mp1400").display, "XXIO MP1400")
-        self.assertEqual(parse_item("taylormade qi10").display, "TaylorMade QI10")
-        self.assertEqual(parse_item("titleist golf bag").display, "Titleist Golf Bag")
-        self.assertEqual(parse_item("ryoma golf bag").display, "Ryoma Golf Bag")    # no known brand: Title Case
-        self.assertEqual(parse_item("ryoma d1", add_brand=True).brand, "Ryoma")
+        from .models import model_display
+        self.assertEqual(model_display("XXIO", "mp1400"), "MP1400")
+        self.assertEqual(model_display("", "titleist golf bag"), "Titleist Golf Bag")
 
     def test_migration_restyles_saved_names(self):
         import importlib
@@ -2434,7 +2464,7 @@ class ClubCategoryValueTests(BaseTest):
 
     def csv(self, rows):
         from .csv_import import import_japan_csv
-        return import_japan_csv(SimpleUploadedFile("l.csv", rows.encode()))
+        return import_japan_csv(SimpleUploadedFile("l.csv", brand_columns(rows).encode()))
 
     def test_csv_old_and_new_spelling_and_category_alone(self):
         result = self.csv("box,item,club_option\nGN-3,A,Iron Graphite\nGN-3,B,Iron · Graphite 5\nGN-3,C,iron graphite\n")
@@ -2584,7 +2614,7 @@ class WholeYenTests(BaseTest):
         from .csv_import import import_japan_csv
         self.add_bag()
         def csv(text):
-            return import_japan_csv(SimpleUploadedFile("l.csv", text.encode()))
+            return import_japan_csv(SimpleUploadedFile("l.csv", brand_columns(text).encode()))
         r = csv('box,item,amount_jpy\nGN-3,A,12500\nGN-3,B,"12,500"\nGN-3,C,"¥12,500"\n')
         self.assertEqual(r.errors, [])
         self.assertEqual(set(JapanItem.objects.filter(item_name__in="ABC").values_list("price_jpy", flat=True)), {12500})
@@ -2661,7 +2691,7 @@ class SimpleOrderFlowTests(BaseTest):
         self.assertContains(r, 'value="XXIO MP1400"')
         line = self.order.lines.get()
         r = self.htmx(self.myanmar, reverse("order_edit", args=[self.order.pk]),
-                      order_data(("xxio mp1500", 3, "150000", "", line.pk), ("Titleist Bag", 1, "500,000"), existing=1))
+                      order_data((("XXIO", "mp1500"), 3, "150000", "", line.pk), ("Titleist Bag", 1, "500,000"), existing=1))
         self.assertContains(r, "XXIO MP1500")
         self.order.refresh_from_db()
         self.assertEqual((self.order.item_name, self.order.qty, self.order.status),
@@ -3055,7 +3085,7 @@ class JapanNeverSetsMyanmarStatusTests(BaseTest):
 
     def csv(self, text, **kwargs):
         from .csv_import import import_japan_csv
-        return import_japan_csv(SimpleUploadedFile("l.csv", text.encode(), content_type="text/csv"), **kwargs)
+        return import_japan_csv(SimpleUploadedFile("l.csv", brand_columns(text).encode(), content_type="text/csv"), **kwargs)
 
     def test_edit_page_offers_packed_and_shipped_only(self):
         self.client.force_login(self.japan)
@@ -3138,7 +3168,7 @@ class JapanNeverSetsMyanmarStatusTests(BaseTest):
         self.assertEqual(self.box.items.count(), 2)
 
     def test_csv_page_is_owner_admin_only_and_owner_may_set_any_status(self):
-        f = SimpleUploadedFile("l.csv", b"box,kind,item,status\nOCT26-GN-8,bag,Stand Bag,arrived\n", content_type="text/csv")
+        f = SimpleUploadedFile("l.csv", brand_columns("box,kind,item,status\nOCT26-GN-8,bag,Stand Bag,arrived\n").encode(), content_type="text/csv")
         self.client.force_login(self.japan)
         self.assertEqual(self.client.post(reverse("csv_import"), {"file": f}).status_code, 403)
         f.seek(0)
@@ -3178,3 +3208,103 @@ class JapanNeverSetsMyanmarStatusTests(BaseTest):
         html = self.client.get(reverse("box_list")).content.decode()
         for label in ("Packed", "Shipped", "Arrived", "Checked"):
             self.assertIn(f">{label}</option>", html)
+
+
+class SharedItemCardTests(BaseTest):
+    """Customer order lines use the SAME item card as the Add box modal (partials/item_card.html + ItemCardMixin);
+    only the money differs: JP¥ on box items, Myanmar Kyat on order lines."""
+
+    def setUp(self):
+        super().setUp()
+        from .models import ClubOption, Customer
+        self.customer = Customer.objects.create(name="Ko Aung")
+        self.driver = ClubOption.objects.get(category__name="Driver", label="10.5")
+
+    def page(self, user):
+        self.client.force_login(user)
+        return self.client.get(reverse("customer_detail", args=[self.customer.pk])).content.decode()
+
+    def test_one_template_and_form_for_both(self):
+        from .forms import ItemCardMixin, JapanItemForm, OrderLineForm
+        self.assertTrue(issubclass(JapanItemForm, ItemCardMixin) and issubclass(OrderLineForm, ItemCardMixin))
+        lines = open("templates/tracker/partials/order_lines.html").read()
+        self.assertIn('include "tracker/partials/item_card.html"', lines)
+        self.assertFalse(__import__("os").path.exists("templates/tracker/partials/order_line.html"))
+
+    def test_box_card_in_yen_order_card_in_kyat(self):
+        self.client.force_login(self.owner)
+        box = self.client.get(reverse("box_create"), HTTP_HX_REQUEST="true").content.decode()
+        self.assertIn('data-currency="¥"', box)
+        self.assertIn('Amount (JP¥)', box)
+        self.assertIn('<span class="yen-sign" aria-hidden="true">¥</span><input type="text" name="items-0-price_jpy"', box)
+        order = self.page(self.myanmar)
+        form = order[order.index('id="new-order"'):order.index("</form>", order.index('id="new-order"'))]
+        self.assertIn('data-currency="Ks"', form)
+        self.assertIn("Price (Ks)", form)
+        self.assertRegex(form, r'name="lines-0-price_ks"[^>]*data-ks[^>]*>\s*<span class="ks-unit" aria-hidden="true">Ks</span>|'
+                               r'name="lines-0-price_ks"[^>]*>\s*<span class="ks-unit"')
+        for shared in ('name="lines-0-brand"', 'name="lines-0-model"', 'name="lines-0-club_option"', "data-picker",
+                       'name="lines-0-flex"', 'name="lines-0-qty"', 'name="lines-0-note"', "data-diff-prices",
+                       "Different prices", "copyItemCard(this)", "deleteItemCard(this)", "data-add-line"):
+            self.assertIn(shared, form)
+        for japan_only in ("¥", "price_jpy", "bag-", "cargo_fee", "customer-names", 'name="lines-0-customer"'):
+            self.assertNotIn(japan_only, form)
+
+    def test_order_totals_with_piece_prices_and_display(self):
+        data = order_data((("XXIO", "mp1400"), 1, "1,400,000", self.driver.pk), (("Titleist", "TSR2"), 2, ""))
+        data.update({"lines-0-flex": "S", "lines-1-different_prices": "on",
+                     "lines-1-piece_price": ["450000", "420,000"], "lines-1-note": "with cover"})
+        self.client.force_login(self.myanmar)
+        r = self.client.post(reverse("customer_new_order", args=[self.customer.pk]), data)
+        self.assertEqual(r.status_code, 302)
+        order = CustomerRequest.objects.get()
+        a, b = order.lines.all()
+        self.assertEqual((a.title, a.line_total), ("XXIO MP1400 · Driver 10.5° · S", 1400000))
+        self.assertEqual((b.piece_prices, b.price_ks, b.line_total, b.note), ([450000, 420000], 450000, 870000, "with cover"))
+        from .models import add_order_money
+        o = add_order_money([order])[0]
+        self.assertEqual((o.total_ks, o.balance_ks, o.deposit_ks), (2270000, 2270000, 454000))
+        html = self.page(self.myanmar)
+        self.assertIn("<b>XXIO MP1400 · Driver 10.5° · S</b> ×1 — <b class=\"tabular-nums\">1,400,000 Ks</b>", html)
+        self.assertIn("<b>Titleist TSR2</b> ×2 — <b class=\"tabular-nums\">870,000 Ks</b>", html)
+        self.assertIn("(450,000 + 420,000 Ks)", html)
+        self.assertIn("Deposit 20% · 454,000 Ks", self.client.get(reverse("order_payment_add", args=[order.pk])).content.decode())
+        r = self.client.get(reverse("order_edit", args=[order.pk]), HTTP_HX_REQUEST="true").content.decode()
+        self.assertIn('name="lines-1-piece_price" value="450,000"', r)          # edit shows the same card
+
+    def test_club_option_value_required_once_a_category_is_chosen(self):
+        from .models import ClubCategory
+        driver_cat = ClubCategory.objects.get(name="Driver")
+        data = order_data((("PING", "G430"), 1, "100000"))
+        data["lines-0-club_category"] = str(driver_cat.pk)
+        self.client.force_login(self.myanmar)
+        r = self.client.post(reverse("customer_new_order", args=[self.customer.pk]), data)
+        self.assertContains(r, "Choose a Driver option.")
+        self.assertFalse(CustomerRequest.objects.exists())
+
+    def test_japan_never_sees_orders_or_kyat(self):
+        make_order("Ko Aung", ("XXIO MP1400", 1, 1400000))
+        self.client.force_login(self.japan)
+        self.assertEqual(self.client.get(reverse("customer_detail", args=[self.customer.pk])).status_code, 403)
+        box = self.client.get(reverse("box_create"), HTTP_HX_REQUEST="true").content.decode()
+        self.assertNotIn("Ks", box.replace("Kasco", ""))
+        self.assertNotIn("1,400,000", self.client.get(reverse("box_list")).content.decode())
+
+    def test_edit_shows_saved_club_option_and_can_clear_it(self):
+        self.client.force_login(self.myanmar)
+        self.client.post(reverse("customer_new_order", args=[self.customer.pk]),
+                         order_data((("XXIO", "MP1400"), 1, "1400000", self.driver.pk)))
+        order = CustomerRequest.objects.get()
+        line = order.lines.get()
+        html = self.client.get(reverse("order_edit", args=[order.pk]), HTTP_HX_REQUEST="true").content.decode()
+        self.assertIn(f'name="lines-0-club_option" value="{self.driver.pk}"', html)
+        self.assertIn("✓ Driver 10.5°", html)
+        self.assertIn('value="1,400,000"', html)                                    # saved price with commas
+        data = order_data((("XXIO", "MP1400"), 1, "1400000", self.driver.pk, line.pk), existing=1)
+        self.htmx(self.myanmar, reverse("order_edit", args=[order.pk]), data)
+        line.refresh_from_db()
+        self.assertEqual(line.club_label, "Driver 10.5°")                           # kept when saved again
+        data["lines-0-club_option"] = ""
+        self.htmx(self.myanmar, reverse("order_edit", args=[order.pk]), data)
+        line.refresh_from_db()
+        self.assertEqual((line.club_label, line.title), ("", "XXIO MP1400"))       # cleared

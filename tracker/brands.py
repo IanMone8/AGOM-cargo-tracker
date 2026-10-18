@@ -1,6 +1,7 @@
-"""Brand + model parsing for the "Item (brand + model)" field.
+"""Brand list and model spelling for item cards (Brand dropdown + Model box).
 
-Pure functions working on plain data, so the data migration can use exactly the same rules:
+Pure functions working on plain data, so data migrations can use exactly the same rules
+(parse() / split_brand() split an old one-box "XXIO MP1400" name; the app no longer parses free text for brands):
 
     match_key("Mp-1400")            -> "mp1400"   (lowercase, no spaces or punctuation)
     style_name("titleist golf bag") -> "Titleist Golf Bag" (model codes in capitals: "qi10" -> "QI10")
@@ -14,6 +15,14 @@ _NON_KEY = re.compile(r"[\W_]+", re.UNICODE)
 SEED_BRANDS = ["XXIO", "Titleist", "TaylorMade", "Callaway", "Ping", "Mizuno", "Srixon", "Cleveland", "Cobra",
                "Honma", "Yonex", "Bridgestone", "PXG", "Odyssey", "Scotty Cameron", "Wilson", "Majesty", "Romaro",
                "Fourteen"]
+
+
+# The Brand dropdown on item cards (names only, A → Z, then "Other"). Seeded by migration 0022; Owner / Admin add more
+# in /admin/. Old spellings still accepted (CSV) and mapped onto these names.
+BRAND_LIST = ["Bettinardi", "Callaway", "Cleveland Golf", "Cobra", "Mizuno", "Odyssey", "PING", "PXG",
+              "Scotty Cameron", "Srixon", "TaylorMade", "Titleist", "Wilson Staff", "XXIO"]
+BRAND_ALIASES = {"cleveland": "Cleveland Golf", "wilson": "Wilson Staff", "ping": "PING", "parsonsxtremegolf": "PXG"}
+OTHER = "Other"          # last in the dropdown: no brand from the list, the model box is free text ("Honma TW757")
 
 
 def match_key(text):

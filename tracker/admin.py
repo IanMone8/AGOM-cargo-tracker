@@ -183,7 +183,8 @@ class ExtraItemAdmin(admin.ModelAdmin):
 class OrderLineInline(admin.TabularInline):
     model = OrderLine
     extra = 0
-    fields = ["item_name", "club_option", "club_label", "qty", "price_ks"]
+    fields = ["brand", "model", "item_name", "type", "loft", "shaft_material", "club_number", "length_in", "head_only",
+              "flex", "qty", "price_ks", "piece_prices", "note"]
 
 
 class OrderPaymentAdminForm(forms.ModelForm):

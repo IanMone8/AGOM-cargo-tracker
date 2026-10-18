@@ -140,22 +140,27 @@ and admin) and then get a clear warning. A box without a bag shows **No bag reco
 When upgrading, the migration marks an existing box's single item of type *Bag* as its golf bag; boxes with no
 or several bag items are left for the owner to fix.
 
-**Item (brand + model):** item cards and the Golf bag card have one combo box, "Item (brand + model)". Its dropdown is
-one list: above a divider line, the names typed on the other cards of the open (unsaved) box, newest first; below it,
-every saved item name (the Brand + Model list and the names on items in any box) A → Z, ignoring case and with numbers
-in order, no duplicates. Typing filters both parts (every word is matched on letters/digits only, so "xxio 14" finds
-"XXIO MP1400"); ▾ opens the full list; when nothing matches, the last row is "+ Add '…' as new item". Picking a row
-fills the field with exactly that spelling. Rows are big enough to tap, the list opens below the box and scrolls inside
-(about 8 rows); ↑ ↓ Enter Esc work on a keyboard. A box's names join the saved list when it is saved – nothing is
-written before. Under the box it shows how the text will be saved. On save the **longest known brand** at the start is
-the brand (in its own spelling, "xxio" → "XXIO") and the rest is the model; models are recognised ignoring case, spaces
-and punctuation ("mp 1400", "MP1400", "Mp-1400"). **Display spelling:** model codes in capitals ("XXIO MP1400",
-"TaylorMade QI10", "Mizuno JPX 923"), other words in Title Case ("Titleist Golf Bag", "Scotty Cameron Phantom 5"), and
-names with no known brand in Title Case; a word typed with capitals inside it ("TourEdge") is kept. Migration 0013
-applies this to the saved list and existing items. If the first word isn't a known brand you get "Is 'Honma' a brand?
-[Yes, add brand] [No]" (not answering = No: the whole text is the name, no brand), and a one-tap "Did you mean …?" for
-a brand or model that is 1–2 letters off. Brands and models are in **Admin → Brands / Models**.
-Shipments has a Brand filter, the box page has brand chips, and customer orders find items by brand + model.
+**Brand + Model:** item cards (Add box modal, Add item, the Golf bag card and customer order lines) have a **Brand**
+dropdown – Bettinardi, Callaway, Cleveland Golf, Cobra, Mizuno, Odyssey, PING, PXG, Scotty Cameron, Srixon,
+TaylorMade, Titleist, Wilson Staff, XXIO (A → Z), then **Other** – and a **Model** box. Brand is required, model is
+optional. The Model box lists the models already saved for the chosen brand (models typed on the other cards of the open
+box for the same brand first), matching ignoring case, spaces and punctuation; changing the brand refreshes the list; ↑ ↓
+Enter Esc work on a keyboard and a one-tap "Did you mean …?" helps with a model 1–2 letters off. A new model is saved
+for its brand when the item is saved, spelled with model codes in capitals ("mp 1400" → "MP 1400"). With **Other** the
+model box is free text ("Honma TW757"). Shown everywhere as "<Brand> <Model>" ("XXIO MP1400"). The brand list is the
+`Brand` table (**Admin → Brands**): Owner / Admin can add brands (they appear in the dropdown) or switch them off.
+Migration 0022 seeds the list, maps old names (Cleveland → Cleveland Golf, Wilson → Wilson Staff, Ping → PING,
+Parsons Xtreme Golf → PXG; their models move along), switches other brands off (kept, not deleted) and turns items of
+those brands into Other with the same name. Shipments has a Brand filter and the box page has brand chips.
+
+**One item card for boxes and orders:** customer order lines use the same card as the Add box modal
+(`partials/item_card.html` + `forms.ItemCardMixin`): Brand, Model, the two-tap Club option (a value is required once a
+category is chosen), Flex, Qty, Note, Copy, Delete, **+ Add item** and **Different prices** per piece. Only the money
+differs: box items are in JP¥ ("Amount (JP¥)", ¥ in front), order lines in Myanmar Kyat ("Price (Ks)", Ks after),
+whole numbers with the same digits-only box; price per piece × qty (or the piece prices added up) = line total, and the
+order total is the sum of the lines (Total / Paid / Balance and "Deposit 20%"). The order form has no yen, bag card,
+cargo fee or customer field. Order cards and the customer page show lines as
+"XXIO MP1400 · Driver 10.5° · S ×1 — 1,400,000 Ks". The Japan sender never sees customer orders or Ks prices.
 
 **Box ID:** new boxes get a monthly ID per cargo company, `<MON><YY>-<CARGO>-<n>` (e.g. `OCT26-KB-3`): the month
 in Japan time, the cargo code, and the next number for that company that month (highest so far + 1, so deleting a box
@@ -177,8 +182,8 @@ total. Amounts, cargo fees and totals are for Owner, Admin and the Japan sender 
 them (pages, HTMX updates and the money script are all left out for them).
 
 **Customer payments (Myanmar Kyat, whole numbers, no exchange rate, no credit):** an order has one or more item
-lines (`OrderLine`: item – brand + model combo box –, club option, qty, price per piece in Ks; **+ Add item** in the
-New order form and in Edit). Order total = sum of qty × price. Each payment belongs to one order (`Payment`: date,
+lines (`OrderLine`, entered on the shared item card above; **+ Add item** in the New order form and in Edit).
+Order total = sum of the line totals. Each payment belongs to one order (`Payment`: date,
 amount, method, note, recorded by; no proof photos): **+ Add payment** on the order card, with a
 **Deposit 20%** button that fills 20% of the total (rounded to whole Kyat, still editable). A payment can't be more
 than the order's balance. Methods: Cash, KPay, KBZ Special, AYA Pay, AYA Special, CB Special (Admin → Payment
@@ -238,21 +243,22 @@ Run the tests with `python manage.py test`.
 ## CSV format for Japan lists
 
 ```
-box,cargo,kind,item,color,club_option,flex,qty,amount_jpy,cargo_fee_jpy,customer,note
-,GN,bag,Titleist Stand Bag,Black,,,1,8000,"12,500",Ko Aung,
-,GN,,Titleist TSR2,,Driver 10.5°,S,1,"¥25,000",,Ko Aung,with cover
-,GN,,,,Driver head 9.5,,2,6500;5800,,,
-,GN,,Mizuno JPX 923,,Iron · Graphite,R,1,,,,
-,KL,bag,Ping Hoofer,Navy,,,1,,9000,,
-,KL,,Cleveland RTX 6,,Wedge 52,,1,4200,,,
+box,cargo,kind,brand,model,color,club_option,flex,qty,amount_jpy,cargo_fee_jpy,customer,note
+,GN,bag,Titleist,Stand Bag,Black,,,1,8000,"12,500",Ko Aung,
+,GN,,Titleist,tsr2,,Driver 10.5°,S,1,"¥25,000",,Ko Aung,with cover
+,GN,,Other,,,Driver head 9.5,,2,6500;5800,,,
+,GN,,Mizuno,JPX 923,,Iron · Graphite,R,1,,,,
+,KL,bag,PING,Hoofer,Navy,,,1,,9000,,
+,KL,,Cleveland Golf,RTX 6,,Wedge 52,,1,4200,,,
 ```
 
-* Required: `box` (or `cargo` for a new box), plus `item_name` or `club_option` on each row. Other columns are optional.
-* `item` is the brand + model as one text (parsed like the form), or use separate `brand` and `model` columns (a brand
-  in its own column is added if it's new).
+* Required: `box` (or `cargo` for a new box) and `brand` on each row. Other columns are optional.
+* `brand` must be a name from the Brand list (case doesn't matter; the old names Cleveland, Wilson, Ping and Parsons
+  Xtreme Golf are accepted) or `Other`, otherwise the row is an error; `model` is free text. The old one-text `item`
+  column is no longer read (a row using it gets an error asking for brand + model).
 * `amount_jpy` is the price per piece (`45000;41500` = a different price for each piece; the count must equal qty); `cargo_fee_jpy` goes on the box's bag row. Both are whole yen and accept
   `12500`, `12,500` or `¥12,500`.
-* `kind` = `bag` marks the box's golf bag (bag name in `item_name`, plus `color`, `customer`, `note`; qty 1);
+* `kind` = `bag` marks the box's golf bag (its `brand` and `model`, plus `color`, `customer`, `note`; qty 1);
   empty (or `item`) is an item inside the bag. Each box needs **exactly one** bag row – or must already have its
   bag when you add items to it. A box with no bag or two bags is rejected with its row numbers, e.g.
   *Row 4: Box GN-6 has 2 bag rows (rows 4, 6)*. Older files with a row of `type` *Bag* count as the bag row.
@@ -261,9 +267,8 @@ box,cargo,kind,item,color,club_option,flex,qty,amount_jpy,cargo_fee_jpy,customer
   `Iron · Graphite` (the older `Iron Graphite 5` still works), `Iron Steel`, `Wedge 52°`, `Wood 3W`, `Hybrid 4H`, `Putter 34` (the `°`, `·` and `″` are
   optional, case doesn't matter). Woods and hybrids also accept the number alone – `wood 3`, `Hybrid 4` – or just
   `3W` / `4H`. It fills the structured columns (type, loft, shaft, club number, length, head only) for you.
-* Older files still work: `type`, `loft`, `brand`, `model`, `club_type`, `club_number`, `shaft_material`,
-  `specification`, `color`, `condition`, `price_jpy`, `quantity_unit`; friendlier headers like `name`,
-  `amount`, `unit` too. If a row has both, `club_option` wins.
+* Older columns still work: `type`, `loft`, `club_type`, `club_number`, `shaft_material`,
+  `specification`, `color`, `condition`, `price_jpy`, `quantity_unit`; friendlier headers like `amount`, `unit` too. If a row has both, `club_option` wins.
 * `box`: leave it **empty** and put the cargo code in `cargo` to get new Box IDs (each bag row starts a new box, the
   item rows below it go in it), or give a Box ID like `OCT26-KB-3`. Older IDs like `GN-3` only work for boxes that
   already exist. The cargo company must already exist.

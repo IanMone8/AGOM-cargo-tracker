@@ -150,6 +150,21 @@ def ago(value):
     return f"{timesince(value, depth=1)} ago"
 
 
+@register.simple_tag(takes_context=True)
+def item_money_visible(context, form):
+    """Does this item card show its price? Box items (JP¥): Owner / Admin / Japan sender; order lines (Ks): people who
+    may see payments (never the Japan sender)."""
+    if getattr(form, "currency", "¥") == "Ks":
+        return bool(context.get("can_use_payments"))
+    return bool(context.get("can_see_money"))
+
+
+@register.filter
+def join_ks(prices):
+    """[450000, 420000] -> "450,000 + 420,000 Ks" (different piece prices of an order line)."""
+    return " + ".join(f"{p:,}" for p in prices or []) + " Ks" if prices else ""
+
+
 @register.filter
 def day_ago(day):
     """An order date: 'Today', 'Yesterday', '3 days ago' (within a week), else '18 Oct 2026'."""

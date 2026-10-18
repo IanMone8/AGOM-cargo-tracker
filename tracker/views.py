@@ -31,8 +31,8 @@ from .forms import (
     ExtraItemForm,
     JapanItemForm,
 )
-from .models import (Box, Cargo, Catalog, Customer, CustomerRequest, ExtraItem, JapanItem, Payment, ReceiveCheck,
-                     add_order_money, customer_money, mark_old_orders_paid, money_status, order_pay_state, order_totals,
+from .models import (Box, Cargo, Catalog, Customer, CustomerRequest, ExtraItem, JapanItem, OrderLine, Payment, ReceiveCheck,
+                     add_order_money, brand_names, customer_money, mark_old_orders_paid, money_status, order_pay_state, order_totals,
                      yangon_today)
 
 ITEM_CATEGORIES = ["Club", "Club set", "Bag", "Balls", "Shoes", "Apparel", "Accessory"]
@@ -260,42 +260,39 @@ def box_id_hint(cargo):
 @login_required
 @roles.require(lambda u: roles.can_edit_japan(u) or roles.can_use_requests(u))   # item cards and order lines
 def item_suggest(request):
-    """HTMX, for the "Item (brand + model)" combo box: the dropdown list plus how the text will be saved.
+    """HTMX, for the Model box on item cards: the models saved for the chosen brand, plus how it will be saved.
 
-    One list, divided by a line: above it the names typed on the other cards of the open, unsaved box
-    (sent by base.html newest first, normalised exactly like saving – nothing is written); below it every
-    saved item name A → Z. Typing filters both; the ▾ button asks for the full list (all=1).
-    When nothing matches, the last row offers "+ Add '<text>' as new item".
+    One list, divided by a line: above it the models typed on the other cards of the open, unsaved box for the same
+    brand (sent by base.html newest first, styled exactly like saving – nothing is written); below it the brand's
+    saved models A → Z. Matching ignores case, spaces and punctuation; the ▾ button asks for the full list (all=1).
+    Brand "Other": the model box is free text, so there is no list.
     """
-    from .brands import match_key, matches, sort_key
-    from .models import parse_item, saved_item_names
-    q = next((v for k, v in request.GET.items() if k.endswith("item_name")), "")
-    add = next((v for k, v in request.GET.items() if k.endswith("add_brand")), "")
+    from .brands import OTHER, closest, match_key, matches, sort_key
+    from .models import BrandModel, model_display
+    brand = next((v for k, v in request.GET.items() if k.endswith("brand")), "")
+    q = next((v for k, v in request.GET.items() if k.endswith("model")), "")
     show_all = request.GET.get("all") == "1"
-    plain = parse_item(q)
-    parsed = parse_item(q, add_brand=True) if add == "yes" else plain
-    new_brand = plain.unknown_brand if add == "yes" else ""     # "Yes, add brand" tapped, saved with the item
-    here = {}
-    for raw in request.GET.getlist("in_box")[:100]:
-        shown = parse_item(raw[:200]).display
-        if shown:
-            here.setdefault(match_key(shown), shown)
-    saved = {k: v for k, v in saved_item_names().items() if k not in here}
+    listed = brand and brand != OTHER and brand in brand_names()
+    here, saved = {}, {}
+    if listed:
+        for raw in request.GET.getlist("in_box")[:100]:
+            shown = model_display(brand, raw[:120])
+            if shown:
+                here.setdefault(match_key(shown), shown)
+        for m in BrandModel.objects.filter(brand__display_name=brand, active=True):
+            if m.match_key not in here:
+                saved.setdefault(m.match_key, m.display_name)
     above = [d for k, d in here.items() if matches(q, k)]
     below = sorted((d for k, d in saved.items() if matches(q, k)), key=sort_key)
-    add_new = parsed.display if q.strip() and not above and not below else ""
     if show_all:
         above, below = list(here.values()), sorted(saved.values(), key=sort_key)
-    did_you_mean = ""
-    if parsed.brand_guess:                         # "xxip mp1400" -> "XXIO mp1400"
-        did_you_mean = f"{parsed.brand_guess} {q.split(None, 1)[1] if len(q.split()) > 1 else ''}".strip()
-    elif parsed.model_guess:
-        did_you_mean = f"{parsed.brand} {parsed.model_guess}"
-    if did_you_mean:                               # show it the way it would be saved
-        did_you_mean = parse_item(did_you_mean).display
+    shown = model_display(brand if listed else "", q)
+    exact = match_key(q) in saved or match_key(q) in here
+    did_you_mean = closest(match_key(q), list(saved.items())) if listed and q.strip() and not exact else ""
     return render(request, "tracker/partials/item_assist.html", {
-        "parsed": parsed, "above": above, "below": below, "add_new": add_new, "typed": " ".join(q.split()),
-        "did_you_mean": did_you_mean, "add_brand": add, "new_brand": new_brand,
+        "above": above, "below": below, "typed": " ".join(q.split()), "brand": brand if brand != OTHER else "",
+        "is_other": brand == OTHER, "no_brand": not brand, "shown": shown, "is_new": bool(listed and shown and not exact),
+        "saved_as": " ".join(x for x in ((brand if listed else ""), shown) if x), "did_you_mean": did_you_mean or "",
     })
 
 
@@ -656,8 +653,9 @@ def _save_lines(lines, user):
     """Save an order's item lines; people who can't see prices never change them."""
     keep_prices = not roles.can_use_payments(user)
     for f in lines.forms:
-        if keep_prices and f.instance.pk and "price_ks" in f.changed_data:
-            f.instance.price_ks = f.initial.get("price_ks")
+        if keep_prices and f.instance.pk and f.is_valid():
+            saved = OrderLine.objects.get(pk=f.instance.pk)
+            f.instance.price_ks, f.instance.piece_prices = saved.price_ks, saved.piece_prices
     lines.save()
 
 

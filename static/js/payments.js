@@ -1,52 +1,24 @@
-/* Customer orders: "+ Add item" lines (live line totals and order total), "Deposit 20%", "Copy reminder",
+/* Customer orders: "+ Add item" (one more item card), "Deposit 20%", "Copy reminder",
    the Delivered-with-balance warning and the "Mark as paid (old order)" bar. */
 (function () {
   const num = v => parseInt(String(v || '').replace(/[^0-9]/g, ''), 10) || 0;
-  const fmt = n => n.toLocaleString('en-US') + ' Ks';
 
-  // --- order item lines ---------------------------------------------------------------------------------------
-  function totals(form) {
-    let total = 0, priced = true, any = false;
-    form.querySelectorAll('[data-line]').forEach(line => {
-      if (line.closest('template')) return;
-      const del = line.querySelector('[name$="-DELETE"]');
-      if (del && del.checked) return;
-      const qty = Math.max(1, num((line.querySelector('[data-line-qty]') || {}).value));
-      const priceBox = line.querySelector('[data-line-price]');
-      const out = line.querySelector('[data-line-sum]');
-      if (!priceBox) return;
-      const item = line.querySelector('[data-item-text]');
-      if (item && !item.value.trim() && !priceBox.value.trim()) { const o = line.querySelector('[data-line-sum]'); if (o) o.textContent = ''; return; }
-      any = true;
-      if (priceBox.value.trim() === '') { priced = false; if (out) out.textContent = ''; return; }
-      const sum = num(priceBox.value) * qty;
-      total += sum;
-      if (out) out.textContent = qty > 1 ? `${fmt(num(priceBox.value))} × ${qty} = ${fmt(sum)}` : '';
-    });
-    const live = form.querySelector('[data-order-total-live]');
-    if (live) live.textContent = any ? (priced ? `Order total ${fmt(total)}` : `Order total ${fmt(total)} + price not set`) : '';
-  }
-  document.addEventListener('input', e => { const f = e.target.closest('[data-order-form]'); if (f) totals(f); });
-  document.addEventListener('change', e => { const f = e.target.closest('[data-order-form]'); if (f) totals(f); });
+  // --- order items: "+ Add item" adds one more item card (the same card as the Add box modal) ---------------------
+  // Line totals and the live order total are kept by static/js/money.js; Copy / Delete come from base.html.
   document.addEventListener('click', e => {
     const add = e.target.closest('[data-add-line]');
-    if (add) {
-      const form = add.closest('[data-order-form]');
-      const total = form.querySelector('[name$="-TOTAL_FORMS"]');
-      const html = form.querySelector('[data-line-template]').innerHTML.replace(/__prefix__/g, total.value);
-      const box = form.querySelector('[data-lines]');
-      box.insertAdjacentHTML('beforeend', html);
-      total.value = +total.value + 1;
-      const line = box.lastElementChild;
-      htmx.process(line);                                   // the item combo box talks to the server
-      line.querySelector('[data-item-text]').focus();
-      return;
-    }
-    const rm = e.target.closest('[data-remove-line]');
-    if (rm) { const form = rm.closest('[data-order-form]'); rm.closest('[data-line]').remove(); totals(form); }
+    if (!add) return;
+    const form = add.closest('[data-order-form]');
+    const total = form.querySelector('[name$="-TOTAL_FORMS"]');
+    const html = form.querySelector('[data-line-template]').innerHTML.replace(/__prefix__/g, total.value);
+    const box = form.querySelector('[data-lines]');
+    box.insertAdjacentHTML('beforeend', html);
+    total.value = +total.value + 1;
+    const card = box.lastElementChild;
+    htmx.process(card);                                   // the Model box talks to the server
+    card.querySelector('[data-brand-select]').focus();
+    if (typeof updateMoney === 'function') updateMoney();
   });
-  document.body.addEventListener('htmx:afterSettle', () => document.querySelectorAll('[data-order-form]').forEach(totals));
-  document.querySelectorAll('[data-order-form]').forEach(totals);
 
   // --- "Deposit 20%": fills the amount, still editable ---------------------------------------------------------
   document.addEventListener('click', e => {
