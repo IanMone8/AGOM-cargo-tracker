@@ -48,17 +48,25 @@
     <div class="{% if money.balance %}is-owed{% endif %}"><dt>Balance</dt><dd data-money="balance">{{ money.balance|ks|default:"0 Ks" }}</dd></div>
   </dl>
   {% if requests %}
-    <div class="order-money-table mt-4" role="table" aria-label="Orders: total, paid, balance">
-      <div class="omt-head" role="row"><span role="columnheader">Order</span><span role="columnheader">Total</span><span role="columnheader">Paid</span><span role="columnheader">Balance</span></div>
+    <div class="order-money-table mt-4" role="table" aria-label="Orders: date, total, paid, balance (newest first)">
+      <div class="omt-head" role="row"><span role="columnheader">Date</span><span role="columnheader">Order</span><span role="columnheader">Total</span><span role="columnheader">Paid</span><span role="columnheader">Balance</span></div>
       {% for o in requests %}
         <a href="#request-{{ o.pk }}" class="omt-row" role="row" data-order-money="{{ o.pk }}">
-          <span role="cell" class="min-w-0"><span class="block text-xs font-semibold text-ink-muted">#{{ o.pk }} · {{ o.order_date|date:"j M Y" }}</span><b class="block truncate">{{ o.item_name }}</b>
+          <span role="cell" class="omt-date" data-omt-date>{{ o.order_date|date:"j M Y" }}</span>
+          <span role="cell" class="min-w-0"><span class="text-xs font-semibold text-ink-muted">#{{ o.pk }}</span>
+            <b class="block truncate">{{ o.item_name }}</b>
             <span class="pill {{ o.pay_status.2 }}">{{ o.pay_status.1 }}</span></span>
           <span role="cell" data-label="Total">{% if o.priced %}{{ o.total_ks|ks }}{% else %}—{% endif %}</span>
-          <span role="cell" data-label="Paid">{{ o.paid_ks|ks }}</span>
-          <span role="cell" data-label="Balance" class="{% if o.balance_ks %}text-danger-ink{% endif %}">{{ o.balance_ks|ks }}</span>
+          <span role="cell" data-label="Paid">{% if o.priced or o.paid_ks %}{{ o.paid_ks|ks|default:"0 Ks" }}{% else %}—{% endif %}</span>
+          <span role="cell" data-label="Balance" class="{% if o.balance_ks %}text-danger-ink{% endif %}">{% if o.priced %}{{ o.balance_ks|ks|default:"0 Ks" }}{% else %}—{% endif %}</span>
         </a>
       {% endfor %}
+    </div>
+  {% endif %}
+  {% if payments %}
+    <div class="pay-history" data-pay-history>
+      <h3 class="mb-2 text-sm font-extrabold">Payment history <span class="font-semibold text-ink-muted">· newest first</span></h3>
+      <ul class="pay-list">{% for p in payments %}{% include "tracker/partials/payment_row.html" with show_order=True %}{% endfor %}</ul>
     </div>
   {% endif %}
 </section>

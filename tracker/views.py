@@ -599,7 +599,8 @@ def render_order_card(request, req, **extra):
 
 
 def _order(pk):
-    return get_object_or_404(CustomerRequest.objects.prefetch_related("lines", "payments__method"), pk=pk)
+    return get_object_or_404(CustomerRequest.objects.prefetch_related("lines", "payments__method",
+                                                                      "payments__recorded_by"), pk=pk)
 
 
 @login_required
@@ -608,7 +609,7 @@ def order_payment_add(request, pk):
     """"+ Add payment" on an order card: GET shows the form inside the card, POST saves and redraws the card."""
     req = _order(pk)
     add_order_money([req])
-    form = OrderPaymentForm(request.POST or None, request.FILES or None, order=req)
+    form = OrderPaymentForm(request.POST or None, order=req)
     if request.method == "POST" and form.is_valid():
         payment = form.save(commit=False)
         payment.order, payment.recorded_by = req, request.user
@@ -858,6 +859,7 @@ def customer_detail(request, pk, order_form=None, line_forms=None):
         "items": items,
         "open_count": sum(r.status in (CustomerRequest.Status.ORDERED, CustomerRequest.Status.ARRIVED) for r in reqs),
         "money": customer_money(reqs),
+        "payments": sorted((p for r in reqs for p in r.payments.all()), key=lambda p: (p.date, p.created_at), reverse=True),
         "status_choices": CustomerRequest.Status.choices,
         "order_form": order_form or CustomerOrderForm(),
         "line_forms": line_forms or OrderLineFormSet(prefix="lines"),
@@ -903,21 +905,6 @@ def payment_delete(request, pk):
     messages.success(request, f"Deleted the payment of {payment.amount_ks:,} Ks.")
     customer = Customer.ensure(order.customer)
     return redirect(reverse("customer_detail", args=[customer.pk]) + "#orders")
-
-
-@login_required
-@roles.require(roles.can_use_payments)
-def payment_proof(request, pk, size="full"):
-    """Proof photos aren't public files: only people who may see payments get them."""
-    from django.http import FileResponse, Http404
-    payment = get_object_or_404(Payment, pk=pk)
-    image = payment.proof_thumb if size == "thumb" and payment.proof_thumb else payment.proof
-    if not image:
-        raise Http404
-    try:
-        return FileResponse(image.open("rb"))
-    except FileNotFoundError:
-        raise Http404
 
 
 @login_required

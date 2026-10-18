@@ -1,7 +1,7 @@
 {% load tracker_tags %}{% comment %} One customer order: "Order #12 · 18 Oct 2026", customer, its item lines, note, a status dropdown (Ordered / Arrived / Delivered /
   Cancelled, set by hand, coloured like its pill) and Edit. People who may see payments (never the Japan sender) also
   get the prices, Total / Paid / Balance, the payment list, "+ Add payment" and "Copy reminder". Owner / admin get a
-  checkbox for "Mark as paid (old order)" and can delete a payment. {% endcomment %}
+  checkbox for "Mark as paid (old order)" and can delete a payment. Payments: newest first. {% endcomment %}
 <div id="request-{{ r.pk }}" class="card p-4 {% if can_use_payments and r.balance_ks %}order-owes{% endif %}">
   <p class="order-ref" data-order-ref>Order #{{ r.pk }} · {{ r.order_date|date:"j M Y" }}</p>
   <div class="flex flex-wrap items-center gap-2">
@@ -26,26 +26,15 @@
   {% if r.note %}<div class="mt-1 text-xs italic text-ink-muted">{{ r.note }}</div>{% endif %}
 
   {% if can_use_payments and r.pay_status.0 != "cancelled" %}
+    {# no price yet: "—", never "0 Ks" and never fully paid; payments already made still show #}
     <dl class="order-money mt-3" data-order-money>
       <div><dt>Total</dt><dd>{% if r.priced %}{{ r.total_ks|ks }}{% else %}—{% endif %}</dd></div>
-      <div><dt>Paid</dt><dd>{{ r.paid_ks|ks }}</dd></div>
-      <div class="{% if r.balance_ks %}is-owed{% endif %}"><dt>Balance</dt><dd>{{ r.balance_ks|ks }}</dd></div>
+      <div><dt>Paid</dt><dd>{% if r.priced or r.paid_ks %}{{ r.paid_ks|ks|default:"0 Ks" }}{% else %}—{% endif %}</dd></div>
+      <div class="{% if r.balance_ks %}is-owed{% endif %}"><dt>Balance</dt><dd>{% if r.priced %}{{ r.balance_ks|ks|default:"0 Ks" }}{% else %}—{% endif %}</dd></div>
     </dl>
     {% if r.payments.all %}
       <ul class="pay-list mt-2" data-payments>
-        {% for p in r.payments.all %}
-          <li data-payment="{{ p.pk }}">
-            <span class="min-w-0"><b class="tabular-nums">{{ p.amount_ks|ks }}</b> <span class="text-ink-muted">{{ p.method|default:"" }}</span>
-              <span class="block text-xs text-ink-muted">{{ p.date|date:"j M Y" }}{% if p.recorded_by %} · {{ p.recorded_by.username }}{% endif %}{% if p.note %} · {{ p.note }}{% endif %}</span></span>
-            <span class="flex shrink-0 items-center gap-2">
-              {% if p.proof %}<a href="{% url 'payment_proof' p.pk %}" target="_blank" rel="noopener" class="proof-thumb" aria-label="Open proof photo">
-                <img src="{% url 'payment_proof_size' p.pk 'thumb' %}" alt="Payment proof" width="44" height="44" loading="lazy" onerror="this.closest('a').remove()"></a>{% endif %}
-              {% if can_edit_payments %}<button type="button" class="text-xs font-semibold text-ink-muted underline hover:text-danger-ink"
-                  hx-post="{% url 'payment_delete' p.pk %}" hx-target="#request-{{ r.pk }}" hx-swap="outerHTML"
-                  hx-confirm="Delete the payment of {{ p.amount_ks|ks }}?">Delete</button>{% endif %}
-            </span>
-          </li>
-        {% endfor %}
+        {% for p in r.payments.all %}{% include "tracker/partials/payment_row.html" %}{% endfor %}
       </ul>
     {% endif %}
   {% endif %}

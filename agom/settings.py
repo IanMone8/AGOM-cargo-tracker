@@ -90,9 +90,6 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
-# Uploads (payment proof photos). Not served publicly: views.payment_proof checks the user's role first.
-MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", BASE_DIR / "media"))
-MEDIA_URL = "media/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 STORAGES = {

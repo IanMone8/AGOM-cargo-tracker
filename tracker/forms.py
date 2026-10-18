@@ -661,10 +661,10 @@ class OrderPaymentForm(StyledMixin, forms.ModelForm):
 
     class Meta:
         model = Payment
-        fields = ["date", "amount_ks", "method", "proof", "note"]
+        fields = ["date", "amount_ks", "method", "note"]
         widgets = {
             "date": forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
-            "proof": forms.ClearableFileInput(attrs={"accept": "image/*"}),
+            "method": forms.RadioSelect,                    # shown as coloured method pills
             "note": forms.TextInput(attrs={"placeholder": "Optional"}),
         }
 

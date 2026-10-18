@@ -208,7 +208,7 @@ class PaymentInline(admin.TabularInline):
     model = Payment
     form = OrderPaymentAdminForm
     extra = 0
-    fields = ["date", "amount_ks", "method", "proof", "note", "recorded_by"]
+    fields = ["date", "amount_ks", "method", "note", "recorded_by"]
     readonly_fields = ["recorded_by"]
 
 
@@ -241,8 +241,8 @@ class CustomerRequestAdmin(admin.ModelAdmin):
 
 @admin.register(PaymentMethod)
 class PaymentMethodAdmin(admin.ModelAdmin):
-    list_display = ["name", "sort_order", "active"]
-    list_editable = ["sort_order", "active"]
+    list_display = ["name", "color", "sort_order", "active"]
+    list_editable = ["color", "sort_order", "active"]
 
 
 @admin.register(Payment)

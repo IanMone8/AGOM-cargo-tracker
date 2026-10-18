@@ -2845,8 +2845,7 @@ class OrderPaymentTests(BaseTest):
         self.assertNotIn(reverse("payment_delete", args=[p.pk]),
                          self.client.get(reverse("customer_detail", args=[self.customer.pk])).content.decode())
         self.client.force_login(self.japan)
-        for name in ("payment_delete", "payment_proof"):
-            self.assertEqual(self.client.post(reverse(name, args=[p.pk])).status_code, 403)
+        self.assertEqual(self.client.post(reverse("payment_delete", args=[p.pk])).status_code, 403)
         r = self.htmx(self.owner, reverse("payment_delete", args=[p.pk]))
         self.assertContains(r, f'id="request-{self.order.pk}"')
         self.assertFalse(Payment.objects.exists())
@@ -2865,21 +2864,91 @@ class OrderPaymentTests(BaseTest):
         p.refresh_from_db()
         self.assertEqual(p.amount_ks, 800000)
 
-    def test_proof_photo_thumbnail_and_private_url(self):
-        import io, tempfile
-        from django.test import override_settings
-        from PIL import Image
-        buf = io.BytesIO()
-        Image.new("RGB", (1200, 800), (60, 140, 90)).save(buf, "PNG")
-        with tempfile.TemporaryDirectory() as media, override_settings(MEDIA_ROOT=media):
-            self.pay("1000", proof=SimpleUploadedFile("slip.png", buf.getvalue(), content_type="image/png"))
-            from .models import Payment
-            p = Payment.objects.get()
-            self.assertLessEqual(max(Image.open(p.proof_thumb.path).size), 240)
-            self.client.force_login(self.myanmar)
+    def test_no_proof_photo(self):
+        from django.urls import NoReverseMatch
+        from .forms import OrderPaymentForm
+        from .models import Payment
+        self.assertNotIn("proof", [f.name for f in Payment._meta.get_fields()])
+        self.assertNotIn("proof", OrderPaymentForm.base_fields)
+        with self.assertRaises(NoReverseMatch):
+            reverse("payment_proof", args=[1])
+        self.client.force_login(self.myanmar)
+        form = self.client.get(reverse("order_payment_add", args=[self.order.pk])).content.decode()
+        self.assertNotIn('type="file"', form)
+        self.assertNotIn("Proof", form)
+
+    def test_unpriced_order_shows_dashes_and_is_never_fully_paid(self):
+        import re
+        from .models import OrderLine, Payment
+        o = make_order("Ko Aung", ("Old Putter", 1, None))
+        self.assertEqual(self.money(o), (0, 0, 0, "no_price"))
+        self.client.force_login(self.myanmar)
+
+        def card(order):
             html = self.client.get(reverse("customer_detail", args=[self.customer.pk])).content.decode()
-            self.assertIn(reverse("payment_proof_size", args=[p.pk, "thumb"]), html)
-            self.assertEqual(self.client.get(reverse("payment_proof", args=[p.pk])).status_code, 200)
+            block = html[html.index(f'id="request-{order.pk}"'):]
+            block = block[:block.index("data-pay-slot")]
+            return re.findall(r"<dt>(\w+)</dt><dd>([^<]*)</dd>", block), block
+        self.assertEqual(card(o)[0], [("Total", "—"), ("Paid", "—"), ("Balance", "—")])
+        Payment.objects.create(order=o, date="2026-10-01", amount_ks=50000, method=self.kpay)   # paid, then price removed
+        dl, block = card(o)
+        self.assertEqual(dl, [("Total", "—"), ("Paid", "50,000 Ks"), ("Balance", "—")])
+        self.assertIn("Price not set", block)
+        self.assertNotIn("Fully paid", block)
+        self.assertEqual(self.money(o)[3], "no_price")
+        OrderLine.objects.filter(order=o).update(price_ks=50000)               # priced: now it can be fully paid
+        self.assertEqual(self.money(o), (50000, 50000, 0, "paid"))
+
+    def test_payment_rows_date_first_newest_first_with_method_pill(self):
+        from .models import PaymentMethod
+        aya = PaymentMethod.objects.get(name="AYA Pay")
+        self.pay("100000", date="2026-10-17", method=aya.pk, note="slip 42")
+        self.pay("50000", date="2026-10-02")
+        self.client.force_login(self.myanmar)
+        html = self.client.get(reverse("customer_detail", args=[self.customer.pk])).content.decode()
+        card = html[html.index(f'id="request-{self.order.pk}"'):]
+        self.assertIn('<span class="pay-main"><span data-pay-date>17 Oct 2026</span><span data-pay-amount-text>100,000 Ks</span>'
+                      '<span class="pm pm-red" data-method-pill="red">AYA Pay</span>', card)
+        self.assertIn("recorded by myanmar · slip 42", card)
+        self.assertLess(card.index("17 Oct 2026"), card.index("2 Oct 2026"))  # newest first
+        history = html[html.index("data-pay-history"):]
+        self.assertIn(f"Order #{self.order.pk}</a> · recorded by myanmar · slip 42", history)
+        self.assertLess(history.index("17 Oct 2026"), history.index("2 Oct 2026"))
+        self.assertIn('class="pm pm-blue" data-method-pill="blue">KPay', history)
+
+    def test_method_colours_stored_on_the_method(self):
+        from .models import PaymentMethod
+        self.assertEqual(dict(PaymentMethod.objects.values_list("name", "color")),
+                         {"Cash": "green", "KPay": "blue", "KBZ Special": "navy", "AYA Pay": "red",
+                          "AYA Special": "maroon", "CB Special": "teal"})
+        wave = PaymentMethod.objects.create(name="Wave Pay", sort_order=9)
+        self.assertEqual(wave.color, "grey")                                   # admin-added: grey until chosen
+        self.owner.is_staff = True
+        self.owner.save()
+        self.client.force_login(self.owner)
+        self.client.post(f"/admin/tracker/paymentmethod/{wave.pk}/change/",
+                         {"name": "Wave Pay", "color": "teal", "sort_order": 9, "active": "on"})
+        wave.refresh_from_db()
+        self.assertEqual(wave.color, "teal")
+        self.client.force_login(self.myanmar)
+        form = self.client.get(reverse("order_payment_add", args=[self.order.pk])).content.decode()
+        self.assertIn('type="radio" name="method"', form)
+        for cls, name in (("green", "Cash"), ("navy", "KBZ Special"), ("maroon", "AYA Special"), ("teal", "Wave Pay")):
+            self.assertIn(f'class="pm pm-{cls}" data-method-pill="{cls}">{name}</span>', form)
+
+    def test_carried_over_note_cleared_payment_stays_on_its_order(self):
+        import importlib
+        from django.apps import apps
+        from .models import Payment
+        mig = importlib.import_module("tracker.migrations.0021_payment_colours_no_proof")
+        other = make_order("Ko Aung", ("Bag", 1, 300000))
+        p = Payment.objects.create(order=self.order, date="2026-10-01", amount_ks=200000, method=self.kpay,
+                                   note=mig.CARRIED_NOTE)
+        keep = Payment.objects.create(order=other, date="2026-10-01", amount_ks=1000, method=self.kpay, note="cash slip")
+        self.assertEqual(mig.clear_carried_note(apps, None), 1)
+        p.refresh_from_db(), keep.refresh_from_db()
+        self.assertEqual((p.order_id, p.amount_ks, p.note), (self.order.pk, 200000, ""))
+        self.assertEqual((keep.order_id, keep.note), (other.pk, "cash slip"))
 
 
 class OrderDateTests(BaseTest):

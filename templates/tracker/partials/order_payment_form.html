@@ -1,6 +1,6 @@
 {% load tracker_tags %}{% comment %} "+ Add payment" inside an order card. A payment can't be more than the order still owes. {% endcomment %}
 <form class="pay-form mt-3 space-y-3 rounded-2xl border border-line-strong bg-bg p-3" hx-post="{% url 'order_payment_add' r.pk %}"
-      hx-encoding="multipart/form-data" hx-target="#request-{{ r.pk }}" hx-swap="outerHTML" data-pay-form>
+      hx-target="#request-{{ r.pk }}" hx-swap="outerHTML" data-pay-form>
   <div class="flex flex-wrap items-center justify-between gap-2">
     <p class="text-sm font-bold">Add payment <span class="font-semibold text-ink-muted">· balance {{ r.balance_ks|ks|default:"0 Ks" }}</span></p>
     {% if r.deposit_ks and r.balance_ks %}<button type="button" class="btn btn-soft !py-1.5 text-sm" data-deposit="{{ r.deposit_ks }}">Deposit 20% · {{ r.deposit_ks|ks }}</button>{% endif %}
@@ -12,10 +12,17 @@
       <div class="ks-wrap mt-1">{{ form.amount_ks }}<span class="ks-unit" aria-hidden="true">Ks</span></div>
       {% for e in form.amount_ks.errors %}<p class="mt-1 text-xs font-medium text-danger-ink" role="alert">{{ e }}</p>{% endfor %}
     </div>
-    <div>{% include "tracker/_field.html" with field=form.date %}</div>
-    <div>{% include "tracker/_field.html" with field=form.method %}</div>
-    <div class="col-span-2 sm:col-span-1">{% include "tracker/_field.html" with field=form.proof %}</div>
-    <div class="col-span-2 sm:col-span-4">{% include "tracker/_field.html" with field=form.note %}</div>
+    <div class="col-span-2 sm:col-span-1">{% include "tracker/_field.html" with field=form.date %}</div>
+    <div class="col-span-2 sm:col-span-2">{% include "tracker/_field.html" with field=form.note %}</div>
+    <fieldset class="col-span-2 sm:col-span-4">
+      <legend class="block text-[0.8rem] font-semibold text-ink-muted">Method <span class="text-primary">*</span></legend>
+      <div class="pm-pick" data-method-pick>
+        {% for m in form.fields.method.queryset %}
+          <label><input type="radio" name="method" value="{{ m.pk }}" required {% if form.method.value|stringformat:"s" == m.pk|stringformat:"s" %}checked{% endif %}>{% include "tracker/partials/method_pill.html" %}</label>
+        {% endfor %}
+      </div>
+      {% for e in form.method.errors %}<p class="mt-1 text-xs font-medium text-danger-ink" role="alert">{{ e }}</p>{% endfor %}
+    </fieldset>
   </div>
   <div class="flex gap-2">
     <button class="btn btn-primary flex-1 sm:flex-none sm:px-8">Save payment</button>

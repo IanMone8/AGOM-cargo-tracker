@@ -721,9 +721,20 @@ def apply_item_text(item, text, add_brand=False, save_names=True):
 
 # --- Customer payments (Myanmar Kyat, whole numbers) --------------------------------------------------
 class PaymentMethod(models.Model):
-    """Cash, KPay, KBZ Special… (edit the list in /admin/)."""
+    """Cash, KPay, KBZ Special… (edit the list in /admin/). Its colour picks the pill shown wherever a payment appears."""
+
+    class Color(models.TextChoices):
+        GREEN = "green", "Green"
+        BLUE = "blue", "Blue"
+        NAVY = "navy", "Dark blue"
+        RED = "red", "Red"
+        MAROON = "maroon", "Dark red"
+        TEAL = "teal", "Teal"
+        GREY = "grey", "Grey"
 
     name = models.CharField(max_length=40, unique=True)
+    color = models.CharField("Colour", max_length=10, choices=Color.choices, default=Color.GREY,
+                             help_text="The pill colour for this method")
     sort_order = models.PositiveIntegerField(default=0)
     active = models.BooleanField(default=True)
 
@@ -769,39 +780,15 @@ class Payment(models.Model):
     date = models.DateField()
     amount_ks = models.PositiveIntegerField("Amount (Ks)")
     method = models.ForeignKey(PaymentMethod, on_delete=models.PROTECT, null=True, blank=True)
-    proof = models.ImageField("Proof photo", upload_to="payment_proofs/%Y/%m/", blank=True)
-    proof_thumb = models.ImageField(upload_to="payment_proofs/thumbs/%Y/%m/", blank=True, editable=False)
     note = models.CharField(max_length=255, blank=True)
     recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ["date", "created_at"]
+        ordering = ["-date", "-created_at"]                         # newest first
 
     def __str__(self):
         return f"{self.order.customer}: {self.amount_ks:,} Ks for {self.order.item_name} ({self.date})"
-
-    def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
-        if self.proof and not self.proof_thumb:
-            self.make_thumbnail()
-
-    def make_thumbnail(self, size=240):
-        """A small JPEG for the payment list (phones upload big photos)."""
-        import io
-        from django.core.files.base import ContentFile
-        from PIL import Image, ImageOps
-        try:
-            with self.proof.open("rb") as f:
-                img = ImageOps.exif_transpose(Image.open(f))
-                img.thumbnail((size, size))
-                buf = io.BytesIO()
-                img.convert("RGB").save(buf, "JPEG", quality=82)
-        except (OSError, ValueError):
-            return
-        name = self.proof.name.rsplit("/", 1)[-1].rsplit(".", 1)[0] + "_thumb.jpg"
-        self.proof_thumb.save(name, ContentFile(buf.getvalue()), save=False)
-        super().save(update_fields=["proof_thumb"])
 
 
 ORDER_PAY_STATUS = {

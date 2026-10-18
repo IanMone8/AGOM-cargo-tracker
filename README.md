@@ -174,10 +174,14 @@ them (pages, HTMX updates and the money script are all left out for them).
 **Customer payments (Myanmar Kyat, whole numbers, no exchange rate, no credit):** an order has one or more item
 lines (`OrderLine`: item – brand + model combo box –, club option, qty, price per piece in Ks; **+ Add item** in the
 New order form and in Edit). Order total = sum of qty × price. Each payment belongs to one order (`Payment`: date,
-amount, method, optional proof photo, note, recorded by): **+ Add payment** on the order card, with a
+amount, method, note, recorded by; no proof photos): **+ Add payment** on the order card, with a
 **Deposit 20%** button that fills 20% of the total (rounded to whole Kyat, still editable). A payment can't be more
 than the order's balance. Methods: Cash, KPay, KBZ Special, AYA Pay, AYA Special, CB Special (Admin → Payment
-methods). Proof photos are only served to people who may see payments. The card shows Total / Paid / Balance, the
+methods), each shown as a coloured pill (green, blue, dark blue, red, dark red, teal; the colour is stored on the
+method and editable in /admin/, new methods are grey until one is picked). Payments are listed newest first, date
+first ("17 Oct 2026   100,000 Ks   [AYA Pay]", then "recorded by … · note") on the order card and in the customer
+page's Payment history. An order without a price shows "—" for Total and Balance (Paid shows what was paid, or
+"—") and is never Fully paid. The card shows Total / Paid / Balance, the
 payment list and a status: Not paid / Deposit paid / Fully paid (Price not set when a line has no price, Paid (old
 order) for settled old orders). **Copy reminder** copies a Burmese + English message with the items, total, paid and
 balance; setting Delivered while the order still owes money asks first. Customers table: Balance (sum of the order
@@ -186,8 +190,9 @@ sort by Balance, plus an **Ordered from – to** date range (customers with an o
 the customer's latest order date. The Copy reminder names the order number and date. The customer page lists Total / Paid / Balance per order. Owner / Admin can delete payments, edit
 them in /admin/ (order inlines), and tick old orders → **Mark as paid (old order)** (also an /admin/ action). Owner,
 Admin and the Myanmar checker see and add payments; the Japan sender never sees customer prices or payments
-(templates and endpoints). Migration 0018 turns each old single-item order into one line and each order's old
-payment splits into one carried-over payment.
+(templates and endpoints). Migration 0018 turns each old single-item order into one line and keeps every old
+payment on the order it was put on (no credit, nothing carried between orders); 0021 drops the proof photo fields
+(uploaded files stay in `media/`) and clears the old automatic "Carried over from earlier payments" note.
 
 **Customer icon:** `static/img/icons/customer.png` (display WebP copy made by `scripts/make_display_images.py`,
 background cut out) is the sidebar's **Customers** menu icon, like the Shipments and Cargo history icons (24px, the

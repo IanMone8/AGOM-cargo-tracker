@@ -5,10 +5,12 @@ from django.db import migrations, models
 
 
 def convert(apps, schema_editor):
-    """Each existing order becomes one item line (its price split per piece when it divides evenly);
-    payments move to the orders they paid: one carried-over payment per order with what it had been paid
-    in total (credit and splits no longer exist); "old order marked paid" becomes paid_old_order."""
-    from django.db.models import Max, Sum
+    """Each existing order becomes one item line (its price split per piece when it divides evenly).
+    Payments belong to ONE order from now on (no credit, nothing carried between orders): every old payment
+    stays a payment on the order it was put on, with its own date, method, note and person. The part of a
+    payment put on several orders becomes one payment per order (same details). Money kept as customer credit
+    and "credit used" rows are not orders' money and are dropped; a refund lowers that same order's latest
+    payments. "Old order marked paid" becomes paid_old_order."""
     CustomerRequest = apps.get_model("tracker", "CustomerRequest")
     OrderLine = apps.get_model("tracker", "OrderLine")
     Payment = apps.get_model("tracker", "Payment")
@@ -23,14 +25,27 @@ def convert(apps, schema_editor):
         OrderLine.objects.create(order=o, item_name=name[:200], club_label=club[:80], qty=qty, price_ks=per)
     settled = PaymentAllocation.objects.filter(payment__kind="settled").exclude(order=None).values_list("order", flat=True)
     CustomerRequest.objects.filter(pk__in=list(settled)).update(paid_old_order=True)
-    old = list(Payment.objects.filter(order=None).exclude(kind="settled").values_list("pk", flat=True))
-    for row in (PaymentAllocation.objects.filter(payment__in=old).exclude(order=None).values("order")
-                .annotate(net=Sum("amount_ks"), last=Max("payment"))):
-        if row["net"] and row["net"] > 0:
-            last = Payment.objects.get(pk=row["last"])
-            Payment.objects.create(customer_id=last.customer_id, order_id=row["order"], kind="payment", date=last.date,
-                                   amount_ks=row["net"], method_id=last.method_id, recorded_by_id=last.recorded_by_id,
-                                   note="Carried over from earlier payments")
+
+    old = list(Payment.objects.filter(order=None).order_by("date", "created_at", "pk"))
+    for p in (x for x in old if x.kind == "payment"):
+        parts = [a for a in PaymentAllocation.objects.filter(payment=p).exclude(order=None).order_by("pk") if a.amount_ks > 0]
+        for a in parts:
+            new = Payment.objects.create(customer_id=p.customer_id, order_id=a.order_id, kind="payment", date=p.date,
+                                         amount_ks=a.amount_ks, method_id=p.method_id, recorded_by_id=p.recorded_by_id,
+                                         note=p.note)
+            Payment.objects.filter(pk=new.pk).update(created_at=p.created_at)     # keep the original order of entry
+    for p in (x for x in old if x.kind == "refund"):
+        for a in PaymentAllocation.objects.filter(payment=p).exclude(order=None):
+            left = -a.amount_ks                                   # refunded from this order
+            for paid in Payment.objects.filter(order_id=a.order_id).order_by("-date", "-created_at", "-pk"):
+                if left <= 0:
+                    break
+                take = min(left, paid.amount_ks)
+                left -= take
+                if take == paid.amount_ks:
+                    paid.delete()
+                else:
+                    Payment.objects.filter(pk=paid.pk).update(amount_ks=paid.amount_ks - take)
     Payment.objects.filter(order=None).delete()
 
 
