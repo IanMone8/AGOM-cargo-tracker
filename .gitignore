@@ -7,3 +7,4 @@ staticfiles/
 venv/
 .DS_Store
 media/
+ss/
