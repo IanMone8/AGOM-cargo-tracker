@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% load tracker_tags %}
+{% block title %}Please try again · AGOM Cargo Tracker{% endblock %}
+{% block content %}
+{% comment %} Shown when a form was sent from a page that was out of date (old CSRF token) – see views.csrf_failure. {% endcomment %}
+<section class="hero mx-auto max-w-2xl" aria-labelledby="stale-title" data-csrf-failure>
+  <svg class="hero-hill" viewBox="0 0 640 260" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M110 260 C 230 150, 360 120, 470 150 S 610 190, 640 160 L 640 260 Z" class="hill-1"/>
+    <path d="M250 260 C 360 190, 470 180, 560 205 S 630 225, 640 215 L 640 260 Z" class="hill-2"/>
+    <path d="M420 260 C 490 228, 560 222, 640 240 L 640 260 Z" class="hill-3"/>
+  </svg>
+  <div class="hero-text">
+    <p class="hero-eyebrow">{% icon "alert" "w-4 h-4" %} Not saved</p>
+    <h1 id="stale-title" class="hero-title">This page was out of date – please try again</h1>
+    <p class="hero-sub">Nothing was changed. Go back, reload the page and send it once more.</p>
+    <a href="{{ back_url }}" class="btn btn-primary mt-5 inline-flex px-6 py-3" data-back>Go back</a>
+  </div>
+</section>
+{% endblock %}

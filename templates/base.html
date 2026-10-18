@@ -16,6 +16,7 @@
   <script src="https://cdn.tailwindcss.com/3.4.16"></script>
   <script src="{% static_v 'js/tw-theme.js' %}"></script>
   <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"></script>
+  <script src="{% static_v 'js/submit-guard.js' %}" defer></script>{# one tap = one submit, on every form #}
   <link rel="stylesheet" href="{% static_v 'css/agom.css' %}">
   {% block head %}{% endblock %}
 </head>

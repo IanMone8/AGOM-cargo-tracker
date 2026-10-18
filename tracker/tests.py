@@ -3525,3 +3525,126 @@ class BackupDbTests(TestCase):
                 for k in ("AGOM_T1", "AGOM_T2", "AGOM_T3", "AGOM_T4"):
                     os.environ.pop(k, None)
             load_env_file(Path(tmp) / "missing.env")                           # no file: nothing happens
+
+
+class CsrfFailureTests(BaseTest):
+    """A second tap on "Log in" (or any form sent from an out-of-date page) gets a friendly answer, never weaker CSRF."""
+
+    def csrf_client(self):
+        from django.test import Client
+        return Client(enforce_csrf_checks=True)
+
+    def login_twice(self, nxt=None):
+        c = self.csrf_client()
+        c.get(reverse("login"))
+        old = c.cookies["csrftoken"].value
+        data = {"username": "owner", "password": "pw-12345-x", "csrfmiddlewaretoken": old}
+        if nxt is not None:
+            data["next"] = nxt
+        first = c.post(reverse("login"), data)                        # logs in – Django replaces the CSRF token
+        self.assertEqual(first.status_code, 302)
+        self.assertNotEqual(c.cookies["csrftoken"].value, old)
+        c.cookies["csrftoken"] = old                                   # the second tap still carries the old one
+        return c, c.post(reverse("login"), data)
+
+    def test_double_tap_login_goes_to_the_dashboard_not_403(self):
+        c, second = self.login_twice()
+        self.assertRedirects(second, reverse("dashboard"), fetch_redirect_response=False)
+        self.assertEqual(c.get(reverse("dashboard")).status_code, 200)            # still logged in
+
+    def test_double_tap_login_keeps_a_safe_next(self):
+        _, second = self.login_twice(nxt="/boxes/?status=shipped")
+        self.assertRedirects(second, "/boxes/?status=shipped", fetch_redirect_response=False)
+
+    def test_unsafe_next_is_ignored(self):
+        for bad in ("https://evil.example/steal", "//evil.example/", "javascript:alert(1)"):
+            with self.subTest(next=bad):
+                _, second = self.login_twice(nxt=bad)
+                self.assertRedirects(second, reverse("dashboard"), fetch_redirect_response=False)
+
+    def test_not_logged_in_stale_token_back_to_login_with_message(self):
+        c = self.csrf_client()
+        c.get(reverse("login"))
+        r = c.post(reverse("login"), {"username": "owner", "password": "pw-12345-x",
+                                      "csrfmiddlewaretoken": "x" * 64, "next": "/customers/"})
+        self.assertRedirects(r, reverse("login") + "?next=/customers/", fetch_redirect_response=False)
+        page = c.get(r["Location"])
+        self.assertContains(page, "Please log in again.")
+        self.assertContains(page, 'name="next" value="/customers/"')
+        self.assertNotIn("_auth_user_id", c.session)                               # nothing was acted on
+        r = c.post(reverse("login"), {"username": "owner", "password": "pw-12345-x",
+                                      "csrfmiddlewaretoken": "x" * 64, "next": "https://evil.example/"})
+        self.assertRedirects(r, reverse("login"), fetch_redirect_response=False)    # unsafe next dropped
+
+    def test_other_pages_out_of_date_page_403_and_nothing_saved(self):
+        c = self.csrf_client()
+        c.force_login(self.japan)
+        c.get(reverse("dashboard"))
+        r = c.post(reverse("box_mark_shipped", args=[self.box.pk]), {"csrfmiddlewaretoken": "x" * 64},
+                   HTTP_REFERER="http://testserver/boxes/%d/" % self.box.pk)
+        self.assertEqual(r.status_code, 403)
+        self.assertContains(r, "This page was out of date – please try again", status_code=403)
+        self.assertContains(r, 'href="http://testserver/boxes/%d/" class="btn btn-primary' % self.box.pk, status_code=403)
+        self.box.refresh_from_db()
+        self.assertEqual(self.box.status, Box.Status.PACKED)                      # CSRF still blocks the change
+        r = c.post(reverse("box_mark_shipped", args=[self.box.pk]), {"csrfmiddlewaretoken": "x" * 64},
+                   HTTP_REFERER="https://evil.example/")
+        self.assertContains(r, 'href="/" class="btn btn-primary', status_code=403)  # unsafe referer: dashboard
+
+    def test_htmx_out_of_date_reloads_the_page(self):
+        c = self.csrf_client()
+        c.force_login(self.myanmar)
+        r = c.post(reverse("item_check", args=[self.item1.pk]), {"result": "matched"},
+                   HTTP_HX_REQUEST="true", HTTP_X_CSRFTOKEN="x" * 64)
+        self.assertEqual((r.status_code, r["HX-Refresh"]), (403, "true"))
+        anon = self.csrf_client()
+        r = anon.post(reverse("item_check", args=[self.item1.pk]), {"result": "matched"},
+                      HTTP_HX_REQUEST="true", HTTP_X_CSRFTOKEN="x" * 64)
+        self.assertEqual((r.status_code, r["HX-Redirect"]), (403, reverse("login")))
+
+    def test_csrf_still_enforced_with_a_good_token(self):
+        c = self.csrf_client()
+        c.get(reverse("login"))
+        r = c.post(reverse("login"), {"username": "owner", "password": "pw-12345-x",
+                                      "csrfmiddlewaretoken": c.cookies["csrftoken"].value})
+        self.assertRedirects(r, reverse("dashboard"), fetch_redirect_response=False)
+        from django.conf import settings
+        self.assertIn("django.middleware.csrf.CsrfViewMiddleware", settings.MIDDLEWARE)
+        self.assertEqual(settings.CSRF_FAILURE_VIEW, "tracker.views.csrf_failure")
+
+
+class SubmitGuardTests(BaseTest):
+    """static/js/submit-guard.js (one tap = one submit) is on every page that has a form."""
+
+    def test_script_on_every_page_with_a_form(self):
+        self.client.logout()
+        login = self.client.get(reverse("login")).content.decode()
+        self.assertIn("/static/js/submit-guard.js", login)
+        self.assertIn('data-busy-text="Logging in…">Log in</button>', login)
+        from .models import Customer
+        ko = Customer.objects.create(name="Ko Aung")
+        pages = [("japan", reverse("dashboard")), ("japan", reverse("box_list")), ("japan", reverse("box_detail", args=[self.box.pk])),
+                 ("japan", reverse("box_edit", args=[self.box.pk])), ("myanmar", reverse("customer_list")),
+                 ("myanmar", reverse("customer_detail", args=[ko.pk])), ("owner", reverse("csv_import")),
+                 ("owner", reverse("cargo_history"))]
+        for who, url in pages:
+            with self.subTest(url=url):
+                self.client.force_login(getattr(self, who))
+                html = self.client.get(url).content.decode()
+                self.assertIn("<form", html)
+                self.assertEqual(html.count("/static/js/submit-guard.js"), 1)
+        self.owner.is_staff = True
+        self.owner.save()
+        self.client.force_login(self.owner)
+        for url in ("/admin/", "/admin/tracker/box/%d/change/" % self.box.pk):
+            with self.subTest(url=url):
+                self.assertContains(self.client.get(url), "/static/js/submit-guard.js")
+        self.client.logout()
+        self.assertContains(self.client.get("/admin/login/"), "/static/js/submit-guard.js")
+
+    def test_script_rules(self):
+        js = open("static/js/submit-guard.js").read()
+        for hook in ("addEventListener('submit'", "stopImmediatePropagation", "htmx:beforeRequest", "htmx:afterRequest",
+                     "pageshow", "e.persisted", "data-busy-text", "Saving…", "busy-spin", "e.submitter"):
+            self.assertIn(hook, js)
+        self.assertNotIn("import ", js)                                           # no libraries

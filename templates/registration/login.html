@@ -63,6 +63,11 @@
       </div>
       <form method="post" class="space-y-3.5">
         {% csrf_token %}
+        {% for message in messages %}
+          <p class="flex items-start gap-2 rounded-xl bg-info-bg px-3 py-2.5 text-sm font-semibold text-info-ink" role="status" data-login-message>
+            <span class="shrink-0">{% icon "alert" "w-5 h-5" %}</span><span>{{ message }}</span>
+          </p>
+        {% endfor %}
         {% if form.errors %}
           <p class="flex items-start gap-2 rounded-xl bg-danger-bg px-3 py-2.5 text-sm font-semibold text-danger-ink" role="alert">
             <span class="shrink-0">{% icon "alert" "w-5 h-5" %}</span><span>Wrong username or password.</span>
@@ -85,7 +90,7 @@
           </div>
         </div>
         <input type="hidden" name="next" value="{{ next }}">
-        <button class="btn btn-primary w-full py-3 text-base">Log in</button>
+        <button class="btn btn-primary w-full py-3 text-base" data-busy-text="Logging in…">Log in</button>
       </form>
     </div>
     <p class="login-tagline">Take with Trust · Play with Confidence · Get Achievements</p>
