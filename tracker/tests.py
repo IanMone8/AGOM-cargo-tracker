@@ -3373,3 +3373,15 @@ class JapanBannerTests(BaseTest):
         self.assertIn('PEOPLE = ["girl", "boy"]', script)
         self.assertIn('/ "stickers" / f"{name}.webp"', script)
         self.assertIn('/ "stickers" / f"{name}.png"', script)
+
+
+class SidebarCopyrightTests(BaseTest):
+    def test_copyright_above_user_card_for_every_role(self):
+        for user in (self.owner, self.japan, self.myanmar):
+            self.client.force_login(user)
+            html = self.client.get(reverse("dashboard")).content.decode()
+            with self.subTest(user=user.username):
+                self.assertEqual(html.count("© AGOM 2026"), 1)                 # one sidebar: desktop and phone menu
+                self.assertIn('text-center text-xs text-primary-hover" data-copyright>© AGOM 2026</p>', html)
+                self.assertLess(html.index("data-copyright"), html.index('aria-label="Log out"'))
+                self.assertGreater(html.index("data-copyright"), html.index("</nav>"))

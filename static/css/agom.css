@@ -573,3 +573,6 @@ textarea.field { resize: vertical; }
 .pm-pick input:checked + .pm { border-color: currentColor; box-shadow: 0 0 0 2px var(--card); }
 .pm-pick input:focus-visible + .pm { outline: 3px solid var(--mint); outline-offset: 2px; }
 .pay-history { margin-top: 1rem; }
+
+/* Sidebar links scroll on short screens: a little room so link shadows and the active pill aren't clipped */
+.sidebar-nav { margin-inline: -.25rem; padding: 0 .25rem .25rem; scrollbar-width: thin; }
