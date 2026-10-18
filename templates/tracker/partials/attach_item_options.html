@@ -1,2 +1,0 @@
-<option value="">Choose item…</option>
-{% for item in items %}<option value="{{ item.pk }}">{{ item.type }} · {{ item.item_name }} {{ item.flex }} {{ item.loft }} ×{{ item.qty }}{% if item.customer %} ({{ item.customer }}){% endif %}</option>{% endfor %}

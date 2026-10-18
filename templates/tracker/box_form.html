@@ -1,14 +1,31 @@
 {% extends "base.html" %}
 {% block content %}
-<a href="{% if box %}{% url 'box_detail' box.pk %}{% else %}{% url 'box_list' %}{% endif %}" class="text-sm text-emerald-700">← Back</a>
-<h1 class="mb-4 mt-1 text-2xl font-bold">{% if box %}Edit {{ box.label }}{% else %}New box{% endif %}</h1>
-<form method="post" class="space-y-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+<a href="{% if box %}{% url 'box_detail' box.pk %}{% else %}{% url 'box_list' %}{% endif %}" class="text-sm font-semibold text-primary">← Back</a>
+<h1 class="mb-4 mt-1 text-2xl font-extrabold">{% if box %}Edit {{ box.label }}{% else %}New box{% endif %}</h1>
+<form method="post" class="card space-y-4 p-5">
   {% csrf_token %}
-  {% for e in form.non_field_errors %}<p class="text-sm text-red-600">{{ e }}</p>{% endfor %}
+  {% for e in form.non_field_errors %}<p class="text-sm text-danger-ink">{{ e }}</p>{% endfor %}
   <div class="grid gap-4 sm:grid-cols-2">
     {% for field in form %}{% include "tracker/_field.html" %}{% endfor %}
   </div>
-  <p class="text-xs text-slate-500">Status moves forward automatically: a ship date → Shipped, a received date → Arrived, all items checked → Checked. Choosing a status here overrides that.</p>
-  <button class="w-full rounded-lg bg-emerald-700 py-2.5 font-semibold text-white sm:w-auto sm:px-6">Save</button>
+  {% if can_check %}<p class="text-xs text-ink-muted">Status moves forward automatically: a ship date → Shipped, a received date → Arrived, all items checked → Checked. Choosing a status here overrides that.</p>
+{% endif %}
+  <button class="btn btn-primary w-full py-3 sm:w-auto sm:px-8">Save</button>
 </form>
+<script>
+  // Received in Myanmar can't be before the ship date: move the calendar's minimum along.
+  (function () {
+    const ship = document.getElementById('id_japan_ship_date');
+    const recv = document.getElementById('id_myanmar_received_date');
+    if (!ship || !recv) return;
+    const base = recv.min;
+    const sync = (clearTooEarly) => {
+      const low = [base, ship.value].filter(Boolean).sort().pop();
+      recv.min = low;
+      if (clearTooEarly && recv.value && recv.value < low) recv.value = '';
+    };
+    ship.addEventListener('change', () => sync(true));
+    sync(false);
+  })();
+</script>
 {% endblock %}

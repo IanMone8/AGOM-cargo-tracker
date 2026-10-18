@@ -1,10 +1,7 @@
-<form class="mb-3 space-y-3 rounded-xl bg-white p-3 shadow ring-2 ring-emerald-300"
-      hx-post="{% url 'item_add' box.pk %}" hx-target="#item-form-slot">
-  <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
-    {% for field in form %}<div class="{% if field.name == 'item_name' or field.name == 'note' %}col-span-2{% endif %}">{% include "tracker/_field.html" %}</div>{% endfor %}
-  </div>
-  <div class="flex gap-2">
-    <button class="flex-1 rounded-lg bg-emerald-700 py-2.5 text-sm font-semibold text-white">Add item</button>
-    <button type="button" class="rounded-lg px-4 py-2.5 text-sm ring-1 ring-slate-300" onclick="this.closest('form').remove()">Close</button>
+<form class="mb-4" hx-post="{% url 'item_add' box.pk %}" hx-target="#item-form-slot">
+  {% include "tracker/partials/item_card.html" with item_form=form %}
+  <div class="mt-2 flex gap-2">
+    <button class="btn btn-primary flex-1">Add item</button>
+    <button type="button" class="btn btn-ghost" onclick="this.closest('form').remove()">Close</button>
   </div>
 </form>

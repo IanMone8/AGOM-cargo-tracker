@@ -1,0 +1,15 @@
+{% comment %} Model box on an item card: the dropdown list of the chosen brand's models (shown/hidden and driven by the
+   keyboard in base.html) plus how it will be saved. Rows carry data-pick: picking fills the box with exactly that spelling. {% endcomment %}
+<div class="combo-list" role="listbox" aria-label="Models" data-combo-list hidden>
+  {% for s in above %}<div class="combo-opt" role="option" aria-selected="false" data-pick="{{ s }}" data-section="box">{{ s }}</div>{% endfor %}
+  {% if above and below %}<div class="combo-divider" role="separator"></div>{% endif %}
+  {% for s in below %}<div class="combo-opt" role="option" aria-selected="false" data-pick="{{ s }}" data-section="saved">{{ s }}</div>{% endfor %}
+</div>
+<div class="item-hints">
+  {% if no_brand %}
+    <p class="item-preview">Choose the brand first – its saved models are listed here.</p>
+  {% elif typed %}
+    {% if did_you_mean %}<p class="item-ask"><span>Did you mean</span> <button type="button" class="item-btn" data-pick="{{ did_you_mean }}">{{ did_you_mean }}</button>?</p>{% endif %}
+    <p class="item-preview">Saved as <b>{{ saved_as }}</b>{% if is_new %} <span class="item-tag">new model</span>{% endif %}{% if is_other %} <span class="item-tag">other brand</span>{% endif %}</p>
+  {% endif %}
+</div>

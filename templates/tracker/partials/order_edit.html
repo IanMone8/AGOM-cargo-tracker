@@ -1,0 +1,12 @@
+{% comment %} "Edit" on an order card: its date, item lines (+ Add item / Remove) and note (swaps the card; Save / Cancel bring it back). {% endcomment %}
+<form id="request-{{ r.pk }}" class="card space-y-3 p-4" hx-post="{% url 'order_edit' r.pk %}" hx-target="this" hx-swap="outerHTML" data-order-form>
+  <p class="text-sm font-semibold text-ink-muted">Edit order #{{ r.pk }} for <b class="text-ink">{{ r.customer }}</b></p>
+  {% for e in form.non_field_errors %}<p class="text-sm text-danger-ink">{{ e }}</p>{% endfor %}
+  <div class="sm:w-56">{% include "tracker/_field.html" with field=form.order_date %}</div>
+  {% include "tracker/partials/order_lines.html" %}
+  {% include "tracker/_field.html" with field=form.note %}
+  <div class="flex gap-2">
+    <button class="btn btn-primary flex-1 sm:flex-none sm:px-8">Save</button>
+    <button type="button" class="btn btn-ghost" hx-get="{% url 'request_status' r.pk %}" hx-target="#request-{{ r.pk }}" hx-swap="outerHTML">Cancel</button>
+  </div>
+</form>

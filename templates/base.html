@@ -1,53 +1,380 @@
-{% load static %}<!doctype html>
+{% load static tracker_tags %}<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#065f46">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#C4E6C9">
   <title>{% block title %}AGOM Cargo Tracker{% endblock %}</title>
+  <link rel="icon" type="image/png" href="{% static_v 'img/display/3d-logo.png' %}">
+  <link rel="apple-touch-icon" sizes="180x180" href="{% static_v 'img/display/app-icon-180.png' %}">
+  <link rel="manifest" href="{% url 'web_manifest' %}">
+  <meta name="apple-mobile-web-app-title" content="AGOM Cargo">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <script src="{% static_v 'js/tw-theme.js' %}"></script>
   <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"></script>
-  <style>
-    .htmx-request.htmx-indicator, .htmx-request .htmx-indicator { opacity: 1 }
-    .htmx-indicator { opacity: 0; transition: opacity 150ms }
-    .htmx-request button { opacity: .6 }
-  </style>
+  <link rel="stylesheet" href="{% static_v 'css/agom.css' %}">
+  {% block head %}{% endblock %}
 </head>
-<body class="min-h-screen bg-slate-50 text-slate-900" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+<body class="min-h-screen antialiased" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
 {% if user.is_authenticated %}
-  <header class="sticky top-0 z-20 bg-emerald-800 text-white shadow">
-    <div class="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-      <a href="{% url 'dashboard' %}" class="text-lg font-bold tracking-tight">⛳ AGOM Cargo</a>
-      <div class="flex items-center gap-3 text-sm">
-        <span class="hidden sm:inline">{{ user.get_username }} · <span class="opacity-80">{{ role_name }}</span></span>
-        {% if user.is_staff %}<a href="{% url 'admin:index' %}" class="underline-offset-2 hover:underline">Admin</a>{% endif %}
+{% with name=request.resolver_match.url_name %}
+  <!-- Sidebar: fixed on desktop, slide-in drawer on phones -->
+  <div id="sidebar-overlay" class="fixed inset-0 z-30 hidden bg-black/40 lg:hidden" onclick="toggleSidebar(false)"></div>
+  <aside id="sidebar" class="menubar fixed inset-y-0 left-0 z-40 flex w-72 -translate-x-full flex-col px-4 pb-5 pt-5 text-ink transition-transform duration-200 lg:w-64 lg:translate-x-0">
+    <div class="flex items-center justify-between px-2">
+      <a href="{% url 'dashboard' %}" class="flex items-center gap-3">
+        <img src="{% static_v 'img/display/3d-logo.png' %}" alt="AGOM Golf Shop" width="64" height="64" class="h-16 w-16 shrink-0 rounded-2xl bg-card object-contain p-1 shadow-[inset_0_1px_0_#fff,0_3px_0_rgba(0,0,0,0.25),0_10px_18px_-8px_rgba(0,0,0,0.5)]" onerror="this.style.display='none'">
+        <span class="leading-tight"><span class="block text-xs font-semibold uppercase tracking-[0.18em] text-primary-hover">AGOM</span><span class="block text-base font-bold">Cargo Tracker</span></span>
+      </a>
+      <button class="rounded-lg p-2 hover:bg-mint lg:hidden" onclick="toggleSidebar(false)" aria-label="Close menu">{% icon "x" %}</button>
+    </div>
+
+    {# the links scroll on short screens, so the copyright line and the user card always stay in view #}
+    <nav class="sidebar-nav mt-8 min-h-0 flex-1 space-y-1 overflow-y-auto">
+      <p class="px-3 pb-1 text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-primary-hover">Overview</p>
+      <a href="{% url 'dashboard' %}" class="sidebar-link {% if name == 'dashboard' %}active{% endif %}">{% include "tracker/_nav_icon.html" with file="house.webp" fallback="home" %} Dashboard</a>
+      <a href="{% url 'box_list' %}" class="sidebar-link {% if name == 'box_list' or name == 'box_detail' or name == 'box_edit' or name == 'box_create' %}active{% endif %}">{% include "tracker/_nav_icon.html" with file="flying-box.webp" fallback="box" %} Shipments</a>
+      <a href="{% url 'cargo_history' %}" class="sidebar-link {% if name == 'cargo_history' %}active{% endif %}">{% include "tracker/_nav_icon.html" with file="calendar.webp" fallback="history" %} Cargo history</a>
+      {% if can_use_customers %}
+      <a href="{% url 'customer_list' %}" class="sidebar-link {% if 'customer_' in name %}active{% endif %}">{% include "tracker/_nav_icon.html" with file="customer.webp" fallback="contact" %} Customers</a>
+      {% endif %}
+      {% if can_import_csv %}
+      <p class="px-3 pb-1 pt-5 text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-primary-hover">Data</p>
+      <a href="{% url 'csv_import' %}" class="sidebar-link {% if 'csv' in name %}active{% endif %}">{% icon "upload" %} CSV import</a>
+      {% endif %}
+      {% if user.is_staff %}
+      <a href="{% url 'admin:index' %}" class="sidebar-link">{% icon "cog" %} Admin</a>
+      {% endif %}
+    </nav>
+
+    <p class="mb-2 mt-3 shrink-0 text-center text-xs text-primary-hover" data-copyright>© AGOM 2026</p>
+    <div class="shrink-0 rounded-2xl bg-white/55 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_2px_0_rgba(15,59,44,0.12)]">
+      <div class="flex items-center gap-3">
+        <div class="grid h-10 w-10 place-items-center rounded-full bg-primary font-bold uppercase text-white">{{ user.get_username|slice:":1" }}</div>
+        <div class="min-w-0 flex-1"><div class="truncate text-sm font-semibold">{{ user.get_username }}</div><div class="text-xs text-primary-hover">{{ role_name }}</div></div>
         <form method="post" action="{% url 'logout' %}">{% csrf_token %}
-          <button class="rounded bg-emerald-700 px-2 py-1 hover:bg-emerald-600">Log out</button>
+          <button class="rounded-lg p-2 text-primary-hover hover:bg-mint" title="Log out" aria-label="Log out">{% icon "logout" %}</button>
         </form>
       </div>
     </div>
-    {% with name=request.resolver_match.url_name %}
-    <nav class="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-2 pb-2 text-sm font-medium">
-      <a href="{% url 'dashboard' %}" class="whitespace-nowrap rounded-lg px-3 py-1.5 {% if name == 'dashboard' %}bg-white text-emerald-900{% else %}hover:bg-emerald-700{% endif %}">Dashboard</a>
-      <a href="{% url 'box_list' %}" class="whitespace-nowrap rounded-lg px-3 py-1.5 {% if 'box' in name %}bg-white text-emerald-900{% else %}hover:bg-emerald-700{% endif %}">Boxes</a>
-      <a href="{% url 'request_list' %}" class="whitespace-nowrap rounded-lg px-3 py-1.5 {% if 'request' in name %}bg-white text-emerald-900{% else %}hover:bg-emerald-700{% endif %}">Requests</a>
+  </aside>
+
+  <div class="lg:pl-64">
+    <!-- Mobile top bar -->
+    <header class="menubar sticky top-0 z-20 flex items-center justify-between px-4 py-3 text-ink shadow-lg lg:hidden">
+      <button class="-ml-1 rounded-lg p-2 hover:bg-mint" onclick="toggleSidebar(true)" aria-label="Open menu">{% icon "menu" "w-6 h-6" %}</button>
+      <a href="{% url 'dashboard' %}" class="flex items-center gap-2">
+        <img src="{% static_v 'img/display/3d-logo.png' %}" alt="AGOM Golf Shop" width="36" height="36" class="h-9 w-9 rounded-lg bg-card object-contain p-0.5" onerror="this.style.display='none'">
+        <span class="font-bold">Cargo Tracker</span>
+      </a>
       {% if can_edit_japan %}
-      <a href="{% url 'csv_import' %}" class="whitespace-nowrap rounded-lg px-3 py-1.5 {% if 'csv' in name %}bg-white text-emerald-900{% else %}hover:bg-emerald-700{% endif %}">CSV import</a>
+        <button class="rounded-lg bg-white/60 p-2 text-primary-hover shadow-[0_2px_0_rgba(15,59,44,0.15)] hover:bg-white/80" hx-get="{% url 'box_create' %}" hx-target="#modal" aria-label="Add box">{% icon "plus" "w-6 h-6" %}</button>
+      {% else %}<span class="w-10"></span>{% endif %}
+    </header>
+
+    <main class="mx-auto max-w-6xl px-4 pb-20 pt-5 sm:px-6 lg:px-8 lg:pt-8">
+      {% if messages %}
+        <div class="mb-5 space-y-2">
+          {% for message in messages %}
+            <div class="card flex items-center gap-3 px-4 py-3 text-sm font-medium {% if message.tags == 'error' %}text-danger-ink{% else %}text-primary-hover{% endif %}">
+              <span class="{% if message.tags == 'error' %}text-danger-ink{% else %}text-primary{% endif %}">{% if message.tags == 'error' %}{% icon "alert" %}{% else %}{% icon "check" %}{% endif %}</span>{{ message }}
+            </div>
+          {% endfor %}
+        </div>
       {% endif %}
-    </nav>
-    {% endwith %}
-  </header>
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+{% endwith %}
+  <div id="modal"></div>
+  <script src="{% static_v 'js/numbers.js' %}" defer></script>
+  {% if can_see_money or can_use_payments %}<script src="{% static_v 'js/money.js' %}" defer></script>{% endif %}
+  {% block scripts %}{% endblock %}
+  <script>
+    function toggleSidebar(open) {
+      document.getElementById('sidebar').classList.toggle('-translate-x-full', !open);
+      document.getElementById('sidebar-overlay').classList.toggle('hidden', !open);
+    }
+    // Hide the card and flag it for the formset to skip (keeps form indexes intact).
+    function deleteItemCard(btn) {
+      const card = btn.closest('.item-card');
+      const flag = card.querySelector('[data-delete-flag]');
+      if (flag) { flag.value = 'on'; card.style.display = 'none'; } else { card.remove(); }
+      if (typeof updateMoney === 'function') updateMoney();
+    }
+    // 3D tilt for [data-tilt] cards (mouse/trackpad only; off for reduced motion).
+    (function () {
+      if (!matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      let active = null;
+      const reset = el => { el.classList.remove('is-tilting'); el.style.removeProperty('--rx'); el.style.removeProperty('--ry'); };
+      document.addEventListener('pointermove', e => {
+        const el = e.target.closest && e.target.closest('[data-tilt]');
+        if (active && active !== el) { reset(active); active = null; }
+        if (!el) return;
+        const max = parseFloat(el.dataset.tilt) || 8;
+        const r = el.getBoundingClientRect();
+        const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+        el.style.setProperty('--ry', ((x - 0.5) * 2 * max).toFixed(2) + 'deg');
+        el.style.setProperty('--rx', ((0.5 - y) * 2 * max).toFixed(2) + 'deg');
+        el.style.setProperty('--gx', (x * 100).toFixed(1) + '%');
+        el.style.setProperty('--gy', (y * 100).toFixed(1) + '%');
+        el.classList.add('is-tilting');
+        active = el;
+      }, { passive: true });
+      document.addEventListener('pointerleave', () => { if (active) { reset(active); active = null; } });
+      window.addEventListener('blur', () => { if (active) { reset(active); active = null; } });
+    })();
+    // Two-tap club option picker: category, then value (or free text for categories like "Other").
+    // Club option as a whole is optional; a tapped category needs a value. Tapping the selected category again clears it.
+    function clubWarn(picker, text) {
+      const warn = picker.querySelector('[data-club-warn]');
+      warn.textContent = text || ''; warn.hidden = !text;
+      picker.closest('.item-card').classList.toggle('has-problem', !!text);
+    }
+    document.addEventListener('click', e => {
+      const cat = e.target.closest('[data-club-cat]'), val = e.target.closest('[data-club-val]');
+      if (!cat && !val) return;
+      const picker = e.target.closest('[data-picker]');
+      const hidden = picker.querySelector('[data-club-value]'), picked = picker.querySelector('[data-club-picked]');
+      const catValue = picker.querySelector('[data-club-category]');
+      clubWarn(picker, '');
+      if (cat && cat.getAttribute('aria-pressed') === 'true') {        // tap again: no club option
+        picker.querySelectorAll('[data-club-cat], [data-club-val]').forEach(b => b.setAttribute('aria-pressed', false));
+        picker.querySelectorAll('[data-club-panel]').forEach(p => p.hidden = true);
+        hidden.value = ''; catValue.value = ''; picked.textContent = '';
+        return;
+      }
+      if (cat) {
+        const free = cat.hasAttribute('data-club-free'), key = free ? 'free' : cat.dataset.clubCat;
+        catValue.value = cat.dataset.clubCat;
+        picker.querySelectorAll('[data-club-cat]').forEach(b => b.setAttribute('aria-pressed', b === cat));
+        picker.querySelectorAll('[data-club-panel]').forEach(p => p.hidden = p.dataset.clubPanel !== key);
+        const panel = picker.querySelector(`[data-club-panel="${key}"]`);
+        if (free) {
+          hidden.value = 'other';
+          const other = panel.querySelector('[data-club-other]');
+          picked.textContent = other.value ? '✓ ' + other.value : '';
+          other.focus();
+        } else if (!panel.querySelector(`[data-club-val="${hidden.value}"]`)) {
+          hidden.value = ''; picked.textContent = '';   // switched category: pick a value next
+          panel.querySelectorAll('[data-club-val]').forEach(b => b.setAttribute('aria-pressed', false));
+        }
+      } else {
+        hidden.value = val.dataset.clubVal;
+        val.closest('[data-club-panel]').querySelectorAll('[data-club-val]').forEach(b => b.setAttribute('aria-pressed', b === val));
+        picked.textContent = '✓ ' + val.dataset.clubLabel;
+      }
+    });
+    document.addEventListener('input', e => {
+      if (!e.target.matches('[data-club-other]')) return;
+      const picker = e.target.closest('[data-picker]'), picked = picker.querySelector('[data-club-picked]');
+      picked.textContent = e.target.value ? '✓ ' + e.target.value : '';
+      if (e.target.value.trim()) clubWarn(picker, '');
+    });
+    // What's missing on a card's picker: "Choose a Driver option" / "Type the Other item" (same rule as the server).
+    function clubProblem(picker) {
+      const cat = picker.querySelector('[data-club-cat][aria-pressed="true"]');
+      if (!cat) return '';
+      const name = cat.textContent.trim();
+      if (cat.hasAttribute('data-club-free')) {
+        return (picker.querySelector('[data-club-other]') || {}).value?.trim() ? '' : `Type the ${name} item.`;
+      }
+      return picker.querySelector('[data-club-value]').value ? '' : `Choose ${/^[aeiou]/i.test(name) ? 'an' : 'a'} ${name} option.`;
+    }
+    // Save is blocked while a card has a category without a value: warn under its picker and go to the first one.
+    document.addEventListener('submit', e => {
+      const pickers = [...e.target.querySelectorAll('[data-picker]')].filter(p => {
+        const card = p.closest('.item-card');
+        return card && card.style.display !== 'none' && (card.querySelector('[data-delete-flag]') || {}).value !== 'on';
+      });
+      let first = null;
+      pickers.forEach(p => { const problem = clubProblem(p); clubWarn(p, problem); if (problem && !first) first = p; });
+      if (!first) return;
+      e.preventDefault(); e.stopPropagation();          // capture phase: htmx never sees this submit
+      first.closest('.item-card').scrollIntoView({behavior: 'smooth', block: 'center'});
+    }, true);
+    // Model combo box on item cards (tracker/_brand_model_field.html + partials/item_assist.html).
+    // The server renders the chosen brand's list: models typed on this open box's cards for the same brand (above the
+    // line) and the brand's saved models A → Z (below). Here: open / close, ▾ (full list), taps, and ↑ ↓ Enter Esc.
+    const comboField = el => el && el.closest && el.closest('[data-item-field]');
+    const comboInput = field => field.querySelector('[data-item-text]');
+    const comboList = field => field.querySelector('[data-combo-list]');
+    const comboOpts = field => [...field.querySelectorAll('[data-combo-list] .combo-opt')];
+    function comboShow(field) {          // show the list if this field is open and the list has rows
+      const list = comboList(field), input = comboInput(field);
+      if (!list) return;
+      const open = 'open' in field.dataset && comboOpts(field).length > 0;
+      list.hidden = !open;
+      input.setAttribute('aria-expanded', open);
+      if (open) list.scrollIntoView({block: 'nearest'});
+    }
+    function comboOpen(field, all) {
+      field.dataset.open = '';
+      if (all) field.dataset.all = '1'; else delete field.dataset.all;
+      htmx.trigger(comboInput(field), 'refresh');              // fetch the list (filtered, or all for ▾)
+    }
+    function comboClose(field) {
+      delete field.dataset.open; delete field.dataset.all;
+      comboSetActive(field, -1);
+      comboShow(field);
+    }
+    function comboSetActive(field, index) {
+      const opts = comboOpts(field), input = comboInput(field);
+      opts.forEach((o, i) => { o.classList.toggle('is-active', i === index); o.setAttribute('aria-selected', i === index); });
+      field.dataset.active = index;
+      if (opts[index]) { input.setAttribute('aria-activedescendant', opts[index].id); opts[index].scrollIntoView({block: 'nearest'}); }
+      else input.removeAttribute('aria-activedescendant');
+    }
+    function comboPick(field, value) {
+      const input = comboInput(field);
+      input.value = value;                 // exactly that spelling
+      comboClose(field);
+      htmx.trigger(input, 'refresh');      // update "Saved as …" (the list stays closed)
+    }
+    // combobox roles once per field, and ids for the rows after each swap
+    document.body.addEventListener('htmx:afterSwap', e => {
+      const field = comboField(e.detail.target);
+      if (!field || !e.detail.target.matches('.item-assist')) return;
+      const input = comboInput(field), list = comboList(field);
+      list.id = input.id + '-list';
+      comboOpts(field).forEach((o, i) => o.id = `${list.id}-${i}`);
+      input.setAttribute('role', 'combobox'); input.setAttribute('aria-autocomplete', 'list');
+      input.setAttribute('aria-controls', list.id);
+      field.dataset.active = -1;
+      comboShow(field);
+    });
+    document.addEventListener('input', e => {
+      if (!e.target.matches('[data-item-text]')) return;
+      const field = comboField(e.target);
+      field.dataset.open = ''; delete field.dataset.all;     // typing filters both sections
+    });
+    document.addEventListener('focusin', e => {
+      if (e.target.matches('[data-item-text]')) comboField(e.target).dataset.open = '';   // the focus request opens it
+    });
+    document.addEventListener('focusout', e => {
+      const field = comboField(e.target);
+      const keep = e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('.combo-box, .item-assist');
+      if (field && e.target.matches('[data-item-text]') && !(keep && field.contains(keep))) comboClose(field);
+    });
+    // a new brand: its own models (the list is fetched again; "Saved as …" follows)
+    document.addEventListener('change', e => {
+      if (!e.target.matches('[data-brand-select]')) return;
+      const field = comboField(e.target);
+      comboClose(field);
+      htmx.trigger(comboInput(field), 'refresh');
+    });
+    // keep the focus in the box while tapping a row or ▾ (so the list doesn't close under the finger)
+    document.addEventListener('mousedown', e => {
+      if (e.target.closest('[data-combo-list], [data-combo-toggle], [data-item-field] [data-pick]')) e.preventDefault();
+    });
+    document.addEventListener('click', e => {
+      const toggle = e.target.closest('[data-combo-toggle]');
+      if (toggle) {
+        const field = comboField(toggle), input = comboInput(field);
+        if ('open' in field.dataset && !comboList(field)?.hidden) { comboClose(field); return; }
+        if (document.activeElement !== input) { field.dataset.all = '1'; input.focus(); }
+        comboOpen(field, true);
+        return;
+      }
+      const pick = e.target.closest('[data-pick]');
+      if (!pick) return;
+      const field = comboField(e.target);
+      if (!field) return;
+      comboPick(field, pick.dataset.pick); comboInput(field).focus();
+    });
+    // keyboard: ↓ opens / moves, ↑ moves, Enter picks the highlighted row, Esc closes the list (not the modal)
+    document.addEventListener('keydown', e => {
+      if (!e.target.matches || !e.target.matches('[data-item-text]')) return;
+      const field = comboField(e.target), list = comboList(field), open = list && !list.hidden;
+      const opts = comboOpts(field), at = +field.dataset.active;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (!open) { comboOpen(field, false); return; }
+        const step = e.key === 'ArrowDown' ? 1 : -1;
+        comboSetActive(field, Math.max(0, Math.min(opts.length - 1, (at < 0 && step < 0 ? opts.length : at) + step)));
+      } else if (e.key === 'Enter' && open && opts[at]) {
+        e.preventDefault();
+        comboPick(field, opts[at].dataset.pick);
+      } else if (e.key === 'Escape' && open) {
+        e.preventDefault(); e.stopPropagation();
+        comboClose(field);
+      } else if (e.key === 'Tab' && open) {
+        comboClose(field);
+      }
+    }, true);
+    // Models typed on the cards of the open, unsaved box (bag + item cards), kept only here in the page until
+    // the box is saved; newest first. Noted when a Model box loses focus or a card is copied; each list request
+    // sends the models of the other cards with the same brand (views.item_suggest styles them like saving).
+    const boxNames = new Map();             // card element -> typed text (insertion order = oldest first)
+    const nameCard = el => el.closest('.item-card, .bag-card');
+    const cardGone = card => !card.isConnected || card.style.display === 'none'
+      || (card.querySelector('[data-delete-flag]') || {}).value === 'on';
+    function noteName(input) {
+      const card = nameCard(input), text = input.value.trim();
+      if (!card || boxNames.get(card) === text) return;
+      boxNames.delete(card);                // an edited name moves to the top
+      if (text) boxNames.set(card, text);
+    }
+    document.addEventListener('focusout', e => { if (e.target.matches('[data-item-text]')) noteName(e.target); });
+    document.body.addEventListener('htmx:configRequest', e => {
+      const el = e.detail.elt;
+      if (!el.matches || !el.matches('[data-item-text]')) return;
+      const own = nameCard(el), names = [];
+      const brandOf = card => (card && card.querySelector('[data-brand-select]') || {}).value || '';
+      boxNames.forEach((text, card) => {
+        if (cardGone(card)) { if (!card.isConnected) boxNames.delete(card); return; }   // deleted / closed
+        if (card !== own && brandOf(card) === brandOf(own)) names.unshift(text);      // same brand, newest first
+      });
+      e.detail.parameters['in_box'] = names;
+      if (comboField(el).dataset.all) e.detail.parameters['all'] = '1';
+    });
+    // Box page: brand filter chips show only that brand's rows (bag and items)
+    document.addEventListener('click', e => {
+      const chip = e.target.closest('[data-brand-filter]');
+      if (!chip) return;
+      const brand = chip.dataset.brandFilter;
+      chip.parentElement.querySelectorAll('[data-brand-filter]').forEach(c => c.setAttribute('aria-pressed', c === chip));
+      document.querySelectorAll('#bag-section [data-brand], #item-list [data-brand]').forEach(row => {
+        row.hidden = !!brand && row.dataset.brand !== brand;
+      });
+    });
+    // "Copy" on an item card in a formset (Add box modal "items-", order form "lines-"): duplicate it with the next index.
+    function copyItemCard(btn) {
+      const card = btn.closest('.item-card'), first = card.querySelector('[name*="-"][name$="-qty"]');
+      const m = first && first.name.match(/^(\w+)-(\d+)-/);
+      const total = m && card.closest('form').querySelector(`[name="${m[1]}-TOTAL_FORMS"]`);
+      if (!total) return;
+      const prefix = m[1], from = m[2], to = total.value;
+      const clone = card.cloneNode(true), src = card.querySelectorAll('input, select, textarea');
+      clone.querySelectorAll('input, select, textarea').forEach((el, i) => {
+        ['name', 'id'].forEach(a => el.hasAttribute(a) && el.setAttribute(a, el.getAttribute(a).replace(`${prefix}-${from}-`, `${prefix}-${to}-`)));
+        if (el.type === 'checkbox') el.checked = src[i].checked; else el.value = src[i].value;
+        if (el.matches('[data-delete-flag]')) el.value = '';
+        if (el.matches(`[name="${prefix}-${to}-id"]`)) el.value = '';      // a copy is a new line, not the saved one
+      });
+      card.parentElement.append(clone);                      // at the end, so saved order = screen order
+      htmx.process(clone);
+      total.value = +to + 1;
+      const name = clone.querySelector('[data-item-text]');
+      if (name) noteName(name);                               // the copy's name is "in this box" straight away
+      clone.querySelectorAll('.item-assist').forEach(a => a.innerHTML = '');
+      if (typeof updateMoney === 'function') updateMoney();
+      clone.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+    }
+    function closeModal() { document.getElementById('modal').innerHTML = ''; document.body.classList.remove('overflow-hidden'); }
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+    document.body.addEventListener('htmx:afterSwap', e => {
+      if (e.detail.target.id === 'modal') document.body.classList.toggle('overflow-hidden', !!e.detail.target.innerHTML.trim());
+    });
+  </script>
+{% else %}
+  {% block public %}{% endblock %}
 {% endif %}
-  <main class="mx-auto max-w-5xl px-4 py-4 pb-16">
-    {% if messages %}
-      <div class="mb-4 space-y-2">
-        {% for message in messages %}
-          <div class="rounded-lg px-4 py-3 text-sm {% if message.tags == 'error' %}bg-red-100 text-red-800{% else %}bg-emerald-100 text-emerald-900{% endif %}">{{ message }}</div>
-        {% endfor %}
-      </div>
-    {% endif %}
-    {% block content %}{% endblock %}
-  </main>
   {% block datalists %}{% endblock %}
 </body>
 </html>

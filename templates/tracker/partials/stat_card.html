@@ -1,0 +1,16 @@
+{% load tracker_tags %}{% comment %}
+Dashboard stat card. Context: tone, href, title, value, optional total, caption, icon_file.
+tone = sage / mint / cream / sand (colour tokens in agom.css).
+{% endcomment %}
+<a href="{{ href }}" data-stat="{{ tone }}"
+   data-tilt class="group relative flex h-[178px] min-w-0 flex-col rounded-[1.75rem] p-4 xl:px-5
+          stat-{{ tone }}">
+  <span class="stat-title relative z-10 block text-[0.85rem] font-bold leading-tight text-ink sm:text-[0.95rem] xl:text-base">{{ title }}</span>
+  <span class="stat-value pop-sm relative z-10 mt-2 block w-fit text-[2.6rem] font-extrabold leading-none tracking-tight text-ink tabular-nums xl:text-[2.75rem]">{{ value }}{% if total is not None %}<span class="stat-total ml-1 text-2xl font-bold text-ink-muted">/ {{ total }}</span>{% endif %}</span>
+  <span class="mt-auto flex items-end justify-between gap-2">
+    <span class="stat-caption relative z-10 min-w-0 pb-1 text-[0.72rem] leading-snug text-ink-muted sm:text-[0.8rem] xl:max-w-[calc(100%-8.25rem)]">{{ caption }}</span>
+    <img src="{% static_v 'img/display/icons/'|add:icon_file %}" alt="" width="70" height="70" loading="lazy"
+         class="stat-img pop drop-3d h-[70px] w-[70px] shrink-0 object-contain xl:absolute xl:bottom-[11px] xl:right-[3px] xl:h-[109px] xl:w-[123px]"
+         onerror="this.style.display='none'">
+  </span>
+</a>

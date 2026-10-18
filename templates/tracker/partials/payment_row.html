@@ -1,0 +1,11 @@
+{% load tracker_tags %}{% comment %} One payment: "17 Oct 2026   100,000 Ks   [AYA Pay]", then "recorded by <user> · <note>" (small, muted).
+  Context: p (Payment), r (its order, for Delete), show_order (payment history: name the order). {% endcomment %}
+<li data-payment="{{ p.pk }}">
+  <span class="min-w-0">
+    <span class="pay-main"><span data-pay-date>{{ p.date|date:"j M Y" }}</span><span data-pay-amount-text>{{ p.amount_ks|ks }}</span>{% if p.method %}{% include "tracker/partials/method_pill.html" with m=p.method %}{% endif %}</span>
+    <span class="pay-sub block">{% if show_order %}<a href="#request-{{ p.order_id }}" class="font-semibold underline-offset-2 hover:underline">Order #{{ p.order_id }}</a> · {% endif %}{% if p.recorded_by %}recorded by {{ p.recorded_by.username }}{% endif %}{% if p.recorded_by and p.note %} · {% endif %}{{ p.note }}</span>
+  </span>
+  {% if can_edit_payments and not show_order %}<button type="button" class="shrink-0 text-xs font-semibold text-ink-muted underline hover:text-danger-ink"
+      hx-post="{% url 'payment_delete' p.pk %}" hx-target="#request-{{ r.pk }}" hx-swap="outerHTML"
+      hx-confirm="Delete the payment of {{ p.amount_ks|ks }}?">Delete</button>{% endif %}
+</li>

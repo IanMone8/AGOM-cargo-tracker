@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+{% include "tracker/_page_header.html" with eyebrow="Shipments" title="Add box" %}
+<form method="post" class="mx-auto max-w-3xl">
+  {% csrf_token %}
+  {% include "tracker/partials/box_form_body.html" %}
+  <button class="btn btn-save mt-4 w-full py-3">Save box</button>
+</form>
+{% endblock %}

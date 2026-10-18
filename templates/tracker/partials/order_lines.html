@@ -1,0 +1,13 @@
+{% load tracker_tags %}{% comment %} An order's items (New order form and Edit): the SAME item card as the Add box modal
+  (partials/item_card.html + forms.ItemCardMixin), with the price in Ks. "+ Add item" copies the <template> card
+  (static/js/payments.js); Copy / Delete on each card as in the box modal. Context: lines (OrderLineFormSet). {% endcomment %}
+{{ lines.management_form }}
+{% for e in lines.non_form_errors %}<p class="rounded-xl bg-danger-bg px-3 py-2 text-sm font-semibold text-danger-ink">{{ e }}</p>{% endfor %}
+<div class="space-y-3" data-lines>
+  {% for item_form in lines.forms %}{% include "tracker/partials/item_card.html" with removable=True %}{% endfor %}
+</div>
+<template data-line-template>{% include "tracker/partials/item_card.html" with item_form=lines.empty_form removable=True %}</template>
+<div class="flex flex-wrap items-center justify-between gap-2">
+  <button type="button" class="btn btn-soft border-2 border-dashed border-line-strong" data-add-line>{% icon "plus" "w-4 h-4" %} Add item</button>
+  {% if can_use_payments %}<p class="text-sm font-bold tabular-nums" data-order-total-live></p>{% endif %}
+</div>

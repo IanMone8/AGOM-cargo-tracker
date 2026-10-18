@@ -1,0 +1,5 @@
+{% load tracker_tags %}
+<a role="columnheader" href="{{ sort_urls|get_item:col }}" hx-get="{{ sort_urls|get_item:col }}" hx-target="#customer-results" hx-push-url="true"
+   class="crm-sort {% if sort == col %}is-active{% endif %}" {% if sort == col %}aria-sort="{% if dir == 'asc' %}ascending{% else %}descending{% endif %}"{% endif %}>
+  {{ label }}<span class="crm-arrow" aria-hidden="true">{% if sort == col %}{% if dir == 'asc' %}▲{% else %}▼{% endif %}{% else %}↕{% endif %}</span>
+</a>

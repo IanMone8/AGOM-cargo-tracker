@@ -1,20 +1,21 @@
 {% load tracker_tags %}
-<a href="{% url 'box_detail' box.pk %}" class="flex items-center justify-between gap-3 rounded-xl bg-white p-3 shadow-sm ring-1 ring-slate-200 hover:ring-emerald-500">
-  <div class="min-w-0">
-    <div class="flex items-center gap-2">
-      <span class="text-lg font-bold">{{ box.label }}</span>
+<a href="{% url 'box_detail' box.pk %}" data-tilt="4" class="card relative flex min-w-0 items-center gap-3 p-3 sm:p-4">
+  <div class="code-tile pop-sm grid h-12 w-12 shrink-0 place-items-center rounded-2xl text-[0.7rem] font-extrabold tracking-wide">{{ box.cargo.code }}</div>
+  <div class="min-w-0 flex-1">
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="min-w-0 text-base font-extrabold">{{ box.label }}{% if box.bag_name %}<span class="font-semibold text-ink-muted"> · {{ box.bag_name }}</span>{% endif %}</span>
       <span class="{{ box.status|badge }}">{{ box.get_status_display }}</span>
+      {% if box.problem_count or box.extra_count %}<span class="inline-flex items-center gap-1 rounded-full bg-danger-bg px-2 py-0.5 text-xs font-semibold text-danger-ink">{% icon "alert" "w-3.5 h-3.5" %}{{ box.problem_count|add:box.extra_count }}</span>{% endif %}
     </div>
-    <div class="mt-0.5 truncate text-xs text-slate-500">
-      {{ box.cargo.name }}
-      {% if box.japan_ship_date %} · shipped {{ box.japan_ship_date|date:"j M" }}{% endif %}
-      {% if box.myanmar_received_date %} · received {{ box.myanmar_received_date|date:"j M" }}{% endif %}
+    <div class="mt-0.5 truncate text-xs text-ink-muted">
+      {{ box.cargo.name }}{% if box.japan_ship_date %} · shipped {{ box.japan_ship_date|date:"j M" }}{% endif %}{% if box.myanmar_received_date %} · received {{ box.myanmar_received_date|date:"j M" }}{% endif %}
     </div>
-  </div>
-  <div class="shrink-0 text-right text-xs">
-    <div class="font-medium">{{ box.checked_count }}/{{ box.item_count }} checked</div>
-    {% if box.problem_count or box.extra_count %}
-      <div class="text-red-600">{% if box.problem_count %}{{ box.problem_count }} issue{{ box.problem_count|pluralize }}{% endif %}{% if box.problem_count and box.extra_count %} · {% endif %}{% if box.extra_count %}{{ box.extra_count }} extra{% endif %}</div>
+    {% if not compact and box.item_count %}
+      <div class="progress mt-2 h-1.5 w-full max-w-[14rem] overflow-hidden rounded-full">
+        <div class="h-full rounded-full" style="width: {% widthratio box.checked_count box.item_count 100 %}%"></div>
+      </div>
     {% endif %}
   </div>
+  <div class="shrink-0 text-right text-xs text-ink-muted"><span class="block text-base font-bold text-ink">{{ box.checked_count }}/{{ box.item_count }}</span>checked
+    {% if can_see_money and box.money_total %}<span class="mt-1 block font-bold text-ink" data-box-total>{{ box.money_total|yen }}</span>{% endif %}</div>
 </a>
